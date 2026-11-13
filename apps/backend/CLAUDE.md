@@ -740,7 +740,8 @@ is intentionally skipped in v1. Delivery (chunking, ticket parsing, pruning) liv
 `lib/expoPush.ts` (`sendExpoPushMessages`), shared with the operator push route
 (`POST /v1/admin/push/send`, `lib/adminPush.ts`) and the recipient push on a fresh directed
 friend request (`lib/friendRequestPush.ts`: best-effort, 3s fetch cap, never fails the route,
-`data: { kind: "friend_request", userId }`); its endpoint is `EXPO_PUSH_URL` (config,
+`data: { kind: "friend_request", userId }`) and the nudge push (`lib/nudges.ts`, same best-effort
+shape, `data: { kind: "nudge", userId, gameId, url }` where `url` opens the board); its endpoint is `EXPO_PUSH_URL` (config,
 default Expo's). Never send to Expo with production tokens from a sandbox — point it at a stub.
 
 ## Lists and items are soft-deleted via `archived_at`

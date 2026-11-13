@@ -35,6 +35,7 @@ import { getDb } from "../db/client.js";
 import {
   activityEvents,
   friendships,
+  gameNudges,
   gameScoreReactions,
   gameScores,
   items,
@@ -227,6 +228,12 @@ async function actionRows(db: Db, client: WorkshopClient): Promise<ActionRow[]> 
         })
         .from(gameScoreReactions)
         .groupBy(gameScoreReactions.reactorUserId, utcDayOf(gameScoreReactions.createdAt)),
+    );
+    push(
+      await db
+        .select({ userId: gameNudges.senderId, day: utcDayOf(gameNudges.createdAt) })
+        .from(gameNudges)
+        .groupBy(gameNudges.senderId, utcDayOf(gameNudges.createdAt)),
     );
   } else {
     push(

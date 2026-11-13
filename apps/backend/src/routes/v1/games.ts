@@ -10,6 +10,7 @@ import type {
   GameCatalogResponse,
   GameDiscoveryResponse,
   GameLeaderboardResponse,
+  GameNudgeRefusal,
   GameScore,
   GameStandings,
   GamesResponse,
@@ -17,6 +18,7 @@ import type {
   PreviewGameScoreResponse,
   RecognizeGameResponse,
   ScoreReactionSummary,
+  SendGameNudgeResponse,
   SetGameScoreSpecResponse,
   SetScoreReactionResponse,
   UpsertGameScoreResponse,
@@ -74,6 +76,7 @@ import {
   reactionKey,
   visibleUserIds,
 } from "../../lib/gameStandings.js";
+import { isNudgeablePeriod, loadNudgeState, sendGameNudge } from "../../lib/nudges.js";
 import {
   notifyFirstScore,
   notifyGameAdded,
@@ -777,7 +780,66 @@ gameRoutes.get("/:id/leaderboard", async (c) => {
   );
 
   const response: GameLeaderboardResponse = { gameId: game.id, periodKey, entries };
+  // Nudging is offered once the viewer has played, and only for a current day.
+  if (isNudgeablePeriod(periodKey) && entries.some((e) => e.userId === userId)) {
+    response.nudges = await loadNudgeState(
+      userId,
+      game.id,
+      periodKey,
+      entries.map((e) => e.userId).filter((id) => id !== userId),
+    );
+  }
   return ok(c, response);
+});
+
+const sendNudgeSchema = z.object({ userId: uuidSchema, periodKey: periodKeySchema });
+
+const NUDGE_REFUSALS: Record<GameNudgeRefusal, string> = {
+  not_played: "Post your score before poking a friend.",
+  friend_not_played: "They haven't played this one today.",
+  sender_unreachable: "Turn on notifications to poke friends.",
+  unreachable: "They need to enable notifications to receive pokes.",
+  push_failed: "Failed to send poke",
+  already_nudged: "You already poked them on this game today.",
+  daily_limit: "You're out of pokes for today.",
+};
+
+/**
+ * POST /v1/games/:id/nudges — poke a friend who has also played this game on
+ * `periodKey`; they get a push. Rules live in `lib/nudges.ts`. A non-friend
+ * 404s like a missing user so the endpoint can't probe.
+ */
+gameRoutes.post("/:id/nudges", async (c) => {
+  const userId = c.get("userId");
+  const gameId = uuidSchema.safeParse(c.req.param("id"));
+  if (!gameId.success) return err(c, "NOT_FOUND", "game not found");
+  const parsed = await parseJsonBody(c, sendNudgeSchema);
+  if (!parsed.ok) return parsed.response;
+  const { userId: recipientId, periodKey } = parsed.data;
+  if (recipientId === userId) return err(c, "VALIDATION", "you can't poke yourself");
+  if (!isNudgeablePeriod(periodKey)) return err(c, "VALIDATION", "pokes are for today only");
+
+  const [game] = await getDb().select().from(games).where(eq(games.id, gameId.data)).limit(1);
+  if (!game) return err(c, "NOT_FOUND", "game not found");
+
+  const result = await sendGameNudge(userId, recipientId, game, periodKey);
+  if (!result.ok) {
+    if (result.reason === "not_found") return err(c, "NOT_FOUND", "friend not found");
+    return err(
+      c,
+      result.reason === "daily_limit"
+        ? "RATE_LIMITED"
+        : result.reason === "push_failed"
+          ? "INTERNAL"
+          : "CONFLICT",
+      NUDGE_REFUSALS[result.reason],
+      { reason: result.reason },
+    );
+  }
+  const response: SendGameNudgeResponse = {
+    nudges: await loadNudgeState(userId, game.id, periodKey, [recipientId]),
+  };
+  return ok(c, response, 201);
 });
 
 /** Viewer-relative reaction summary for one score (drives the PUT/DELETE echo). */

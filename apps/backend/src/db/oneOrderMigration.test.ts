@@ -137,10 +137,16 @@ beforeAll(async () => {
   // Every migration except 0058.
   partialFolder = mkdtempSync(join(tmpdir(), "one-order-"));
   cpSync("./drizzle", partialFolder, { recursive: true });
-  rmSync(join(partialFolder, `${MIGRATION}.sql`));
+  // Stop just before this migration: drop it and every later one, or the
+  // migrator (which only applies entries newer than the last one applied)
+  // would skip it once a later migration exists.
   const journalPath = join(partialFolder, "meta", "_journal.json");
   const journal = JSON.parse(readFileSync(journalPath, "utf8")) as { entries: { tag: string }[] };
-  journal.entries = journal.entries.filter((e) => e.tag !== MIGRATION);
+  const cut = journal.entries.findIndex((e) => e.tag === MIGRATION);
+  for (const later of journal.entries.slice(cut)) {
+    rmSync(join(partialFolder, `${later.tag}.sql`));
+  }
+  journal.entries = journal.entries.slice(0, cut);
   writeFileSync(journalPath, JSON.stringify(journal));
 
   client = new PGlite();

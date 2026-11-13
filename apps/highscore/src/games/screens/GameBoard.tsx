@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { errorMessage } from "@workshop/api-client/api";
+import { ApiError, errorMessage } from "@workshop/api-client/api";
 import { userAvatarImageUrl } from "@workshop/api-client/avatar";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { HIGHSCORE_WEB_URL } from "@workshop/shared/constants";
-import type { Game, GameStandingsEntry } from "@workshop/shared/games";
+import type { Game, GameLeaderboardResponse, GameStandingsEntry } from "@workshop/shared/games";
 import { formatScoreValue, STREAK_MIN_DAYS } from "@workshop/shared/games";
 import { confirm, formatRelative, haptics, openExternalUrl } from "@workshop/ui";
 import { useLocalSearchParams } from "expo-router";
@@ -19,6 +19,7 @@ import {
   View,
 } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+import { ensurePushRegistered } from "../../lib/pushRegistration";
 import { ReportSheet, type ReportTarget } from "../../moderation/ReportSheet";
 import {
   Avatar,
@@ -37,6 +38,7 @@ import {
   fetchGameLeaderboard,
   fetchMyGames,
   removeGame,
+  sendGameNudge,
   upsertGameScore,
 } from "../api/games";
 import { setScoreDirection } from "../api/teach";
@@ -47,6 +49,15 @@ import { usePostedScoreNotice } from "../hooks/usePostedScoreNotice";
 import { askScoreDirection } from "../lib/askScoreDirection";
 import { formatGameDateLabel, resolveRailDate } from "../lib/gameDate";
 import { goBack } from "../lib/navigation";
+import {
+  friendUnreachableMessage,
+  type NudgeRowStatus,
+  nudgeAllowanceLabel,
+  nudgeRefusalMessage,
+  nudgeRowStatus,
+  pokeBlockedMessage,
+  withNudgeSent,
+} from "../lib/nudges";
 import { writePostedScore } from "../lib/postedScore";
 import { scoreLineLabel } from "../lib/scoreCheck";
 import { summarizeGameScoreBody } from "../lib/scoresSummary";
@@ -55,6 +66,9 @@ import { teachAfterPost, teachOutcomeMessage } from "../lib/teachAfterPost";
 import { type ScorePostExtras, useScoreCheck, useTeachAvailable } from "../lib/useScoreCheck";
 import { useGamesRuntime } from "../runtime";
 import { useViewDay } from "../state/viewDay";
+
+/** The viewer can't poke until notifications are on for them; carries the toast. */
+class PokeBlocked extends Error {}
 
 /**
  * Per-game board (G1b) — history for one game in My Games. The home card
@@ -241,6 +255,84 @@ export default function GameBoard() {
     },
   });
 
+  // Nudge a friend on this board. The server owns the rules; the cached board
+  // takes the new allowance at once so the row flips without a refetch.
+  const nudgeMutation = useMutation({
+    mutationFn: async ({
+      userId,
+      name,
+      periodKey,
+    }: {
+      userId: string;
+      name: string;
+      periodKey: string;
+    }) => {
+      if (!gameId) throw new Error("missing game id");
+      // Poking needs notifications on this side first. If this account has no
+      // device yet, the tap is the moment to ask the OS for them.
+      const key = queryKeys.games.leaderboard(gameId, periodKey);
+      const board = queryClient.getQueryData<GameLeaderboardResponse>(key);
+      if (board?.nudges && !board.nudges.canSend) {
+        const readiness =
+          token && user ? await ensurePushRegistered(token, user.id) : "unsupported";
+        if (readiness !== "ready") {
+          // No push on this device: on web that means "get the app", in an
+          // installed app it means the binary predates notifications.
+          const why = readiness === "unsupported" && Platform.OS !== "web" ? "outdated" : readiness;
+          throw new PokeBlocked(pokeBlockedMessage(why));
+        }
+        queryClient.setQueryData<GameLeaderboardResponse>(key, (b) =>
+          b?.nudges ? { ...b, nudges: { ...b.nudges, canSend: true } } : b,
+        );
+      }
+      // Then the friend's side, then the day's allowance: both are known
+      // from the board, so say so without a request the server would refuse.
+      const status = nudgeRowStatus(
+        queryClient.getQueryData<GameLeaderboardResponse>(key)?.nudges,
+        userId,
+      );
+      if (status === "unreachable") throw new PokeBlocked(friendUnreachableMessage(name));
+      if (status === "spent") throw new PokeBlocked("You're out of pokes for today");
+      return sendGameNudge(gameId, { userId, periodKey }, token);
+    },
+    onSuccess: (data, { userId, name, periodKey }) => {
+      haptics.medium();
+      queryClient.setQueryData<GameLeaderboardResponse>(
+        queryKeys.games.leaderboard(gameId ?? "", periodKey),
+        (board) =>
+          board?.nudges
+            ? { ...board, nudges: withNudgeSent(board.nudges, userId, data.nudges) }
+            : board,
+      );
+      showToast({ message: `You poked ${name}`, tone: "success" });
+    },
+    onError: (e, { name, periodKey }) => {
+      // Known before asking the server (notifications off on either side, or
+      // out for the day): say so, nothing was sent.
+      if (e instanceof PokeBlocked) {
+        showToast({ message: e.message, tone: "default" });
+        return;
+      }
+      const reason =
+        e instanceof ApiError ? (e.details as { reason?: unknown } | undefined)?.reason : null;
+      const informational = reason === "unreachable" || reason === "sender_unreachable";
+      showToast({
+        message: nudgeRefusalMessage(
+          reason,
+          name,
+          reason === "push_failed" || !(e instanceof ApiError)
+            ? "Failed to send poke"
+            : errorMessage(e, "Failed to send poke"),
+        ),
+        tone: informational ? "default" : "danger",
+      });
+      // A refusal means the board's nudge state is stale (limit hit elsewhere…).
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.games.leaderboard(gameId ?? "", periodKey),
+      });
+    },
+  });
+
   // Guideline 1.2: long-press a friend's score to report it.
   const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
 
@@ -290,6 +382,11 @@ export default function GameBoard() {
 
   const isToday = date === today;
   const entries = boardQuery.data?.entries ?? [];
+  const nudgeState = boardQuery.data?.nudges ?? null;
+  const nudgeLabel = nudgeAllowanceLabel(
+    nudgeState,
+    entries.filter((e) => e.userId !== user?.id).length,
+  );
   const myEntry = entries.find((e) => e.userId === user?.id);
   const myScore = myEntry?.scoreRaw && myEntry.scoreRaw.length > 0 ? myEntry.scoreRaw : null;
   // The composer posts a first result OR edits an existing one — on any day
@@ -532,6 +629,17 @@ export default function GameBoard() {
                     teachAvailable={teachAvailable}
                     isMe={false}
                     onPressPlayer={openProfile}
+                    nudge={nudgeRowStatus(nudgeState, entry.userId)}
+                    nudgePending={
+                      nudgeMutation.isPending && nudgeMutation.variables?.userId === entry.userId
+                    }
+                    onNudge={() =>
+                      nudgeMutation.mutate({
+                        userId: entry.userId,
+                        name: entry.displayName?.trim() || "Your friend",
+                        periodKey: date,
+                      })
+                    }
                     onReport={() =>
                       setReportTarget({
                         userId: entry.userId,
@@ -544,6 +652,14 @@ export default function GameBoard() {
                   />
                 );
               })}
+              {nudgeLabel ? (
+                <View style={styles.nudgeAllowance} testID="game-board-nudge-allowance">
+                  <PixelIcon name="poke" size={16} color={tokens.text.muted} />
+                  <Text variant="caption" tone="muted">
+                    {nudgeLabel}
+                  </Text>
+                </View>
+              ) : null}
               {teachAvailable ? (
                 <Pressable
                   accessibilityRole="button"
@@ -590,6 +706,10 @@ interface EntryRowProps {
   onReport?: () => void;
   /** Tap the avatar or name → that player's profile. */
   onPressPlayer?: (userId: string) => void;
+  /** A friend's row: whether (and how) the nudge control shows. */
+  nudge?: NudgeRowStatus;
+  nudgePending?: boolean;
+  onNudge?: () => void;
 }
 
 function EntryRow({
@@ -600,6 +720,9 @@ function EntryRow({
   onEdit,
   onReport,
   onPressPlayer,
+  nudge = "hidden",
+  nudgePending = false,
+  onNudge,
 }: EntryRowProps) {
   const name = entry.displayName ?? "Someone";
   // Same distillation as the home card (and the Lists clipboard recap): a
@@ -722,7 +845,35 @@ function EntryRow({
               (pressed || hovered) && styles.editBtnHover,
             ]}
           >
-            <PixelIcon name="pencil" size={16} color={tokens.text.secondary} />
+            <PixelIcon name="pencil" size={24} color={tokens.text.secondary} />
+          </Pressable>
+        ) : null}
+        {/* Nudge (a "poke"): a quiet pointing hand beside the score, sized like the edit pencil. It
+            lights up once sent; with none left it still takes a tap, which
+            toasts that the day's allowance is used up. */}
+        {nudge !== "hidden" ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={nudge === "sent" ? `Poked ${name}` : `Poke ${name}`}
+            aria-disabled={nudge === "sent" || nudgePending}
+            onPress={onNudge}
+            disabled={nudge === "sent" || nudgePending}
+            testID={`game-board-nudge-${entry.userId}`}
+            hitSlop={8}
+            style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
+              styles.editBtn,
+              nudge !== "sent" && (pressed || hovered) && styles.editBtnHover,
+            ]}
+          >
+            {nudgePending ? (
+              <ActivityIndicator size="small" color={tokens.text.secondary} />
+            ) : (
+              <PixelIcon
+                name="poke"
+                size={24}
+                color={nudge === "sent" ? tokens.neon.yellow : tokens.text.secondary}
+              />
+            )}
           </Pressable>
         ) : null}
         {scoreValue !== null ? (
@@ -1008,6 +1159,13 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.sm,
   },
   editBtnHover: { backgroundColor: tokens.bg.elevated },
+  nudgeAllowance: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: tokens.space.xs,
+    marginTop: tokens.space.lg,
+  },
   // Same share-text style as the home card's rows.
   scoreText: {
     color: tokens.text.secondary,

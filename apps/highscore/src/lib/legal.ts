@@ -62,7 +62,7 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
       "Account identifiers — your email address, display name, user ID, and an optional profile picture.",
       "Game scores and submissions — the results you post, the game and day they belong to, and the text you pasted to create them. Posting a score uploads it to HighScore's server and shows it, with your name and photo, to the friends you've added — that's the whole point of the leaderboard, and the sign-in screen says so before you start.",
       "Friend relationships and invites — who you're connected to, plus pending requests and the invite links you create.",
-      "Reactions and share links — the reactions you leave on scores and the short links minted when you share.",
+      "Reactions, pokes and share links — the reactions you leave on scores, the pokes you send friends (who, which game, which day), and the short links minted when you share.",
       "Blocks and reports — who you've blocked, and any content reports you send (including a snapshot of what was reported) so a person can review them.",
       "Security and session metadata — sign-in and refresh sessions, timestamps, and basic request details kept in server logs.",
       "Reminder settings — only if you allow notifications: your device's push token and time zone, and whether and at what hour you want the daily play reminder. Signing out removes that device's token.",
