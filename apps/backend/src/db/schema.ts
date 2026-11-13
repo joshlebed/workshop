@@ -28,6 +28,7 @@ export const users = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     email: text("email"),
+    /** See `users_display_name_check` below and `lib/displayName.ts`. */
     displayName: text("display_name"),
     /**
      * Profile picture, stored as a base64 `data:` URL (same approach as list
@@ -80,6 +81,16 @@ export const users = pgTable(
     emailLowerIdx: uniqueIndex("users_email_lower_idx")
       .on(sql`lower(${t.email})`)
       .where(sql`email IS NOT NULL`),
+    /**
+     * NULL (no name chosen yet → onboarding) or a real name: at least one
+     * non-whitespace character and at most 40 characters. The full rule
+     * (trimmed, single line, content filter) is `lib/displayName.ts`; this is
+     * the backstop for any write path that skips it.
+     */
+    displayNameCheck: check(
+      "users_display_name_check",
+      sql`${t.displayName} IS NULL OR (${t.displayName} ~ '[^[:space:]]' AND char_length(${t.displayName}) <= 40)`,
+    ),
   }),
 );
 

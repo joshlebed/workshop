@@ -15,6 +15,7 @@ import {
   setDeviceSessionImpersonation,
 } from "../../lib/deviceSessions.js";
 import { notifyDiscord } from "../../lib/discord.js";
+import { normalizeProviderDisplayName } from "../../lib/displayName.js";
 import { logger } from "../../lib/logger.js";
 import { verifyAppleIdentityToken } from "../../lib/oauth/apple.js";
 import { verifyGoogleIdentityToken } from "../../lib/oauth/google.js";
@@ -48,7 +49,13 @@ const appleBodySchema = z.object({
   identityToken: z.string().min(1),
   nonce: z.string().min(1).optional(),
   email: z.string().email().optional(),
-  fullName: z.string().min(1).max(60).optional(),
+  /**
+   * Relayed from the Apple credential (first sign-in only). Never fails the
+   * sign-in: anything that isn't a usable name (blank, over 40 chars, not a
+   * string) is dropped and the user picks one in onboarding. See
+   * `normalizeProviderDisplayName` in lib/displayName.ts.
+   */
+  fullName: z.string().optional().catch(undefined),
   /**
    * One-time code from the Apple credential. Optional — older clients don't
    * send it. When present (and the server-to-server Apple credentials are
@@ -168,6 +175,7 @@ interface UpsertInput {
   provider: AuthProvider;
   sub: string;
   email: string | null;
+  /** Already through `normalizeProviderDisplayName` — never a raw provider value. */
   displayName: string | null;
 }
 
@@ -392,7 +400,7 @@ authRoutes.post("/apple", async (c) => {
     provider: "apple",
     sub: claims.sub,
     email,
-    displayName: fullName ?? null,
+    displayName: normalizeProviderDisplayName(fullName),
   });
   await notifySignIn(user, "apple", createdUser, acquisition);
 
@@ -429,7 +437,7 @@ authRoutes.post("/google", async (c) => {
   }
 
   const email = typeof claims.email === "string" ? claims.email : null;
-  const displayName = typeof claims.name === "string" ? claims.name : null;
+  const displayName = normalizeProviderDisplayName(claims.name);
 
   const { user, createdUser } = await upsertIdentity({
     provider: "google",
@@ -444,7 +452,8 @@ authRoutes.post("/google", async (c) => {
 
 const devBodySchema = z.object({
   email: z.string().email(),
-  displayName: z.string().min(1).max(40).nullable().optional(),
+  // Same rule as a provider name: a blank / over-long one signs in nameless.
+  displayName: z.string().nullable().optional().catch(undefined),
 });
 
 // Dev-only sign-in for E2E tests. Gated on DEV_AUTH_ENABLED=1. Never enable in prod.
@@ -473,7 +482,7 @@ authRoutes.post("/dev", async (c) => {
     provider: "apple",
     sub: `dev:${email}`,
     email,
-    displayName: displayName ?? null,
+    displayName: normalizeProviderDisplayName(displayName),
   });
 
   logger.info("dev sign-in issued", { userId: user.id, email });

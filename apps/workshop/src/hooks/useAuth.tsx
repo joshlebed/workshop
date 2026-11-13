@@ -57,6 +57,14 @@ interface AuthState {
 export interface AuthContextValue {
   status: AuthStatus;
   user: User | null;
+  /**
+   * Bearer for API calls. Null until signed in **and while
+   * `needs-display-name`**: the server refuses a nameless account everywhere
+   * but a short allow-list (403 `DISPLAY_NAME_REQUIRED`), and the screen at a
+   * cold-launch URL mounts before AuthGate redirects to onboarding, so every
+   * `enabled: !!token` query would fire and fail. The actions here (set the
+   * name, sign out, stop impersonating) use the real token internally.
+   */
   token: string | null;
   impersonation: AuthImpersonation | null;
   /**
@@ -397,7 +405,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     () => ({
       status: state.status,
       user: state.user,
-      token: state.token,
+      token: state.status === "needs-display-name" ? null : state.token,
       impersonation: state.impersonation,
       suggestedDisplayName,
       signInWithApple,

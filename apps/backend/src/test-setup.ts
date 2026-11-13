@@ -9,6 +9,7 @@ import { vi } from "vitest";
 // their own implementations.
 vi.mock("./lib/sessionRevocation.js", () => ({
   isSessionRevoked: vi.fn(async () => false),
+  checkSession: vi.fn(async () => ({ revoked: false, displayNameMissing: false })),
   revokeAllSessions: vi.fn(async () => undefined),
 }));
 

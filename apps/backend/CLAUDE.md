@@ -546,7 +546,9 @@ refresh cannot leave the cache half-cleared.
 
 `PATCH /v1/users/me` (`routes/v1/users.ts`) updates `displayName` and/or `avatarUrl`
 independently — both optional, send only what changed; `avatarUrl: null` clears the
-picture; an empty body 400s. The avatar is stored as a base64 `data:` URL (same approach
+picture; an empty body 400s. `displayName` is validated by `displayNameSchema` in
+`lib/displayName.ts`, the same module whose `normalizeProviderDisplayName` cleans sign-in
+names (root CLAUDE.md has the rule). The avatar is stored as a base64 `data:` URL (same approach
 as list `cover_photo_url` — no object store yet), capped + raster-only by `avatarUrlSchema`
 (reused shape from `coverPhotoUrlSchema`). `toUserShape` is duplicated in `users.ts` **and**
 `auth.ts` — add new user fields to both. **Do not join `avatarUrl` into leaderboard /

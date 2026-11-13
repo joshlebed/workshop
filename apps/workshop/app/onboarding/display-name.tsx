@@ -13,7 +13,8 @@ import { isNetworkError } from "../../src/lib/errorCopy";
  * different account" signs out, for the person who picked the wrong Apple ID.
  */
 export default function DisplayName() {
-  const { setDisplayName, signOut, suggestedDisplayName } = useAuth();
+  const { setDisplayName, signOut, suggestedDisplayName, impersonation, stopImpersonating } =
+    useAuth();
   const [value, setValue] = useState(suggestedDisplayName ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -74,14 +75,35 @@ export default function DisplayName() {
             loading={busy}
             onPress={() => void handleSave()}
           />
-          <Button
-            testID="display-name-switch-account"
-            label="Use a different account"
-            variant="ghost"
-            size="md"
-            disabled={busy}
-            onPress={() => void signOut()}
-          />
+          {impersonation ? (
+            // An admin impersonating an account with no name lands here too
+            // (the server locks the target until it has one). Leave without
+            // naming it, and don't offer sign-out, which would end the admin's session.
+            <Button
+              testID="display-name-stop-impersonating"
+              label="Stop impersonating"
+              variant="ghost"
+              size="md"
+              disabled={busy}
+              onPress={() => {
+                setBusy(true);
+                setError(null);
+                stopImpersonating().catch(() => {
+                  setError("Couldn't stop impersonating. Try again.");
+                  setBusy(false);
+                });
+              }}
+            />
+          ) : (
+            <Button
+              testID="display-name-switch-account"
+              label="Use a different account"
+              variant="ghost"
+              size="md"
+              disabled={busy}
+              onPress={() => void signOut()}
+            />
+          )}
         </View>
       </KeyboardAvoidingView>
     </Screen>

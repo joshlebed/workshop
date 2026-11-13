@@ -9,7 +9,9 @@ vi.mock("../db/client.js", () => ({
 }));
 
 const { getDb } = await import("../db/client.js");
-const { isSessionRevoked, revokeAllSessions } = await import("./sessionRevocation.js");
+const { checkSession, isSessionRevoked, revokeAllSessions } = await import(
+  "./sessionRevocation.js"
+);
 
 const ACTIVE_SESSION = {
   impersonatedUserId: null,
@@ -34,7 +36,9 @@ function buildManagedMocks(session: Record<string, unknown> | undefined) {
   return { update, set };
 }
 
-function buildSelectMock(row: { sessionsInvalidatedAt: Date | null } | undefined) {
+function buildSelectMock(
+  row: { sessionsInvalidatedAt: Date | null; displayName?: string | null } | undefined,
+) {
   const limit = vi.fn().mockResolvedValue(row ? [row] : []);
   const where = vi.fn().mockReturnValue({ limit });
   const from = vi.fn().mockReturnValue({ where });
@@ -79,6 +83,37 @@ describe("isSessionRevoked", () => {
     const { select } = buildSelectMock(undefined);
     vi.mocked(getDb).mockReturnValue({ select } as unknown as ReturnType<typeof getDb>);
     expect(await isSessionRevoked("user-1", 1_700_000_000)).toBe(true);
+  });
+});
+
+describe("checkSession display name", () => {
+  beforeEach(() => {
+    vi.mocked(getDb).mockReset();
+  });
+
+  it("reports a missing display name from the same users read", async () => {
+    const { select, limit } = buildSelectMock({ sessionsInvalidatedAt: null, displayName: null });
+    vi.mocked(getDb).mockReturnValue({ select } as unknown as ReturnType<typeof getDb>);
+    expect(await checkSession("user-1", 1_700_000_000)).toEqual({
+      revoked: false,
+      displayNameMissing: true,
+    });
+    expect(limit).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports a named user as not missing", async () => {
+    const { select } = buildSelectMock({ sessionsInvalidatedAt: null, displayName: "Ada" });
+    vi.mocked(getDb).mockReturnValue({ select } as unknown as ReturnType<typeof getDb>);
+    expect(await checkSession("user-1", 1_700_000_000)).toEqual({
+      revoked: false,
+      displayNameMissing: false,
+    });
+  });
+
+  it("never reports a missing name on a revoked session", async () => {
+    const { select } = buildSelectMock({ sessionsInvalidatedAt: new Date(), displayName: null });
+    vi.mocked(getDb).mockReturnValue({ select } as unknown as ReturnType<typeof getDb>);
+    expect(await checkSession("user-1", 0)).toEqual({ revoked: true, displayNameMissing: false });
   });
 });
 
