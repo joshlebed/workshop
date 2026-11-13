@@ -353,7 +353,7 @@ export default function FriendsScreen() {
                       {request.displayName?.trim() || "Someone"}
                     </Text>
                     <Text variant="caption" tone="muted" numberOfLines={1}>
-                      Wants to be friends · {formatRelative(request.requestedAt)}
+                      Wants to be friends
                     </Text>
                   </View>
                   {answering ? (
