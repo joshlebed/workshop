@@ -220,8 +220,11 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   `details.code: "DISPLAY_NAME_REQUIRED"` (`lib/displayNameLock.ts`) to every route outside
   that file's allow-list. The check is on the token's subject (an impersonated nameless
   account is locked; `impersonation/stop` stays open) and reads the name from the same
-  `users` row as the revocation check (`checkSession`), so it costs no query. Clients must
-  not call a locked route while `status === "needs-display-name"`; a new route a nameless
+  `users` row as the revocation check (`checkSession`), so it costs no query. Clients don't
+  call locked routes while nameless because both apps' `useAuth()` expose `token: null` in
+  `needs-display-name` (a cold-launch screen mounts before AuthGate redirects, and its
+  `enabled: !!token` queries would 403); the auth actions keep the real token, and both
+  onboarding screens offer "Stop impersonating" during an impersonation. A new route a nameless
   user needs (bootstrap, sign-out, leaving) goes on the allow-list, nothing else does.
 
 - **CORS is owned by Hono — two places to update.** API Gateway has **no**

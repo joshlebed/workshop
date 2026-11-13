@@ -6,7 +6,7 @@ import { useAuth } from "../../src/hooks/useAuth";
 import { Button, bodyType, Text, tokens } from "../../src/theme";
 
 export default function DisplayName() {
-  const { setDisplayName } = useAuth();
+  const { setDisplayName, impersonation, stopImpersonating } = useAuth();
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -64,6 +64,24 @@ export default function DisplayName() {
           <Text tone="danger" style={styles.error}>
             {error}
           </Text>
+        ) : null}
+        {impersonation ? (
+          // An admin impersonating an account with no name lands here too (the
+          // server locks the target until it has one). Leave without naming it.
+          <Button
+            testID="display-name-stop-impersonating"
+            label="Stop impersonating"
+            variant="ghost"
+            disabled={busy}
+            onPress={() => {
+              setBusy(true);
+              setError(null);
+              stopImpersonating().catch((e: unknown) => {
+                setError(e instanceof Error ? e.message : "Couldn't stop impersonating");
+                setBusy(false);
+              });
+            }}
+          />
         ) : null}
       </View>
     </KeyboardAvoidingView>

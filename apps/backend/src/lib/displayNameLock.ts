@@ -17,7 +17,7 @@
 import type { Context } from "hono";
 import { err } from "./response.js";
 
-export const DISPLAY_NAME_REQUIRED = "DISPLAY_NAME_REQUIRED";
+const DISPLAY_NAME_REQUIRED = "DISPLAY_NAME_REQUIRED";
 
 /** `METHOD /path` pairs a nameless account may still call. Exact paths. */
 const ALLOWED = new Set([

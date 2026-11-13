@@ -1,3 +1,7 @@
+// Each test boots PGlite and runs every migration twice over, which is past
+// vitest's 5s default on a loaded runner.
+const MIGRATION_TEST_TIMEOUT_MS = 60_000;
+
 // Migration 0059 (users_display_name_check) on in-memory PGlite: migrate up to
 // 0058, plant the bad shapes the constraint forbids, then run 0059. A
 // whitespace-only name is cleared to NULL; an over-long name stops the
@@ -43,45 +47,53 @@ afterAll(() => {
 });
 
 describe("migration 0059 users_display_name_check", () => {
-  it("clears whitespace-only names, keeps real ones, then enforces the check", async () => {
-    const { client, db } = await dbBefore0059();
-    await client.query(
-      `INSERT INTO users (email, display_name) VALUES
+  it(
+    "clears whitespace-only names, keeps real ones, then enforces the check",
+    async () => {
+      const { client, db } = await dbBefore0059();
+      await client.query(
+        `INSERT INTO users (email, display_name) VALUES
          ('blank@t', ''), ('spaces@t', '   '), ('tabs@t', E'\\t\\n'),
          ('real@t', 'Ada'), ('none@t', NULL), ('forty@t', $1)`,
-      ["a".repeat(40)],
-    );
+        ["a".repeat(40)],
+      );
 
-    await migrate(db, { migrationsFolder: "./drizzle" });
+      await migrate(db, { migrationsFolder: "./drizzle" });
 
-    const { rows } = await client.query<{ email: string; display_name: string | null }>(
-      `SELECT email, display_name FROM users ORDER BY email`,
-    );
-    expect(Object.fromEntries(rows.map((r) => [r.email, r.display_name]))).toEqual({
-      "blank@t": null,
-      "forty@t": "a".repeat(40),
-      "none@t": null,
-      "real@t": "Ada",
-      "spaces@t": null,
-      "tabs@t": null,
-    });
-    await expect(
-      client.query(`INSERT INTO users (email, display_name) VALUES ('x@t', ' ')`),
-    ).rejects.toThrow(/users_display_name_check/);
-  });
+      const { rows } = await client.query<{ email: string; display_name: string | null }>(
+        `SELECT email, display_name FROM users ORDER BY email`,
+      );
+      expect(Object.fromEntries(rows.map((r) => [r.email, r.display_name]))).toEqual({
+        "blank@t": null,
+        "forty@t": "a".repeat(40),
+        "none@t": null,
+        "real@t": "Ada",
+        "spaces@t": null,
+        "tabs@t": null,
+      });
+      await expect(
+        client.query(`INSERT INTO users (email, display_name) VALUES ('x@t', ' ')`),
+      ).rejects.toThrow(/users_display_name_check/);
+    },
+    MIGRATION_TEST_TIMEOUT_MS,
+  );
 
-  it("refuses to run, and truncates nothing, when a name is over 40 characters", async () => {
-    const { client, db } = await dbBefore0059();
-    const long = "b".repeat(41);
-    await client.query(`INSERT INTO users (email, display_name) VALUES ('long@t', $1)`, [long]);
+  it(
+    "refuses to run, and truncates nothing, when a name is over 40 characters",
+    async () => {
+      const { client, db } = await dbBefore0059();
+      const long = "b".repeat(41);
+      await client.query(`INSERT INTO users (email, display_name) VALUES ('long@t', $1)`, [long]);
 
-    await expect(migrate(db, { migrationsFolder: "./drizzle" })).rejects.toThrow(
-      /longer than 40 characters/,
-    );
+      await expect(migrate(db, { migrationsFolder: "./drizzle" })).rejects.toThrow(
+        /longer than 40 characters/,
+      );
 
-    const { rows } = await client.query<{ display_name: string }>(
-      `SELECT display_name FROM users WHERE email = 'long@t'`,
-    );
-    expect(rows[0]?.display_name).toBe(long);
-  });
+      const { rows } = await client.query<{ display_name: string }>(
+        `SELECT display_name FROM users WHERE email = 'long@t'`,
+      );
+      expect(rows[0]?.display_name).toBe(long);
+    },
+    MIGRATION_TEST_TIMEOUT_MS,
+  );
 });
