@@ -16,6 +16,17 @@ interface ManagedSessionCheck {
   sessionVersion?: number | undefined;
 }
 
+export interface SessionCheck {
+  /** The session must be rejected (401). */
+  revoked: boolean;
+  /**
+   * The checked user has no `display_name` yet. Read from the same `users`
+   * row as the revocation cutoff, so the display-name lock in `requireAuth`
+   * costs no extra query. Always false when `revoked`.
+   */
+  displayNameMissing: boolean;
+}
+
 /**
  * Server-side session revocation: every token is checked against the user's
  * `sessions_invalidated_at` cutoff. Managed access tokens additionally require
@@ -31,6 +42,17 @@ export async function isSessionRevoked(
   iatSeconds: number,
   managed?: ManagedSessionCheck,
 ): Promise<boolean> {
+  return (await checkSession(userId, iatSeconds, managed)).revoked;
+}
+
+const REVOKED: SessionCheck = { revoked: true, displayNameMissing: false };
+
+/** `isSessionRevoked` plus whether that user still has to pick a display name. */
+export async function checkSession(
+  userId: string,
+  iatSeconds: number,
+  managed?: ManagedSessionCheck,
+): Promise<SessionCheck> {
   const db = getDb();
   // First DB touch on every authenticated request — wrapping it in the retry
   // both rides out a Neon cold-start here and warms the pooled connection for
@@ -38,21 +60,25 @@ export async function isSessionRevoked(
   const [row] = await withDbRetry(
     () =>
       db
-        .select({ sessionsInvalidatedAt: users.sessionsInvalidatedAt })
+        .select({
+          sessionsInvalidatedAt: users.sessionsInvalidatedAt,
+          displayName: users.displayName,
+        })
         .from(users)
         .where(eq(users.id, userId))
         .limit(1),
     { label: "isSessionRevoked" },
   );
 
-  if (!row) return true;
+  if (!row) return REVOKED;
   if (
     row.sessionsInvalidatedAt &&
     iatSeconds < Math.floor(row.sessionsInvalidatedAt.getTime() / 1000)
   ) {
-    return true;
+    return REVOKED;
   }
-  if (!managed) return false;
+  const live: SessionCheck = { revoked: false, displayNameMissing: row.displayName == null };
+  if (!managed) return live;
 
   const [session] = await db
     .select({
@@ -65,13 +91,13 @@ export async function isSessionRevoked(
     .from(authSessions)
     .where(and(eq(authSessions.id, managed.sessionId), eq(authSessions.userId, userId)))
     .limit(1);
-  if (!session || session.revokedAt) return true;
+  if (!session || session.revokedAt) return REVOKED;
   const now = Date.now();
   if (session.idleExpiresAt.getTime() <= now || session.absoluteExpiresAt.getTime() <= now) {
-    return true;
+    return REVOKED;
   }
   const expectedSubject = session.impersonatedUserId ?? userId;
-  if (expectedSubject !== managed.subjectUserId) return true;
+  if (expectedSubject !== managed.subjectUserId) return REVOKED;
 
   // One UPDATE per rotation per device (the first request after each refresh),
   // not per request — the guard below keeps the hot path read-only.
@@ -81,7 +107,7 @@ export async function isSessionRevoked(
   ) {
     await recordAccessTokenUse(managed.sessionId, managed.sessionVersion);
   }
-  return false;
+  return live;
 }
 
 /** Mark `version`'s access token as seen (monotonic; never moves backwards). */

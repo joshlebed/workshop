@@ -215,7 +215,14 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   never truncates, never fails the sign-in. NULL is a real state: the auth response says
   `needsDisplayName: true` and HighScore routes to `/onboarding/display-name`. The CHECK
   `users_display_name_check` (migration 0059: non-blank, `char_length <= 40`) backstops it.
-  **Any new path that writes `display_name` must use one of the two.**
+  **Any new path that writes `display_name` must use one of the two.** **A nameless account
+  is locked until it picks a name:** `requireAuth` answers 403 with
+  `details.code: "DISPLAY_NAME_REQUIRED"` (`lib/displayNameLock.ts`) to every route outside
+  that file's allow-list. The check is on the token's subject (an impersonated nameless
+  account is locked; `impersonation/stop` stays open) and reads the name from the same
+  `users` row as the revocation check (`checkSession`), so it costs no query. Clients must
+  not call a locked route while `status === "needs-display-name"`; a new route a nameless
+  user needs (bootstrap, sign-out, leaving) goes on the allow-list, nothing else does.
 
 - **CORS is owned by Hono — two places to update.** API Gateway has **no**
   `cors_configuration`; OPTIONS preflights fall through to Lambda so Hono can do

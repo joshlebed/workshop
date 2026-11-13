@@ -5,9 +5,20 @@ import { ok } from "../lib/response.js";
 import { signSession } from "../lib/session.js";
 import { requireAuth } from "./auth.js";
 
-vi.mock("../lib/sessionRevocation.js", () => ({
-  isSessionRevoked: vi.fn(async () => false),
-}));
+// `checkSession` (what requireAuth calls) answers through the
+// `isSessionRevoked` mock, so the revocation tests below keep asserting on one
+// function; `nameless` is the set of user ids with no display name.
+const nameless = vi.hoisted(() => new Set<string>());
+vi.mock("../lib/sessionRevocation.js", () => {
+  const isSessionRevoked = vi.fn(async (..._args: unknown[]) => false);
+  return {
+    isSessionRevoked,
+    checkSession: vi.fn(async (userId: string, ...rest: unknown[]) => {
+      const revoked = await isSessionRevoked(userId, ...rest);
+      return { revoked, displayNameMissing: !revoked && nameless.has(userId) };
+    }),
+  };
+});
 
 // Imported after vi.mock so the mocked module is used.
 const { isSessionRevoked } = await import("../lib/sessionRevocation.js");
@@ -146,5 +157,86 @@ describe("requireAuth middleware", () => {
       code: "UNAUTHORIZED",
       error: "invalid or expired session",
     });
+  });
+});
+
+describe("requireAuth display-name lock", () => {
+  beforeAll(() => {
+    process.env.STAGE = "local";
+    process.env.DATABASE_URL = "postgres://test";
+    process.env.SESSION_SECRET = "x".repeat(32);
+    resetConfigForTesting();
+  });
+
+  afterEach(() => {
+    nameless.clear();
+  });
+
+  function lockApp() {
+    const app = new Hono();
+    app.use("*", requireAuth);
+    app.all("*", (c) => ok(c, { userId: c.get("userId") }));
+    return app;
+  }
+
+  async function hit(method: string, path: string, token: string) {
+    return lockApp().request(path, { method, headers: { Authorization: `Bearer ${token}` } });
+  }
+
+  it("refuses a nameless user outside the allow-list with 403 DISPLAY_NAME_REQUIRED", async () => {
+    nameless.add("user-new");
+    const token = signSession("user-new");
+    for (const [method, path] of <const>[
+      ["GET", "/v1/lists"],
+      ["PUT", "/v1/games/g1/scores"],
+      ["PATCH", "/v1/users/me/flags"],
+      ["POST", "/v1/auth/impersonate"],
+    ]) {
+      const res = await hit(method, path, token);
+      expect(res.status).toBe(403);
+      expect(await res.json()).toEqual({
+        error: "choose a display name first",
+        code: "FORBIDDEN",
+        details: { code: "DISPLAY_NAME_REQUIRED" },
+      });
+    }
+  });
+
+  it("allows a nameless user on every allow-listed route (trailing slash too)", async () => {
+    nameless.add("user-new");
+    const token = signSession("user-new");
+    for (const [method, path] of <const>[
+      ["GET", "/v1/auth/me"],
+      ["POST", "/v1/auth/session"],
+      ["POST", "/v1/auth/signout"],
+      ["PATCH", "/v1/users/me"],
+      ["PATCH", "/v1/users/me/"],
+      ["DELETE", "/v1/users/me"],
+      ["DELETE", "/v1/users/me/sessions"],
+      ["DELETE", "/v1/me/push-token"],
+    ]) {
+      expect({ method, path, status: (await hit(method, path, token)).status }).toEqual({
+        method,
+        path,
+        status: 200,
+      });
+    }
+  });
+
+  it("locks on the impersonated subject's name, not the admin's", async () => {
+    nameless.add("target-user");
+    const token = signSession("target-user", { impersonatorUserId: "admin-user" });
+    expect((await hit("GET", "/v1/lists", token)).status).toBe(403);
+    expect((await hit("POST", "/v1/auth/impersonation/stop", token)).status).toBe(200);
+
+    nameless.clear();
+    nameless.add("admin-user");
+    expect((await hit("GET", "/v1/lists", token)).status).toBe(200);
+  });
+
+  it("reports revocation (401) before the lock", async () => {
+    nameless.add("user-new");
+    vi.mocked(isSessionRevoked).mockResolvedValueOnce(true);
+    expect((await hit("GET", "/v1/lists", signSession("user-new"))).status).toBe(401);
   });
 });

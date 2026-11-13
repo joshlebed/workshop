@@ -1,7 +1,8 @@
 import type { MiddlewareHandler } from "hono";
+import { displayNameRequired, isAllowedWithoutDisplayName } from "../lib/displayNameLock.js";
 import { err } from "../lib/response.js";
 import { verifySession } from "../lib/session.js";
-import { isSessionRevoked } from "../lib/sessionRevocation.js";
+import { checkSession, isSessionRevoked, type SessionCheck } from "../lib/sessionRevocation.js";
 
 declare module "hono" {
   interface ContextVariableMap {
@@ -12,25 +13,37 @@ declare module "hono" {
   }
 }
 
-function isPayloadRevoked(input: {
+interface PayloadCheckInput {
   ownerUserId: string;
   subjectUserId: string;
   iatSeconds: number;
   sessionId?: string;
   sessionVersion?: number;
-}): Promise<boolean> {
-  if (!input.sessionId) return isSessionRevoked(input.ownerUserId, input.iatSeconds);
-  return isSessionRevoked(input.ownerUserId, input.iatSeconds, {
+}
+
+function checkPayload(input: PayloadCheckInput): Promise<SessionCheck> {
+  if (!input.sessionId) return checkSession(input.ownerUserId, input.iatSeconds);
+  return checkSession(input.ownerUserId, input.iatSeconds, {
     sessionId: input.sessionId,
     subjectUserId: input.subjectUserId,
     ...(input.sessionVersion !== undefined ? { sessionVersion: input.sessionVersion } : {}),
   });
 }
 
+async function isPayloadRevoked(input: PayloadCheckInput): Promise<boolean> {
+  return (await checkPayload(input)).revoked;
+}
+
 /**
  * Reads the bearer token from `Authorization`, verifies the HMAC, checks
  * server-side revocation, and stores the resulting userId on the request
  * context. Returns the v1 error envelope on any failure.
+ *
+ * Also enforces the display-name lock (`lib/displayNameLock.ts`): when the
+ * token's subject — the impersonated account during an impersonation — has no
+ * display name, every route outside the lock's allow-list gets 403
+ * `DISPLAY_NAME_REQUIRED`. The name comes from the same `users` read as the
+ * revocation check, so the lock adds no query.
  */
 export const requireAuth: MiddlewareHandler = async (c, next) => {
   const header = c.req.header("Authorization");
@@ -45,13 +58,16 @@ export const requireAuth: MiddlewareHandler = async (c, next) => {
   if (!payload) {
     return err(c, "UNAUTHORIZED", "invalid or expired session");
   }
+  let displayNameMissing = false;
   if (payload.impersonatorUserId) {
     if (payload.impersonatorUserId === payload.userId) {
       return err(c, "UNAUTHORIZED", "invalid or expired session");
     }
-    if (await isSessionRevoked(payload.userId, payload.iat ?? 0)) {
+    const subject = await checkSession(payload.userId, payload.iat ?? 0);
+    if (subject.revoked) {
       return err(c, "UNAUTHORIZED", "invalid or expired session");
     }
+    displayNameMissing = subject.displayNameMissing;
     if (
       await isPayloadRevoked({
         ownerUserId: payload.impersonatorUserId,
@@ -64,20 +80,25 @@ export const requireAuth: MiddlewareHandler = async (c, next) => {
       return err(c, "UNAUTHORIZED", "invalid or expired session");
     }
     c.set("impersonatorUserId", payload.impersonatorUserId);
-  } else if (
-    await isPayloadRevoked({
+  } else {
+    const own = await checkPayload({
       ownerUserId: payload.userId,
       subjectUserId: payload.userId,
       iatSeconds: payload.iat ?? 0,
       ...(payload.sessionId ? { sessionId: payload.sessionId } : {}),
       ...(payload.sessionVersion ? { sessionVersion: payload.sessionVersion } : {}),
-    })
-  ) {
-    return err(c, "UNAUTHORIZED", "invalid or expired session");
+    });
+    if (own.revoked) {
+      return err(c, "UNAUTHORIZED", "invalid or expired session");
+    }
+    displayNameMissing = own.displayNameMissing;
   }
   if (payload.sessionId) c.set("sessionId", payload.sessionId);
   if (payload.sessionVersion) c.set("sessionVersion", payload.sessionVersion);
   c.set("userId", payload.userId);
+  if (displayNameMissing && !isAllowedWithoutDisplayName(c.req.method, c.req.path)) {
+    return displayNameRequired(c);
+  }
   await next();
 };
 
