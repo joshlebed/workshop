@@ -100,6 +100,28 @@ export async function enablePlayReminder(
   return { ok: true, prefs };
 }
 
+/** Whether this device can now receive (and so, for pokes, send) pushes. */
+export type PushReadiness = "ready" | "denied" | "dismissed" | "unsupported";
+
+/**
+ * Make sure this device is registered for push, asking the OS if it hasn't
+ * been asked yet (call it from a tap). `ready` means the token is posted;
+ * `unsupported` covers web, old binaries and a device that can't mint a token.
+ */
+export async function ensurePushRegistered(
+  authToken: string,
+  userId: string,
+): Promise<PushReadiness> {
+  if (!isPushSupported()) return "unsupported";
+  const { status, token: pushToken } = await requestPermissionAndToken();
+  if (status === "granted" && pushToken) {
+    await postToken(authToken, userId, pushToken);
+    return "ready";
+  }
+  if (status === "denied") return "denied";
+  return status === "undetermined" ? "dismissed" : "unsupported";
+}
+
 /** `13` → `1 PM`. */
 export function formatReminderHour(hour: number): string {
   const h = ((hour % 24) + 24) % 24;

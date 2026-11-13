@@ -170,6 +170,16 @@ publishes to (see root CLAUDE.md → "Runtime-version policy"). Adding a native 
 bump `version`, add it to the list, keep the older entries until a PR actually imports the new
 module, then drop them in that PR. Never remove the current `version` from the list.
 
+**This is the maintenance branch for the pre-1.3.0 runtimes** (1.0.1 / 1.1.0 / 1.2.0, SDK 55):
+`main` is SDK 58 and publishes only to 1.3.0. Client fixes are ported here by hand and shipped
+with `gh workflow run deploy-mobile-highscore.yml --ref joshlebed/hs-1.2-practice-in-safari`;
+never merge this branch and `main` into each other. The backend deploys only from `main`, so
+this branch's backend lags it: to exercise a ported client feature that needs a newer endpoint
+(e.g. pokes, `POST /v1/games/:id/nudges`), run the backend from a `main` worktree
+(`git worktree add ../ws-main origin/main`, `pnpm install --filter "@workshop/backend..."`,
+migrate, serve on :8787) and keep this branch's HighScore web on :8081. Pokes are documented in
+`main`'s root CLAUDE.md ("Nudges"); stub `EXPO_PUSH_URL` before tapping a hand.
+
 ## Preloaded natives (1.2.0 binary)
 
 The 1.2.0 binary ships native modules **no code imports yet**, so the features that need them can
