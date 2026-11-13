@@ -2,8 +2,8 @@
 // vitest's 5s default on a loaded runner.
 const MIGRATION_TEST_TIMEOUT_MS = 60_000;
 
-// Migration 0059 (users_display_name_check) on in-memory PGlite: migrate up to
-// 0058, plant the bad shapes the constraint forbids, then run 0059. A
+// Migration 0060 (users_display_name_check) on in-memory PGlite: migrate up to
+// 0059, plant the bad shapes the constraint forbids, then run 0060. A
 // whitespace-only name is cleared to NULL; an over-long name stops the
 // migration with a clear error instead of being truncated.
 
@@ -15,11 +15,11 @@ import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { afterAll, describe, expect, it } from "vitest";
 
-const MIGRATION = "0059_users_display_name_check";
+const MIGRATION = "0060_users_display_name_check";
 const folders: string[] = [];
 
-/** A copy of ./drizzle with every migration up to (not including) 0059. */
-function folderBefore0059(): string {
+/** A copy of ./drizzle with every migration up to (not including) 0060. */
+function folderBefore0060(): string {
   const folder = mkdtempSync(join(tmpdir(), "display-name-"));
   folders.push(folder);
   cpSync("./drizzle", folder, { recursive: true });
@@ -35,10 +35,10 @@ function folderBefore0059(): string {
   return folder;
 }
 
-async function dbBefore0059() {
+async function dbBefore0060() {
   const client = new PGlite();
   const db = drizzle(client);
-  await migrate(db, { migrationsFolder: folderBefore0059() });
+  await migrate(db, { migrationsFolder: folderBefore0060() });
   return { client, db };
 }
 
@@ -46,11 +46,11 @@ afterAll(() => {
   for (const f of folders) rmSync(f, { recursive: true, force: true });
 });
 
-describe("migration 0059 users_display_name_check", () => {
+describe("migration 0060 users_display_name_check", () => {
   it(
     "clears whitespace-only names, keeps real ones, then enforces the check",
     async () => {
-      const { client, db } = await dbBefore0059();
+      const { client, db } = await dbBefore0060();
       await client.query(
         `INSERT INTO users (email, display_name) VALUES
          ('blank@t', ''), ('spaces@t', '   '), ('tabs@t', E'\\t\\n'),
@@ -81,7 +81,7 @@ describe("migration 0059 users_display_name_check", () => {
   it(
     "refuses to run, and truncates nothing, when a name is over 40 characters",
     async () => {
-      const { client, db } = await dbBefore0059();
+      const { client, db } = await dbBefore0060();
       const long = "b".repeat(41);
       await client.query(`INSERT INTO users (email, display_name) VALUES ('long@t', $1)`, [long]);
 

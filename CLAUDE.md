@@ -214,7 +214,7 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   which folds line breaks to a space, trims, and returns NULL for anything still invalid —
   never truncates, never fails the sign-in. NULL is a real state: the auth response says
   `needsDisplayName: true` and HighScore routes to `/onboarding/display-name`. The CHECK
-  `users_display_name_check` (migration 0059: non-blank, `char_length <= 40`) backstops it.
+  `users_display_name_check` (migration 0060: non-blank, `char_length <= 40`) backstops it.
   **Any new path that writes `display_name` must use one of the two.** **A nameless account
   is locked until it picks a name:** `requireAuth` answers 403 with
   `details.code: "DISPLAY_NAME_REQUIRED"` (`lib/displayNameLock.ts`) to every route outside

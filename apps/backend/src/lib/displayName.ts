@@ -1,7 +1,7 @@
 // The one rule for `users.display_name`. Every stored value is NULL (the user
 // hasn't picked a name yet → `needsDisplayName: true` → HighScore's
 // `/onboarding/display-name`) or a string that passes `displayNameSchema`.
-// The `users_display_name_check` CHECK constraint (migration 0059) is the
+// The `users_display_name_check` CHECK constraint (migration 0060) is the
 // database backstop: non-blank and ≤ 40 characters.
 //
 // Two entry points:
