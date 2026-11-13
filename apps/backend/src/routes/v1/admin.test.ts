@@ -109,6 +109,7 @@ describe("GET /v1/admin/analytics", () => {
       appVersion: v,
     });
     // Player uses HighScore on both iOS and web (two versions); lurker is web-only.
+    await recordUserActivity(playerId, origin("highscore", "ios", "1.3.0"));
     await recordUserActivity(playerId, origin("highscore", "ios", "1.4.0"));
     await recordUserActivity(playerId, origin("highscore", "web", "0.6.0"));
     await recordUserActivity(lurkerId, origin("highscore", "web", "0.6.0"));
@@ -155,12 +156,20 @@ describe("GET /v1/admin/analytics", () => {
       ["web", 1],
       ["other", 1],
     ]);
-    const versions = body.breakdowns.find((b) => b.key === "versions");
-    // Versions in use still come from requests (the only place a version is recorded).
-    expect(versions?.rows).toEqual([
-      { label: "iOS app · 1.4.0", value: 2, platform: "ios" },
-      { label: "Web · 0.6.0", value: 2, platform: "web" },
+    // Version adoption still comes from requests (the only place a version is recorded):
+    // one band per platform + version, a point per day, in stack order. The player was on
+    // 1.3.0 and 1.4.0 today and counts once, on the newer one.
+    expect(body.breakdowns.find((b) => b.key === "versions")).toBeUndefined();
+    const adoption = body.versionAdoption?.segments ?? [];
+    expect(adoption.map((s) => [s.key, s.label, s.platform, s.points.length])).toEqual([
+      ["ios:1.4.0", "iOS app · 1.4.0", "ios", 7],
+      ["web:0.6.0", "Web · 0.6.0", "web", 7],
     ]);
+    expect(adoption.map((s) => s.points.at(-1))).toEqual([
+      { day: today, value: 2 },
+      { day: today, value: 2 },
+    ]);
+    expect(adoption.map((s) => s.points.at(-2)?.value)).toEqual([0, 0]);
     // Admin, player, lurker acted in the last 30 days; browser never did.
     expect(series(body, "mau").points.at(-1)?.value).toBe(3);
     expect(series(body, "scores").points.at(-1)?.value).toBe(2);

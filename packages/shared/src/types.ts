@@ -227,7 +227,23 @@ export interface AdminAnalyticsSeries {
   stackMode?: "sum" | "overlap";
 }
 
-/** A ranked list (versions in use, …) rendered as horizontal bars. */
+/** One band of the version-adoption stacked area chart, aligned 1:1 with the buckets. */
+export interface AdminAnalyticsVersionSegment {
+  /** Stable per (platform, version), e.g. `ios:1.3.0`. */
+  key: string;
+  label: string;
+  platform: AdminAnalyticsPlatform;
+  points: AdminAnalyticsPoint[];
+}
+
+/** Users per platform and app version over time, in stack order (bottom first). */
+export interface AdminAnalyticsVersionAdoption {
+  label: string;
+  description: string;
+  segments: AdminAnalyticsVersionSegment[];
+}
+
+/** A ranked list (top routes, …) rendered as horizontal bars. */
 export interface AdminAnalyticsBreakdownRow {
   label: string;
   value: number;
@@ -289,6 +305,8 @@ export interface AdminAnalyticsResponse {
   stats: AdminAnalyticsStat[];
   series: AdminAnalyticsSeries[];
   breakdowns: AdminAnalyticsBreakdown[];
+  /** Optional: web persists the query cache, so an older cached response lacks it. */
+  versionAdoption?: AdminAnalyticsVersionAdoption;
   /** ISO hour the request rollups are complete through; null = no rollups yet. */
   requestsThrough: string | null;
 }

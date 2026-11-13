@@ -22,6 +22,7 @@ import type {
   AdminAnalyticsSegment,
   AdminAnalyticsSeries,
   AdminAnalyticsStat,
+  AdminAnalyticsVersionSegment,
 } from "@workshop/shared";
 import {
   ADMIN_ANALYTICS_PLATFORMS,
@@ -179,7 +180,7 @@ interface ActionRow {
  * definition of "active" for every active-user number on the dashboard.
  * Merely opening the app (any request, a background refresh, a poll) is not
  * an action; `user_activity_days` records that and is only used for the
- * versions-in-use breakdown.
+ * version-adoption chart.
  *
  * HighScore: posted a score, added a game, reacted to a score, or made a
  * friend. Workshop: added an item, created a list, any activity-feed event
@@ -258,11 +259,108 @@ async function actionRows(db: Db, client: WorkshopClient): Promise<ActionRow[]> 
   return out;
 }
 
+/** Dotted-numeric comparison (`1.10.0` > `1.9.2`); anything non-numeric sorts lowest. */
+function compareVersions(a: string, b: string): number {
+  const parse = (v: string) => (/^\d+(\.\d+)*$/.test(v) ? v.split(".").map(Number) : null);
+  const pa = parse(a);
+  const pb = parse(b);
+  if (!pa || !pb) return pa ? 1 : pb ? -1 : a.localeCompare(b);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const diff = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+/** Bands the adoption chart draws before folding the rest into "Other versions". */
+const MAX_VERSION_SEGMENTS = 7;
+
+/**
+ * One band per (platform, version), aligned with `buckets`, in stack order:
+ * platform (fixed order), then version ascending, so newer versions sit on
+ * top of the ones they replace. The smallest bands past
+ * `MAX_VERSION_SEGMENTS` fold into one "Other versions" band.
+ */
+function versionAdoptionSegments(
+  buckets: Bucket[],
+  rows: ActivityRow[],
+): AdminAnalyticsVersionSegment[] {
+  const bucketOfDay = new Map<string, number>();
+  buckets.forEach((b, i) => {
+    for (const d of b.days) bucketOfDay.set(d, i);
+  });
+  // (bucket, user, platform) -> highest version seen.
+  const latest = new Map<
+    string,
+    { bucket: number; platform: AdminAnalyticsPlatform; version: string }
+  >();
+  for (const row of rows) {
+    const bucket = bucketOfDay.get(row.day);
+    if (bucket === undefined) continue;
+    const platform = platformSegment(row.platform);
+    const key = `${bucket}\u0000${row.userId}\u0000${platform}`;
+    const prev = latest.get(key);
+    if (!prev || compareVersions(row.appVersion, prev.version) > 0) {
+      latest.set(key, { bucket, platform, version: row.appVersion });
+    }
+  }
+  const bands = new Map<
+    string,
+    { platform: AdminAnalyticsPlatform; version: string; counts: number[]; total: number }
+  >();
+  for (const entry of latest.values()) {
+    const key = `${entry.platform}:${entry.version}`;
+    let band = bands.get(key);
+    if (!band) {
+      band = {
+        platform: entry.platform,
+        version: entry.version,
+        counts: buckets.map(() => 0),
+        total: 0,
+      };
+      bands.set(key, band);
+    }
+    band.counts[entry.bucket] = (band.counts[entry.bucket] ?? 0) + 1;
+    band.total += 1;
+  }
+  const ranked = [...bands.entries()].sort(
+    (a, b) => b[1].total - a[1].total || a[0].localeCompare(b[0]),
+  );
+  const kept = ranked.slice(0, MAX_VERSION_SEGMENTS);
+  const folded = ranked.slice(MAX_VERSION_SEGMENTS);
+  const points = (counts: number[]) =>
+    buckets.map((b, i) => ({ day: b.start, value: counts[i] ?? 0 }));
+  const out: AdminAnalyticsVersionSegment[] = kept
+    .sort(
+      (a, b) =>
+        ADMIN_ANALYTICS_PLATFORMS.indexOf(a[1].platform) -
+          ADMIN_ANALYTICS_PLATFORMS.indexOf(b[1].platform) ||
+        compareVersions(a[1].version, b[1].version),
+    )
+    .map(([key, band]) => ({
+      key,
+      label: `${PLATFORM_LABELS[band.platform]} · ${band.version}`,
+      platform: band.platform,
+      points: points(band.counts),
+    }));
+  if (folded.length > 0) {
+    out.push({
+      key: "other-versions",
+      label: "Other versions",
+      platform: "other",
+      points: points(
+        buckets.map((_, i) => folded.reduce((acc, [, b]) => acc + (b.counts[i] ?? 0), 0)),
+      ),
+    });
+  }
+  return out;
+}
+
 /**
  * Active-user series for one client: users who took an action per bucket,
  * rolling-30-day actives (end-of-bucket snapshot), and first-seen (new)
  * users — all from `actionRows`, each user counted once per day no matter
- * how many actions or platforms. The versions-in-use breakdown is the one
+ * how many actions or platforms. The version-adoption chart is the one
  * number still read from `user_activity_days` (it is the only place the app
  * version is recorded).
  */
@@ -296,8 +394,10 @@ async function activeUserSeries(db: Db, client: WorkshopClient, buckets: Bucket[
   const activeWithin = (n: number) =>
     distinctOver(dayRange(addDays(last, -(n - 1)), last), usersByDay);
 
-  // Versions in use over the last 7 days: distinct users per (platform, version).
-  const versionStart = addDays(last, -6);
+  // Version adoption: distinct users per (platform, version) per bucket. A
+  // user is counted once per platform per bucket, on the highest version they
+  // were seen on, so an update moves them between bands instead of counting
+  // them in both.
   const rows: ActivityRow[] = await db
     .select({
       userId: userActivityDays.userId,
@@ -306,29 +406,8 @@ async function activeUserSeries(db: Db, client: WorkshopClient, buckets: Bucket[
       appVersion: userActivityDays.appVersion,
     })
     .from(userActivityDays)
-    .where(and(eq(userActivityDays.client, client), gte(userActivityDays.day, versionStart)));
-  const usersByVersion = new Map<
-    string,
-    { platform: AdminAnalyticsPlatform; users: Set<string> }
-  >();
-  for (const row of rows) {
-    if (row.day > last) continue;
-    const seg = platformSegment(row.platform);
-    const key = `${seg}\u0000${row.appVersion}`;
-    let entry = usersByVersion.get(key);
-    if (!entry) {
-      entry = { platform: seg, users: new Set() };
-      usersByVersion.set(key, entry);
-    }
-    entry.users.add(row.userId);
-  }
-  const versions = [...usersByVersion.entries()]
-    .map(([key, entry]) => ({
-      label: `${PLATFORM_LABELS[entry.platform]} · ${key.split("\u0000")[1] ?? "unknown"}`,
-      value: entry.users.size,
-      platform: entry.platform,
-    }))
-    .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label));
+    .where(and(eq(userActivityDays.client, client), gte(userActivityDays.day, first)));
+  const versions = versionAdoptionSegments(buckets, rows);
 
   return {
     active,
@@ -617,13 +696,6 @@ export async function buildAdminAnalytics(
       description: "Most-requested API routes across both apps.",
       rows: req.routes,
     },
-    {
-      key: "versions",
-      label: "Versions in use, last 7 days",
-      description:
-        "Distinct users per platform and app version seen in the last 7 days. The iOS version is the JS bundle version (follows OTA updates); web is the deployed build.",
-      rows: active.versions,
-    },
   ];
 
   return {
@@ -634,6 +706,11 @@ export async function buildAdminAnalytics(
     stats,
     series,
     breakdowns,
+    versionAdoption: {
+      label: `Versions in use per ${per}`,
+      description: `Distinct users on each platform and app version per ${per}, from any request the app made (not only actions). Someone who updates counts on the newer version; someone on iOS and web counts once in each. The iOS version is the JS bundle version (follows OTA updates); web is the deployed build.`,
+      segments: active.versions,
+    },
     requestsThrough: req.through,
   };
 }

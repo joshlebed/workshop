@@ -293,8 +293,12 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   add a new user action, add its table to `actionRows`.** `user_activity_days` — one row per
   (user, client, platform, app version, UTC day), written by the `requestLog` middleware
   (`lib/userActivity.ts`, memoized per Lambda container, skipped for impersonated and 5xx
-  requests; header-less requests count as `workshop`) — now only feeds the versions-in-use
-  breakdown. Per-app content series
+  requests; header-less requests count as `workshop`) — now only feeds the version-adoption
+  chart: `versionAdoption` on the response (optional on the client), one band per platform +
+  version with a point per bucket, each user counted once per platform per bucket on their
+  highest version, top 7 bands + "Other versions". It renders as `StackedAreaChart` (pure
+  Views cut into 3px columns, no SVG; a Users / Share toggle), which like `BarChart` exists
+  as per-app copies in `@workshop/ui` and `apps/highscore/src/theme`. Per-app content series
   (scores + scorers per day for HighScore, items + lists per day for Workshop) are computed
   from their source tables in `lib/adminAnalytics.ts`; add a series there, not client-side.
   User-written rows (`game_scores`, `items`) are stamped with `client` / `platform` /
@@ -302,7 +306,7 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   new user-write path** so the per-platform stacks stay complete (NULL = pre-stamping or a
   server job, shown as "Other / unknown"). Series carry an optional per-platform `stack`
   (`stackMode: sum` for counts, `overlap` for distinct users) and the response a `breakdowns`
-  list (versions in use, last 7 days). **Request traffic is a separate, backend-wide source:**
+  list (request versions and top routes, last 7 days). **Request traffic is a separate, backend-wide source:**
   `request_rollups` is materialized hourly from the CloudWatch request log by the
   `{ "job": "request-rollups" }` Lambda invocation (`jobs/requestRollups.ts`, EventBridge
   Scheduler in `infra/request_rollups.tf`, Logs Insights `StartQuery` over the last 3 complete

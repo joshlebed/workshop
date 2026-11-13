@@ -89,12 +89,12 @@
     <script>
       var PRACTICE_TEXT = "HighScore share test";
       var note = document.getElementById("note");
-      document.getElementById("share").addEventListener("click", function () {
+      document.getElementById("share").addEventListener("click", () => {
         if (!navigator.share) {
           note.textContent = "Open this page in Safari on your iPhone.";
           return;
         }
-        navigator.share({ text: PRACTICE_TEXT }).catch(function () {});
+        navigator.share({ text: PRACTICE_TEXT }).catch(() => {});
       });
     </script>
   </body>

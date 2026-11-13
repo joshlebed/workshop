@@ -75,6 +75,8 @@ export { SectionHeader } from "./SectionHeader";
 export type { SheetProps } from "./Sheet";
 export { Sheet } from "./Sheet";
 export { Skeleton } from "./Skeleton";
+export type { StackedAreaChartProps, StackedAreaSegment } from "./StackedAreaChart";
+export { StackedAreaChart } from "./StackedAreaChart";
 export type { SwitchProps } from "./Switch";
 export { Switch } from "./Switch";
 export { shareOrCopyLink } from "./share";

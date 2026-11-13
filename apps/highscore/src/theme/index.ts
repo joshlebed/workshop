@@ -15,6 +15,7 @@ export { HomeHeader, homeHeaderIcon, homeLayout, Screen } from "./layout";
 export { PixelIcon, type PixelIconName, type PixelIconProps } from "./PixelIcon";
 export { PullToRefresh, type PullToRefreshProps } from "./PullToRefresh";
 export { Sheet, type SheetProps } from "./Sheet";
+export { StackedAreaChart } from "./StackedAreaChart";
 export { AnimatedText, type HSAnimatedTextProps, type HSTextProps, Text } from "./Text";
 export { ToastProvider, useToast } from "./Toast";
 export {
