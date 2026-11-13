@@ -44,8 +44,8 @@ function buildNudgePushMessages(
   const name = sender.displayName?.trim() || "A friend";
   return tokens.map((to) => ({
     to,
-    title: `${name} poked you`,
-    body: `Scores are in on ${game.title}. See where you stand.`,
+    title: `${name} poked you in ${game.title}`,
+    body: "Tap to see the leaderboard",
     data: {
       kind: "nudge",
       userId: sender.id,

@@ -208,8 +208,8 @@ describe("nudges", () => {
     expect(sendExpoPushMessages.mock.calls[0]?.[0]).toEqual([
       {
         to: `ExponentPushToken[${target.slice(-4)}]`,
-        title: "Mia poked you",
-        body: `Scores are in on ${gameTitle}. See where you stand.`,
+        title: `Mia poked you in ${gameTitle}`,
+        body: "Tap to see the leaderboard",
         data: {
           kind: "nudge",
           userId: me,
