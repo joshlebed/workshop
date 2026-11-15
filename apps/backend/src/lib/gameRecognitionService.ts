@@ -7,20 +7,28 @@
 // its own — DB statements by a server-side `statement_timeout`, Jev by the
 // time left — and a final cap covers whatever those can't (a stalled socket).
 
-import { CATALOG_GAME_DEFINITIONS } from "@workshop/shared/gameRegistry";
+import type { GameRecognizer } from "@workshop/shared/gameRecognition";
+import {
+  CATALOG_GAME_DEFINITIONS,
+  isOfficiallyListed,
+  OFFICIAL_CATALOG_EXTRAS,
+} from "@workshop/shared/gameRegistry";
 import { normalizeGameUrl } from "@workshop/shared/games";
-import { eq, inArray, or, sql } from "drizzle-orm";
+import { eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { getDb } from "../db/client.js";
 import { type DbGame, gameScores, games, userGames } from "../db/schema.js";
 import { getConfig } from "./config.js";
 import {
   catalogGameNamedBy,
+  compileMatcher,
   type ExampleLoader,
   MAX_EXAMPLES_PER_GAME,
   RECOGNITION_SURFACE_THRESHOLD,
   type RecognitionResult,
   type RecognitionTrace,
   recognizeGame,
+  recognizerEvidence,
+  selectExamples,
 } from "./gameRecognition.js";
 import { isGamesBetaUser } from "./gamesBeta.js";
 import { jevRecognitionJudge } from "./jev.js";
@@ -217,6 +225,62 @@ async function boundedDbStep<T>(
     await tx.execute(sql.raw(`set local statement_timeout = ${ms}`));
     return step(tx);
   });
+}
+
+/**
+ * The recognizers a client keeps so it can name a share's game with no
+ * request (`GET /v1/games/recognizers`): the caller's My Games, each with the
+ * fingerprint of its stored scores, plus every officially listed game they
+ * have not added. A listed game outside My Games is recognized the way
+ * `catalogGameNamedBy` allows — by its link, and by name when it is a
+ * registry game — so it carries no fingerprint.
+ *
+ * Unlisted games other people added are left out on purpose: the official
+ * catalog is the content gate for what one player's device learns about
+ * another player's URLs. The client asks the server about anything these
+ * can't place, and the server's own lookup still covers those.
+ */
+export async function loadGameRecognizers(
+  userId: string,
+  db: DbClient = getDb(),
+): Promise<GameRecognizer[]> {
+  const mine = await db
+    .select({ game: games })
+    .from(userGames)
+    .innerJoin(games, eq(games.id, userGames.gameId))
+    .where(eq(userGames.userId, userId));
+  const mineIds = new Set(mine.map((row) => row.game.id));
+
+  const extraUrls = OFFICIAL_CATALOG_EXTRAS.map((entry) => entry.normalizedUrl);
+  const listed = (
+    await db
+      .select()
+      .from(games)
+      .where(
+        or(
+          isNotNull(games.gameKey),
+          extraUrls.length > 0 ? inArray(games.normalizedUrl, extraUrls) : undefined,
+        ),
+      )
+  ).filter((game) => !mineIds.has(game.id) && isOfficiallyListed(game));
+
+  const myGames = mine.map((row) => row.game);
+  const stored = await storedScoreLoader(db)(myGames.map((game) => game.id));
+  // An example that names another of these games was filed under the wrong
+  // one; the matcher drops it, as it does when the server recognizes.
+  const matcher = compileMatcher([...myGames, ...listed]);
+  const shape = (game: DbGame, inMyGames: boolean): GameRecognizer => ({
+    id: game.id,
+    title: game.title,
+    url: game.url,
+    normalizedUrl: game.normalizedUrl,
+    inMyGames,
+    curated: game.gameKey !== null,
+    ...recognizerEvidence(
+      inMyGames ? selectExamples(game, stored.get(game.id) ?? [], matcher) : [],
+    ),
+  });
+  return [...myGames.map((game) => shape(game, true)), ...listed.map((game) => shape(game, false))];
 }
 
 interface UserRecognition {

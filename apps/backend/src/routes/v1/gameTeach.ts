@@ -89,6 +89,7 @@ const previewSchema = z.object({
   scoreRaw: rawSchema,
   periodKey: dayKeySchema.optional(),
   entry: z.enum(["paste", "share", "fix"]).optional(),
+  recognizedBy: z.enum(["url", "label", "fingerprint"]).optional(),
 });
 const sharePreviewSchema = z.object({ scoreRaw: rawSchema, periodKey: dayKeySchema });
 const candidatesSchema = z.object({ scoreRaw: rawSchema });
@@ -297,6 +298,17 @@ export async function handleScorePreviewV2(c: Context, gameId: string): Promise<
     games: [recognitionCandidate(game)],
   });
   if (rejection) return rejectInput(c, context, rejection, scoreRaw);
+  // The share flow recognized this game on the device, with no request to
+  // log one: record it here so recognition stays observable in one place.
+  if (parsed.data.recognizedBy) {
+    logTeachEvent("game_recognition", context, {
+      entry: parsed.data.entry ?? "paste",
+      source: "device",
+      method: parsed.data.recognizedBy,
+      game_chosen: game.id,
+      warning_shown: false,
+    });
+  }
   const response: PreviewGameScoreResponse = {
     preview: await previewScore({
       context,

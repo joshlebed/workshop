@@ -39,8 +39,6 @@
         "expo-linear-gradient",
         "expo-sharing",
         "expo-store-review",
-        "react-native-mmkv",
-        "react-native-nitro-modules",
         "react-native-svg"
       ]
     },
