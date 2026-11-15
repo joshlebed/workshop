@@ -5,8 +5,8 @@ client behavior should be implemented locally so they cannot change Workshop use
 presentation code back into a shared package.
 
 Shared boundaries are contracts and primitives only: `@workshop/api-client`, `@workshop/shared`
-(`games`, `gameRegistry`, `scoreParsing`, `summarySpec`), and `@workshop/ui`. Workshop has had no
-Games UI since 2026-11-06 (it only forwards old `/g/:token` links here).
+(`games`, `gameRegistry`, `gameRecognition`, `scoreParsing`, `summarySpec`), and `@workshop/ui`.
+Workshop has had no Games UI since 2026-11-06 (it only forwards old `/g/:token` links here).
 
 ## Theme (`src/theme/`) — the only source of visual tokens
 
@@ -74,6 +74,24 @@ on `PickGame` instead; the detected-score card with the one-tap **Post** button 
 matters. `PickGame` re-runs `detectSharedScore` over the live paste-box draft rather than the frozen
 route params, so a share the iOS sheet stripped to a bare referral URL (`isResultlessShare`) shows a
 "paste your result" prompt that turns into a Post button as soon as the result is typed in.
+
+**The game is recognized on the device; the score is read by the server.** The server hands
+each account its recognizers (`GET /v1/games/recognizers`: per game its URL, names and the
+fingerprint of its stored scores — no score text, no parser) and `useGameRecognizers` keeps
+them in the device cache (`src/lib/deviceCache`), read synchronously at first render and
+refreshed in the background (30 min stale, and at once when My Games differs from the list
+they were built for). The Games home mounts the hook to keep the cache warm; `PickGame` runs
+`recognizeLocally` (`src/games/lib/localRecognition.ts`, pure + tested — the same steps 1–3
+the server runs, from `@workshop/shared/gameRecognition`) over the live draft, so the
+detected-score card is up with the text even on a share that cold-started the app. A game
+recognized here goes straight to that game's `scores/preview` (the server's reading, plus its
+own wrong-game check); `POST /v1/games/score-preview` is asked only for a text the device
+could not place (no recognizers yet, a share with no name and no fingerprint match, an
+unlisted game not in My Games). Don't run a parser on the device to "pre-read" the score: the
+caption and the stored value are the server's, and showing a local guess first is exactly the
+flicker `useScorePreview` avoids. The cache holds one account's set (`userId` inside the
+entry), is dropped on sign-out, and is ignored once `capabilities.recognition` is known to be
+off.
 
 Share-panel adoption observability: the `_layout.tsx` redirect appends `via=share-extension`, and
 `PickGame` maps that to `entrySource: "share_extension"` on the score upsert (all other paste surfaces
@@ -199,6 +217,10 @@ once a pre-1.3.0 runtime is re-added (it won't be). Rules:
 
 - **Intentionally unused.** Each sits in knip's `ignoreDependencies` (`knip.jsonc`); remove it
   there in the PR that first imports it (the two with config plugins are already "used").
+  `react-native-mmkv` is in use: `src/lib/deviceCache/impl.ts` is the only module that may
+  load it (lazy `require` in a try/catch, so a binary where it fails to open just has no
+  cache; web uses localStorage through `impl.web.ts`). Use `deviceCacheGet/Set/Remove` for
+  anything else worth having at first render and cheap to lose — never credentials.
 - **A feature PR that first imports one of these must drop every older runtime from
   `supported-runtimes.json` in the same PR** — an OTA that imports a native module crashes a
   pre-1.2.0 binary (`Cannot find native module …`). The one alternative is a **runtime gate**
