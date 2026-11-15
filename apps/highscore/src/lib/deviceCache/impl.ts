@@ -1,47 +1,47 @@
-// Native: MMKV, which the 1.2.0+ binaries preload (apps/highscore/CLAUDE.md →
-// "Preloaded natives"). This is the only module that may load
-// `react-native-mmkv`, and it does so lazily and inside a try/catch: a binary
-// without the native module, or one where it fails to open, degrades to "no
-// cache" (every read misses, every write is dropped) instead of crashing the
-// OTA that carries this file.
+// Native: NSUserDefaults through React Native's own `Settings` module — in
+// every binary, synchronous, and fine for a few kilobytes of non-secret text.
+//
+// Not MMKV, although the 1.2.0+ binaries preload `react-native-mmkv`: in the
+// 1.3.0 binary Nitro's JSI bindings never install, so loading it throws — and
+// a `try/catch` around a lazy `require` does not help, because Metro reports a
+// throwing module factory as a fatal error before the catch sees it
+// (apps/highscore/CLAUDE.md → "Preloaded natives"). `deviceCache.test.ts`
+// keeps the package out of every source file.
 
-import type { MMKV } from "react-native-mmkv";
+import { Platform, Settings } from "react-native";
 
-type MmkvModule = typeof import("react-native-mmkv");
+const PREFIX = "highscore.device-cache.";
+// NSUserDefaults is loaded whole at launch; keep entries small.
+const MAX_VALUE_CHARS = 256_000;
 
-let store: MMKV | null | undefined;
-
-function open(): MMKV | null {
-  if (store !== undefined) return store;
-  try {
-    const { createMMKV } = require("react-native-mmkv") as MmkvModule;
-    store = createMMKV({ id: "highscore.device-cache" });
-  } catch {
-    store = null;
-  }
-  return store;
-}
+// `Settings` is iOS-only (it warns and stores nothing elsewhere).
+const available = Platform.OS === "ios";
 
 export function deviceCacheGet(key: string): string | null {
+  if (!available) return null;
   try {
-    return open()?.getString(key) ?? null;
+    const value = Settings.get(PREFIX + key);
+    return typeof value === "string" ? value : null;
   } catch {
     return null;
   }
 }
 
 export function deviceCacheSet(key: string, value: string): void {
+  if (!available || value.length > MAX_VALUE_CHARS) return;
   try {
-    open()?.set(key, value);
+    Settings.set({ [PREFIX + key]: value });
   } catch {
-    // A full disk or a closed store: the cache is an optimisation.
+    // The cache is an optimisation: go without.
   }
 }
 
 export function deviceCacheRemove(key: string): void {
+  if (!available) return;
   try {
-    open()?.remove(key);
+    // A null value removes the key (RCTSettingsManager).
+    Settings.set({ [PREFIX + key]: null });
   } catch {
-    // Nothing to remove from a store that never opened.
+    // Nothing to remove.
   }
 }
