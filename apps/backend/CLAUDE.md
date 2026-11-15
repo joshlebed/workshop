@@ -661,6 +661,25 @@ the example loader are injected — so the eval harness, the endpoint and the sh
 code; `lib/gameRecognitionService.ts` adds the DB side (candidates = My Games + catalog games the
 text names; examples = the 20 most recent distinct usable scores, any player's).
 
+- **Steps 1–3 live in `@workshop/shared/gameRecognition` and the HighScore client runs them
+  too.** `lib/gameRecognition.ts` re-exports that module and adds what only the server has
+  (stored examples, `selectExamples`, the Jev step). `GET /v1/games/recognizers`
+  (`loadGameRecognizers`; 404 unless recognition is on for the caller) hands a client one
+  `GameRecognizer` per My Games game and per officially listed game: id, title, URL, and for
+  My Games the fingerprint (token → support) and linked hosts derived from stored scores. The
+  client caches them on the device and names a share's game with `recognizeWithRecognizers`
+  before any request returns (`apps/highscore/CLAUDE.md` → "Share flow"). **Recognition only:
+  the score is read here, by the preview and the post — never ship `parse_code` to a client**
+  (it is untrusted LLM-written JS and Hermes has no sandbox; as recognizers the parsers are
+  also poor: on prod text 79% of shares were read by more than one game's parser). Three rules
+  for that payload: it carries **no score text** (a fingerprint needs ≥3 examples and a host
+  ≥2, so nothing in it is one player's wording); it lists **no unlisted game the caller has
+  not added** (the official catalog is the content gate — the server's own lookup still finds
+  those by link); and a change to steps 1–3 or to `GameRecognizer` reaches old clients'
+  caches, so bump `CACHE_VERSION` in the client's `localRecognition.ts` when the shape
+  changes. A preview for a game the device recognized carries `recognizedBy`, logged as
+  `game_recognition` with `source: "device"`. Measure the device-only path with the eval's
+  `--no-jev` (99% recall on real shares, 2026-11-15).
 - **Its queries must stay index-bounded — it runs on every score post in shadow mode.**
   Candidates are two probes: `user_games` by user, and `games` by exact `normalized_url` for the
   URLs the text links (`gameUrlKeysIn`) plus the registry games it names. Examples are one
