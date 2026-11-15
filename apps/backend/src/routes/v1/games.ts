@@ -11,6 +11,7 @@ import type {
   GameDiscoveryResponse,
   GameLeaderboardResponse,
   GameNudgeRefusal,
+  GameRecognizersResponse,
   GameScore,
   GameStandings,
   GamesResponse,
@@ -64,6 +65,7 @@ import {
 import { moveUserGamePosition } from "../../lib/gamePositions.js";
 import { RECOGNITION_SURFACE_THRESHOLD } from "../../lib/gameRecognition.js";
 import {
+  loadGameRecognizers,
   recognitionModeFor,
   recognizeGameForUser,
   shadowRecognizePostedScore,
@@ -522,6 +524,35 @@ gameRoutes.post(
               method: result.method,
             }
           : null,
+    };
+    return ok(c, response);
+  },
+);
+
+/**
+ * GET /v1/games/recognizers — the recognition evidence for the caller's games
+ * and the listed catalog, for the client to keep on the device and run
+ * itself (`recognizeWithRecognizers` in `@workshop/shared/gameRecognition`),
+ * so the share flow names the game before any request returns. It carries no
+ * score text and no parser: the score is still read here, by the preview and
+ * the post. Same gate as `/recognize` — 404 unless recognition is on for the
+ * caller. Registered before the `/:id` routes so the literal path isn't
+ * shadowed.
+ */
+gameRoutes.get(
+  "/recognizers",
+  rateLimit({
+    family: "v1.games.recognizers",
+    limit: 30,
+    windowSec: 60,
+    key: (c) => c.get("userId") ?? null,
+  }),
+  async (c) => {
+    const userId = c.get("userId");
+    if (recognitionModeFor(userId) !== "on") return err(c, "NOT_FOUND", "not found");
+    const response: GameRecognizersResponse = {
+      recognizers: await loadGameRecognizers(userId),
+      generatedAt: new Date().toISOString(),
     };
     return ok(c, response);
   },
