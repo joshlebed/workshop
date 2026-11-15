@@ -2,31 +2,24 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 
-// `react-native-mmkv` is a native module: loaded at module scope, a binary
-// where it cannot open would crash on launch instead of going without a cache.
+// `react-native-mmkv` is in the binary but cannot be loaded: Nitro fails to
+// install in 1.3.0, and Metro turns a throwing `require` — lazy or not, inside
+// a try/catch or not — into a fatal error, so one import crashes every user on
+// launch. Until a binary ships a working build of it, no source file may
+// load it.
 describe("source guard", () => {
   const appRoot = join(__dirname, "..", "..", "..");
-  const self = join(__dirname, "impl.ts");
 
-  it("loads react-native-mmkv only through one lazy require inside a try", () => {
-    const src = readFileSync(self, "utf8");
-    expect(src).not.toMatch(/^import(?!\s+type)[^;]*from\s+"react-native-mmkv"/m);
-    expect(src).not.toMatch(/(?<!typeof )import\("react-native-mmkv"\)/);
-    expect(src.match(/require\("react-native-mmkv"\)/g) ?? []).toHaveLength(1);
-    expect(src).toMatch(/try\s*\{\s*const \{ createMMKV \} = require\("react-native-mmkv"\)/);
-  });
-
-  it("no other HighScore module references react-native-mmkv", () => {
+  it("no HighScore module imports or requires react-native-mmkv", () => {
     const offenders: string[] = [];
+    const loads = /(?:from\s+|require\(|import\()\s*["']react-native-(?:mmkv|nitro-modules)["']/;
     const walk = (dir: string) => {
       for (const name of readdirSync(dir)) {
         if (name === "node_modules" || name.startsWith(".")) continue;
         const p = join(dir, name);
         if (statSync(p).isDirectory()) walk(p);
-        else if (/\.(ts|tsx)$/.test(name) && !name.endsWith(".test.ts") && p !== self) {
-          if (readFileSync(p, "utf8").includes("react-native-mmkv")) {
-            offenders.push(relative(appRoot, p));
-          }
+        else if (/\.(ts|tsx)$/.test(name) && loads.test(readFileSync(p, "utf8"))) {
+          offenders.push(relative(appRoot, p));
         }
       }
     };

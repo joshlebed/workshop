@@ -217,15 +217,26 @@ once a pre-1.3.0 runtime is re-added (it won't be). Rules:
 
 - **Intentionally unused.** Each sits in knip's `ignoreDependencies` (`knip.jsonc`); remove it
   there in the PR that first imports it (the two with config plugins are already "used").
-  `react-native-mmkv` is in use: `src/lib/deviceCache/impl.ts` is the only module that may
-  load it (lazy `require` in a try/catch, so a binary where it fails to open just has no
-  cache; web uses localStorage through `impl.web.ts`). Use `deviceCacheGet/Set/Remove` for
-  anything else worth having at first render and cheap to lose — never credentials.
+- **`react-native-mmkv` cannot be loaded in the 1.3.0 binary — don't import it.** Nitro's JSI
+  bindings never install there (the error starts `Failed to install Nitro`), so evaluating
+  the package throws on launch (found 2026-11-15 on a Release
+  simulator build; fixing it needs a new binary). `src/lib/deviceCache/deviceCache.test.ts`
+  fails if any source file loads it or `react-native-nitro-modules`. The small persistent
+  cache that wanted it is `src/lib/deviceCache` instead: NSUserDefaults through React Native's
+  core `Settings` on iOS, localStorage on web, synchronous, for data worth having at first
+  render and cheap to lose (never credentials).
+- **A `try/catch` around a lazy `require` does not make a native module optional.** Metro's
+  `guardedLoadModule` catches a throwing module factory itself and calls
+  `ErrorUtils.reportFatalError`, which kills a Release build before your `catch` runs (that is
+  how the MMKV attempt crashed on launch). Only a check made _before_ the `require` — the
+  binary-version gate in `pushNotifications.ts` — keeps a missing or broken native module from
+  loading. Prove a first use on a simulator build (`ns mobile build highscore`), not on web.
 - **A feature PR that first imports one of these must drop every older runtime from
   `supported-runtimes.json` in the same PR** — an OTA that imports a native module crashes a
   pre-1.2.0 binary (`Cannot find native module …`). The one alternative is a **runtime gate**
-  like `src/lib/pushNotifications.ts` (below): compare the binary version first, `require` lazily
-  inside a function, catch a throw. Then the older runtimes stay.
+  like `src/lib/pushNotifications.ts` (below): compare the binary version first, and only then
+  `require` lazily inside a function (the version check is the protection; see the `try/catch`
+  rule above). Then the older runtimes stay.
 - **Any further native dep, config-plugin option, entitlement, or Info.plist key is another
   `version` bump + TestFlight build + App Review.** Silent/background push
   (`enableBackgroundRemoteNotifications` → `remote-notification` mode), notification sounds, and
