@@ -87,9 +87,11 @@ detected-score card is up with the text even on a share that cold-started the ap
 recognized here goes straight to that game's `scores/preview` (the server's reading, plus its
 own wrong-game check); `POST /v1/games/score-preview` is asked only for a text the device
 could not place (no recognizers yet, a share with no name and no fingerprint match, an
-unlisted game not in My Games). Don't run a parser on the device to "pre-read" the score: the
-caption and the stored value are the server's, and showing a local guess first is exactly the
-flicker `useScorePreview` avoids. The cache holds one account's set (`userId` inside the
+unlisted game not in My Games). No parser runs on the device today: the caption and the stored value are the
+server's. Running the stored parse code here is possible (QuickJS's plain-JS build works under
+Hermes; numbers and the open risk are in `apps/backend/CLAUDE.md` → "Game-score recognition"),
+but it has to be the same engine and code version as the server, not a second implementation —
+a local guess that differs is exactly the flicker `useScorePreview` avoids. The cache holds one account's set (`userId` inside the
 entry), is dropped on sign-out, and is ignored once `capabilities.recognition` is known to be
 off.
 
