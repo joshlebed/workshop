@@ -2,18 +2,17 @@ import type { HeadToHeadDay, HeadToHeadGame, HeadToHeadOutcome } from "@workshop
 import { describe, expect, it } from "vitest";
 import {
   currentStreak,
-  emptyLine,
+  emptyHeading,
   friendsSinceLabel,
-  gamesLine,
+  leadLabel,
   leadSeries,
   mutualFriendsLabel,
   recentForm,
-  sharedDaysLine,
   shortDate,
+  shortName,
   streakLabel,
   totals,
   winPercent,
-  winRateLine,
 } from "./headToHead";
 
 function day(periodKey: string, outcome: HeadToHeadOutcome): HeadToHeadDay {
@@ -45,17 +44,14 @@ function game(id: string, days: HeadToHeadDay[], plays = days.length): HeadToHea
 }
 
 describe("totals", () => {
-  it("sums records and counts games led, trailed and level", () => {
+  it("sums the records across games", () => {
     const t = totals([
       game("a", [day("2026-06-01", "win"), day("2026-06-02", "win"), day("2026-06-03", "loss")]),
       game("b", [day("2026-06-01", "loss")]),
       game("c", [day("2026-06-01", "tie")]),
       game("d", [day("2026-06-01", "none")]),
     ]);
-    expect(t).toMatchObject({ wins: 2, losses: 2, ties: 1, sharedDays: 6 });
-    expect(t).toMatchObject({ gamesLed: 1, gamesTrailed: 1, gamesLevel: 1 });
-    expect(t.viewerPlays).toBe(6);
-    expect(t.friendPlays).toBe(10);
+    expect(t).toEqual({ wins: 2, losses: 2, ties: 1, sharedDays: 6 });
   });
 });
 
@@ -63,36 +59,24 @@ describe("copy", () => {
   it("is a percent of decided days", () => {
     expect(winPercent({ wins: 2, losses: 1, ties: 1 })).toBe(50);
     expect(winPercent({ wins: 0, losses: 0, ties: 0 })).toBeNull();
-    expect(winRateLine({ wins: 2, losses: 1, ties: 1 })).toBe("You win 50% of the time");
-    expect(winRateLine({ wins: 0, losses: 0, ties: 0 })).toBeNull();
   });
 
-  it("says what the score is a score of, with ties only when there are any", () => {
-    expect(sharedDaysLine(33, 6)).toBe("33 days you both played · 6 ties");
-    expect(sharedDaysLine(1, 1)).toBe("1 day you both played · 1 tie");
-    expect(sharedDaysLine(4, 0)).toBe("4 days you both played");
+  it("labels the lead like a scoreboard", () => {
+    expect(leadLabel(3, "Alex")).toBe("You by 3");
+    expect(leadLabel(-2, "Alex")).toBe("Alex by 2");
+    expect(leadLabel(0, "Alex")).toBe("Level");
   });
 
-  it("says who is ahead in how many games", () => {
-    const t = (gamesLed: number, gamesTrailed: number, gamesLevel: number) => ({
-      ...totals([]),
-      gamesLed,
-      gamesTrailed,
-      gamesLevel,
-    });
-    expect(gamesLine(t(4, 1, 0), "Alex")).toBe("You're ahead in 4 games, Alex in 1.");
-    expect(gamesLine(t(1, 2, 2), "Alex")).toBe("You're ahead in 1 game, Alex in 2. 2 are even.");
-    expect(gamesLine(t(5, 0, 0), "Alex")).toBe("You're ahead in all 5 games.");
-    expect(gamesLine(t(2, 0, 1), "Alex")).toBe("You're ahead in 2 games. 1 is even.");
-    expect(gamesLine(t(0, 3, 0), "Alex")).toBe("Alex is ahead in all 3 games.");
-    expect(gamesLine(t(0, 0, 2), "Alex")).toBe("Dead even in every game.");
-    expect(gamesLine(t(1, 0, 0), "Alex")).toBeNull();
+  it("uses a first name in labels", () => {
+    expect(shortName("Francisco Silveira Azar")).toBe("Francisco");
+    expect(shortName("  Alex ")).toBe("Alex");
+    expect(shortName(null)).toBe("Them");
   });
 
   it("words the empty state for the range", () => {
-    expect(emptyLine("7", "Alex")).toBe("You and Alex haven't played the same game this week.");
-    expect(emptyLine("30", "Alex")).toBe("You and Alex haven't played the same game this month.");
-    expect(emptyLine("all", "Alex")).toBe("You and Alex haven't played any of the same games yet.");
+    expect(emptyHeading("7")).toBe("No games in common in the last 7 days");
+    expect(emptyHeading("30")).toBe("No games in common in the last 30 days");
+    expect(emptyHeading("all")).toBe("No games in common yet");
   });
 
   it("dates a friendship and names a few mutual friends", () => {

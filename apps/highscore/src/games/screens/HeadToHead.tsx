@@ -22,17 +22,17 @@ import {
 } from "../../theme";
 import { RECORD_COLOR, RecordBar } from "../components/RecordBar";
 import {
-  emptyLine,
-  gamesLine,
+  emptyHeading,
   type LeadPoint,
+  leadLabel,
   leadSeries,
   RANGE_OPTIONS,
   recentForm,
-  sharedDaysLine,
   shortDate,
+  shortName,
   streakLabel,
   totals,
-  winRateLine,
+  winPercent,
 } from "../lib/headToHead";
 import { goBack } from "../lib/navigation";
 import { useGamesRuntime } from "../runtime";
@@ -74,9 +74,7 @@ function LeadChart({ points, friendName }: { points: LeadPoint[]; friendName: st
       )}. Your biggest lead ${peak}, ${friendName}'s biggest lead ${-trough}, now ${last.lead}.`}
       testID="h2h-lead-chart"
     >
-      <Text variant="caption" tone="muted">
-        You're ahead
-      </Text>
+      <Text style={styles.label}>You</Text>
       <View style={styles.leadPlot}>
         <View style={styles.leadColumns}>
           {points.map((p) => {
@@ -99,9 +97,7 @@ function LeadChart({ points, friendName }: { points: LeadPoint[]; friendName: st
         </View>
         <View style={styles.leadAxis} />
       </View>
-      <Text variant="caption" tone="muted">
-        {friendName} is ahead
-      </Text>
+      <Text style={styles.label}>{friendName}</Text>
       <View style={styles.leadDates}>
         <Text variant="caption" tone="muted">
           {shortDate(first.periodKey)}
@@ -150,7 +146,7 @@ function Stat({ value, label }: { value: string; label: string }) {
 }
 
 function GameCard({ row, friendName }: { row: HeadToHeadGame; friendName: string }) {
-  const rate = winRateLine(row);
+  const pct = winPercent(row);
   const streak = streakLabel(row.days, friendName);
   const form = recentForm(row.days, FORM_DAYS);
   const unit = row.game.scoreUnit;
@@ -175,9 +171,9 @@ function GameCard({ row, friendName }: { row: HeadToHeadGame; friendName: string
           <Text variant="game" numberOfLines={1}>
             {row.game.title}
           </Text>
-          {rate ? (
+          {streak ? (
             <Text variant="caption" tone="muted" numberOfLines={1}>
-              {rate}
+              {streak}
             </Text>
           ) : null}
         </View>
@@ -201,30 +197,23 @@ function GameCard({ row, friendName }: { row: HeadToHeadGame; friendName: string
       <View style={styles.stats}>
         <Stat value={String(row.viewer.plays)} label="You played" />
         <Stat value={String(row.friend.plays)} label={`${friendName} played`} />
-        <Stat value={String(row.sharedDays)} label="Both played" />
+        <Stat value={String(row.sharedDays)} label="Same day" />
+        <Stat value={pct === null ? "–" : `${pct}%`} label="You won" />
       </View>
 
       {form.length > 0 ? (
         <View style={styles.formBlock}>
-          <View style={styles.formHead}>
-            <Text style={styles.formLabel}>
-              {form.length < row.days.length ? `Last ${form.length} days` : "Day by day"}
-            </Text>
-            {streak ? (
-              <Text variant="caption" tone="secondary" numberOfLines={1}>
-                {streak}
-              </Text>
-            ) : null}
-          </View>
+          <Text style={styles.label}>
+            {form.length < row.days.length ? `Last ${form.length} same days` : "Same days"}
+          </Text>
           <FormStrip days={form} />
         </View>
       ) : null}
 
       {hasAverages ? (
         <Text variant="caption" tone="muted">
-          Average score: you {avg(row.viewer.averageScore)}, {friendName}{" "}
-          {avg(row.friend.averageScore)}.
-          {row.game.scoreDirection === "asc" ? " Lower is better." : ""}
+          Average · You {avg(row.viewer.averageScore)} · {friendName} {avg(row.friend.averageScore)}
+          {row.game.scoreDirection === "asc" ? " · Lower is better" : ""}
         </Text>
       ) : null}
     </View>
@@ -248,10 +237,10 @@ export default function HeadToHeadScreen() {
   const data = query.data;
   const back = () => goBack(routes.friendProfile(userId));
 
-  const friendName = data?.friend.displayName?.trim() || "Them";
+  const friendName = shortName(data?.friend.displayName);
   const games = data?.games ?? [];
   const all = totals(games);
-  const byGame = gamesLine(all, friendName);
+  const overallPct = winPercent(all);
   const lead = leadSeries(games, LEAD_POINTS);
 
   return (
@@ -336,14 +325,11 @@ export default function HeadToHeadScreen() {
               {games.length === 0 ? (
                 <>
                   <Text variant="heading" style={styles.centered} testID="h2h-empty">
-                    No games in common
-                  </Text>
-                  <Text tone="secondary" style={styles.centered}>
-                    {emptyLine(range, friendName)}
+                    {emptyHeading(range)}
                   </Text>
                   {range !== "all" ? (
                     <Button
-                      label="Show all time"
+                      label="All time"
                       variant="secondary"
                       onPress={() => setRange("all")}
                       testID="h2h-all-time"
@@ -351,25 +337,22 @@ export default function HeadToHeadScreen() {
                   ) : null}
                 </>
               ) : (
-                <>
-                  <Text tone="secondary" style={styles.centered} testID="h2h-shared-days">
-                    {sharedDaysLine(all.sharedDays, all.ties)}
-                  </Text>
-                  {byGame ? (
-                    <Text variant="caption" tone="muted" style={styles.centered}>
-                      {byGame}
-                    </Text>
-                  ) : null}
-                </>
+                <View style={styles.stats}>
+                  <Stat value={String(all.sharedDays)} label="Same day" />
+                  <Stat value={String(all.ties)} label={all.ties === 1 ? "Tie" : "Ties"} />
+                  <Stat value={overallPct === null ? "–" : `${overallPct}%`} label="You won" />
+                </View>
               )}
             </View>
 
             {lead.length > 1 ? (
               <View style={styles.card}>
-                <Text variant="heading">Who's been ahead</Text>
-                <Text variant="caption" tone="muted">
-                  Your wins minus {friendName}'s, added up day by day.
-                </Text>
+                <View style={styles.leadHead}>
+                  <Text variant="heading">Who's been ahead</Text>
+                  <Text style={styles.label} testID="h2h-lead-now">
+                    {leadLabel(lead[lead.length - 1]?.lead ?? 0, friendName)}
+                  </Text>
+                </View>
                 <LeadChart points={lead} friendName={friendName} />
               </View>
             ) : null}
@@ -379,7 +362,7 @@ export default function HeadToHeadScreen() {
                 <View style={styles.legendItem}>
                   <View style={[styles.legendSwatch, { backgroundColor: WIN }]} />
                   <Text variant="caption" tone="secondary">
-                    You won
+                    You
                   </Text>
                 </View>
                 <View style={styles.legendItem}>
@@ -391,7 +374,7 @@ export default function HeadToHeadScreen() {
                 <View style={styles.legendItem}>
                   <View style={[styles.legendSwatch, { backgroundColor: LOSS }]} />
                   <Text variant="caption" tone="secondary">
-                    {friendName} won
+                    {friendName}
                   </Text>
                 </View>
               </View>
@@ -502,14 +485,14 @@ const styles = StyleSheet.create({
   gameRecord: { alignItems: "flex-end", gap: 2 },
   gameRecordValue: { ...scoreType(14), color: tokens.text.primary },
 
-  formLabel: { ...sectionLabelType(), color: tokens.text.secondary },
-  formBlock: { gap: tokens.space.xs },
-  formHead: {
+  label: { ...sectionLabelType(), color: tokens.text.secondary },
+  leadHead: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: tokens.space.sm,
   },
+  formBlock: { gap: tokens.space.xs },
   form: { flexDirection: "row", gap: 3 },
   formCell: { flex: 1, maxWidth: 16, height: 12, borderRadius: 2 },
   formCellNone: { borderWidth: 1, borderColor: NONE },

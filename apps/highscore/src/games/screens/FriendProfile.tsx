@@ -358,7 +358,7 @@ export default function FriendProfileScreen() {
                 </View>
                 {versus && versus.sharedDays === 0 ? (
                   <Text tone="secondary" testID="friend-profile-versus-empty">
-                    No games in common this month.
+                    No games in common
                   </Text>
                 ) : (
                   <>

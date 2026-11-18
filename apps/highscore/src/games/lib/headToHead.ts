@@ -24,37 +24,15 @@ export interface WinRecord {
 
 export interface Totals extends WinRecord {
   sharedDays: number;
-  viewerPlays: number;
-  friendPlays: number;
-  /** Games the viewer is ahead in / behind in / level in (with ≥1 decided day). */
-  gamesLed: number;
-  gamesTrailed: number;
-  gamesLevel: number;
 }
 
 export function totals(games: readonly HeadToHeadGame[]): Totals {
-  const t: Totals = {
-    wins: 0,
-    losses: 0,
-    ties: 0,
-    sharedDays: 0,
-    viewerPlays: 0,
-    friendPlays: 0,
-    gamesLed: 0,
-    gamesTrailed: 0,
-    gamesLevel: 0,
-  };
+  const t: Totals = { wins: 0, losses: 0, ties: 0, sharedDays: 0 };
   for (const g of games) {
     t.wins += g.wins;
     t.losses += g.losses;
     t.ties += g.ties;
     t.sharedDays += g.sharedDays;
-    t.viewerPlays += g.viewer.plays;
-    t.friendPlays += g.friend.plays;
-    if (g.wins + g.losses + g.ties === 0) continue;
-    if (g.wins > g.losses) t.gamesLed += 1;
-    else if (g.wins < g.losses) t.gamesTrailed += 1;
-    else t.gamesLevel += 1;
   }
   return t;
 }
@@ -65,49 +43,24 @@ export function winPercent(r: WinRecord): number | null {
   return decided === 0 ? null : Math.round((r.wins / decided) * 100);
 }
 
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
-
-/** Under the big score: what it is a score of. `33 days you both played · 6 ties`. */
-export function sharedDaysLine(sharedDays: number, ties: number): string {
-  const days = `${plural(sharedDays, "day")} you both played`;
-  return ties > 0 ? `${days} · ${plural(ties, "tie")}` : days;
-}
-
-/** Under a game's name: `You win 38% of the time`. Null with no record. */
-export function winRateLine(r: WinRecord): string | null {
-  const pct = winPercent(r);
-  return pct === null ? null : `You win ${pct}% of the time`;
-}
-
 /**
- * Who is ahead in how many games, as a sentence. Null when there is one game
- * or fewer with a record: its own card already says it.
+ * The name to use in a label: the first word of the display name, so a tile
+ * reads "Francisco played", not a truncated full name.
  */
-export function gamesLine(t: Totals, friendName: string): string | null {
-  const { gamesLed: led, gamesTrailed: trailed, gamesLevel: level } = t;
-  if (led + trailed + level < 2) return null;
-  const even = level === 0 ? "" : level === 1 ? " 1 is even." : ` ${level} are even.`;
-  if (led > 0 && trailed > 0) {
-    return `You're ahead in ${plural(led, "game")}, ${friendName} in ${trailed}.${even}`;
-  }
-  if (led > 0) {
-    return level === 0
-      ? `You're ahead in all ${led} games.`
-      : `You're ahead in ${plural(led, "game")}.${even}`;
-  }
-  if (trailed > 0) {
-    return level === 0
-      ? `${friendName} is ahead in all ${trailed} games.`
-      : `${friendName} is ahead in ${plural(trailed, "game")}.${even}`;
-  }
-  return "Dead even in every game.";
+export function shortName(displayName: string | null | undefined): string {
+  return displayName?.trim().split(/\s+/)[0] || "Them";
 }
 
-/** The empty state under the range chips. */
-export function emptyLine(range: HeadToHeadRange, friendName: string): string {
-  if (range === "all") return `You and ${friendName} haven't played any of the same games yet.`;
-  const span = range === "7" ? "week" : "month";
-  return `You and ${friendName} haven't played the same game this ${span}.`;
+/** The current lead, scoreboard style: `You by 3`, `Alex by 2`, `Level`. */
+export function leadLabel(lead: number, friendName: string): string {
+  if (lead === 0) return "Level";
+  return lead > 0 ? `You by ${lead}` : `${friendName} by ${-lead}`;
+}
+
+/** The whole empty state, one line. */
+export function emptyHeading(range: HeadToHeadRange): string {
+  if (range === "all") return "No games in common yet";
+  return `No games in common in the last ${range} days`;
 }
 
 /**
