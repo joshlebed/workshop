@@ -48,7 +48,6 @@ import { useToday } from "../state/viewDay";
 
 const WIN = RECORD_COLOR.win;
 const LOSS = RECORD_COLOR.loss;
-const TIE = RECORD_COLOR.tie;
 const NONE = RECORD_COLOR.none;
 
 const OUTCOME_WORD = { win: "won", loss: "lost", tie: "tied", none: "no result" } as const;
@@ -447,29 +446,6 @@ export default function HeadToHeadScreen() {
               </View>
             ) : null}
 
-            {games.length > 0 ? (
-              <View style={styles.legend}>
-                <View style={styles.legendItem}>
-                  <View style={[styles.legendSwatch, { backgroundColor: WIN }]} />
-                  <Text variant="caption" tone="secondary">
-                    You
-                  </Text>
-                </View>
-                <View style={styles.legendItem}>
-                  <View style={[styles.legendSwatch, { backgroundColor: TIE }]} />
-                  <Text variant="caption" tone="secondary">
-                    Tie
-                  </Text>
-                </View>
-                <View style={styles.legendItem}>
-                  <View style={[styles.legendSwatch, { backgroundColor: LOSS }]} />
-                  <Text variant="caption" tone="secondary">
-                    {friendName}
-                  </Text>
-                </View>
-              </View>
-            ) : null}
-
             {games.map((row) => (
               <GameCard key={row.game.id} row={row} friendName={friendName} />
             ))}
@@ -563,10 +539,6 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginRight: WINS_ENDS,
   },
-
-  legend: { flexDirection: "row", justifyContent: "center", gap: tokens.space.lg },
-  legendItem: { flexDirection: "row", alignItems: "center", gap: 6 },
-  legendSwatch: { width: 10, height: 10, borderRadius: 2 },
 
   gameHead: { flexDirection: "row", alignItems: "center", gap: tokens.space.md },
   gameCover: {
