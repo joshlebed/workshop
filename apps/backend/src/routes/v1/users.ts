@@ -1,12 +1,20 @@
 import { and, eq, isNotNull, ne, sql } from "drizzle-orm";
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { getDb } from "../../db/client.js";
-import { type DbUser, letterboxdWatchlistFilms, userFlags, users } from "../../db/schema.js";
+import { type DbUser, letterboxdWatchlistFilms, lists, userFlags, users } from "../../db/schema.js";
 import { deleteUserAccount } from "../../lib/accountDeletion.js";
 import { isAdminUser, userLabel } from "../../lib/admin.js";
 import { notifyDiscord } from "../../lib/discord.js";
 import { displayNameSchema } from "../../lib/displayName.js";
+import {
+  avatarVersionSql,
+  decodeImageDataUrl,
+  discardImage,
+  imageUrlForClient,
+  readImage,
+  resolveImageWrite,
+} from "../../lib/images.js";
 import { logger } from "../../lib/logger.js";
 import { notifyLetterboxdConnected, notifySessionsRevoked } from "../../lib/opsNotifications.js";
 import {
@@ -32,9 +40,9 @@ export const userRoutes = new Hono();
 export const publicUserRoutes = new Hono();
 userRoutes.use("*", requireAuth);
 
-// Profile pictures are stored inline as base64 `data:` URLs (same approach as
-// list cover photos — there's no object store yet). The picker crops to a
-// square and downscales, so the payload stays well under this cap in practice.
+// Clients upload a profile picture as a base64 `data:` URL; where it is kept
+// is `lib/avatars.ts`. The picker crops to a square and downscales, so the
+// payload stays well under this cap in practice.
 const AVATAR_MAX_CHARS = 1_500_000;
 export const avatarUrlSchema = z
   .string()
@@ -43,13 +51,11 @@ export const avatarUrlSchema = z
     (s) => /^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(s),
     "profile picture must be a base64 data URL",
   );
+// The stored value may also come back unchanged: the image URL this API handed
+// out. `resolveImageWrite` decides; anything else is rejected there.
+const avatarWriteSchema = z.union([avatarUrlSchema, z.string().url().max(2048)]);
 
-const avatarDataUrlRe = /^data:image\/(png|jpe?g|webp|gif);base64,([A-Za-z0-9+/=]+)$/;
 const uuidSchema = z.string().uuid();
-
-function avatarContentType(kind: string): string {
-  return kind === "jpg" ? "image/jpeg" : `image/${kind}`;
-}
 
 // Both fields are optional; the client sends only what changed. `avatarUrl: null`
 // clears the picture. `.refine` rejects an empty body so a no-op PATCH can't
@@ -57,7 +63,7 @@ function avatarContentType(kind: string): string {
 const patchMeSchema = z
   .object({
     displayName: displayNameSchema.optional(),
-    avatarUrl: avatarUrlSchema.nullable().optional(),
+    avatarUrl: avatarWriteSchema.nullable().optional(),
   })
   .refine((v) => v.displayName !== undefined || v.avatarUrl !== undefined, {
     message: "nothing to update",
@@ -67,13 +73,13 @@ const connectLetterboxdSchema = z.object({
   username: z.string().min(1, "username required").max(2048, "username too long"),
 });
 
-function toUserShape(u: DbUser) {
+function toUserShape(c: Context, u: DbUser) {
   return {
     id: u.id,
     email: u.email,
     displayName: u.displayName,
     isAdmin: isAdminUser(u),
-    avatarUrl: u.avatarUrl,
+    avatarUrl: imageUrlForClient(c, { inline: u.avatarUrl, key: u.avatarKey }),
     letterboxdUsername: u.letterboxdUsername,
     createdAt: u.createdAt.toISOString(),
     updatedAt: u.updatedAt.toISOString(),
@@ -102,9 +108,9 @@ const AVATAR_CACHE_UNVERSIONED = "private, max-age=60, stale-while-revalidate=60
 /**
  * Serves a profile picture. The first query reads only the picture's version
  * (the same `avatarVersion` the standings carry) and is the response's ETag, so
- * a client re-checking its copy gets a 304 and the stored picture (a ~185KB
- * base64 string, once the largest use of the database's network transfer) is
- * read only for a client that has no current copy.
+ * a client re-checking its copy gets a 304 and the picture itself is read (from
+ * image storage, or the row for one not yet moved there) only for a client
+ * that has no current copy.
  */
 publicUserRoutes.get("/:id/avatar", async (c) => {
   const parsed = uuidSchema.safeParse(c.req.param("id"));
@@ -113,7 +119,7 @@ publicUserRoutes.get("/:id/avatar", async (c) => {
 
   const db = getDb();
   const [meta] = await db
-    .select({ version: sql<string | null>`left(md5(${users.avatarUrl}), 8)` })
+    .select({ version: avatarVersionSql })
     .from(users)
     .where(eq(users.id, userId))
     .limit(1);
@@ -132,20 +138,19 @@ publicUserRoutes.get("/:id/avatar", async (c) => {
   }
 
   const [user] = await db
-    .select({ avatarUrl: users.avatarUrl })
+    .select({ avatarUrl: users.avatarUrl, avatarKey: users.avatarKey })
     .from(users)
     .where(eq(users.id, userId))
     .limit(1);
-  const match = user?.avatarUrl?.match(avatarDataUrlRe);
-  if (!match) return err(c, "NOT_FOUND", "profile picture not found");
-  const [, kind, payload] = match;
+  const image = user?.avatarKey
+    ? await readImage(user.avatarKey)
+    : user?.avatarUrl
+      ? decodeImageDataUrl(user.avatarUrl)
+      : null;
+  if (!image) return err(c, "NOT_FOUND", "profile picture not found");
 
-  return new Response(Buffer.from(payload ?? "", "base64"), {
-    headers: {
-      "Cache-Control": cacheControl,
-      "Content-Type": avatarContentType(kind ?? "png"),
-      ETag: etag,
-    },
+  return new Response(image.body, {
+    headers: { "Cache-Control": cacheControl, "Content-Type": image.contentType, ETag: etag },
   });
 });
 
@@ -171,14 +176,37 @@ userRoutes.patch("/me", async (c) => {
   if (!parsed.ok) return parsed.response;
   const userId = c.get("userId");
   const db = getDb();
-  const patch: Partial<Pick<DbUser, "displayName" | "avatarUrl">> & { updatedAt: Date } = {
-    updatedAt: new Date(),
-  };
+  const patch: Partial<Pick<DbUser, "displayName" | "avatarUrl" | "avatarKey">> & {
+    updatedAt: Date;
+  } = { updatedAt: new Date() };
   if (parsed.data.displayName !== undefined) patch.displayName = parsed.data.displayName;
-  if (parsed.data.avatarUrl !== undefined) patch.avatarUrl = parsed.data.avatarUrl;
+
+  // The picture is written to storage before the row points at it, and the
+  // one it replaces is removed only after the row has moved on.
+  let previousKey: string | null = null;
+  if (parsed.data.avatarUrl !== undefined) {
+    const [current] = await db
+      .select({ inline: users.avatarUrl, key: users.avatarKey })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    if (!current) return err(c, "NOT_FOUND", "user not found");
+    const write = await resolveImageWrite("avatars", userId, parsed.data.avatarUrl, current);
+    if (!write.ok) {
+      return write.reason === "unavailable"
+        ? err(c, "INTERNAL", "profile pictures are unavailable right now", undefined, 503)
+        : err(c, "VALIDATION", "profile picture must be a base64 data URL");
+    }
+    if (write.changed) {
+      if (current.key !== write.key) previousKey = current.key;
+      patch.avatarKey = write.key;
+      patch.avatarUrl = null;
+    }
+  }
   const [updated] = await db.update(users).set(patch).where(eq(users.id, userId)).returning();
   if (!updated) return err(c, "NOT_FOUND", "user not found");
-  return ok(c, { user: toUserShape(updated) });
+  await discardImage(previousKey);
+  return ok(c, { user: toUserShape(c, updated) });
 });
 
 // --- User flags (durable per-user key/value state: dismissals, adoption markers) ---
@@ -293,7 +321,7 @@ userRoutes.put(
       .returning();
     if (!updated) return err(c, "NOT_FOUND", "user not found");
     await notifyLetterboxdConnected(userId, username, filmCount);
-    return ok(c, { user: toUserShape(updated), filmCount });
+    return ok(c, { user: toUserShape(c, updated), filmCount });
   },
 );
 
@@ -308,7 +336,7 @@ userRoutes.delete("/me/letterboxd", async (c) => {
     .returning();
   if (!updated) return err(c, "NOT_FOUND", "user not found");
   await db.delete(letterboxdWatchlistFilms).where(eq(letterboxdWatchlistFilms.userId, userId));
-  return ok(c, { user: toUserShape(updated) });
+  return ok(c, { user: toUserShape(c, updated) });
 });
 
 // Sign out of every device — bumps `sessions_invalidated_at` so every existing
@@ -344,10 +372,18 @@ userRoutes.delete("/me", async (c) => {
   if (!user) return err(c, "NOT_FOUND", "user not found");
 
   const identities = await loadRevocableIdentities(userId);
+  // The account's lists are deleted with it; note their cover photos first so
+  // the stored pictures go too.
+  const ownedCovers = await db
+    .select({ key: lists.coverPhotoKey })
+    .from(lists)
+    .where(and(eq(lists.ownerId, userId), isNotNull(lists.coverPhotoKey)));
   const counts = await deleteUserAccount(userId);
   if (counts.users === 0) return err(c, "NOT_FOUND", "user not found");
 
   logger.warn("account deleted", { userId, ...counts });
+  await discardImage(user.avatarKey);
+  for (const { key } of ownedCovers) await discardImage(key);
   clearRefreshCredential(c);
 
   const providerRevocations: ProviderRevocationResult[] = await revokeProviderTokens(identities, {

@@ -16,6 +16,7 @@ import {
 } from "../../lib/deviceSessions.js";
 import { notifyDiscord } from "../../lib/discord.js";
 import { normalizeProviderDisplayName } from "../../lib/displayName.js";
+import { imageUrlForClient } from "../../lib/images.js";
 import { logger } from "../../lib/logger.js";
 import { verifyAppleIdentityToken } from "../../lib/oauth/apple.js";
 import { verifyGoogleIdentityToken } from "../../lib/oauth/google.js";
@@ -86,13 +87,13 @@ const MANAGED_SESSION_VERSION = "2";
 const targetEmailSchema = z.string().email();
 const targetUuidSchema = z.string().uuid();
 
-function toUserShape(u: DbUser) {
+function toUserShape(c: Context, u: DbUser) {
   return {
     id: u.id,
     email: u.email,
     displayName: u.displayName,
     isAdmin: isAdminUser(u),
-    avatarUrl: u.avatarUrl,
+    avatarUrl: imageUrlForClient(c, { inline: u.avatarUrl, key: u.avatarKey }),
     letterboxdUsername: u.letterboxdUsername,
     createdAt: u.createdAt.toISOString(),
     updatedAt: u.updatedAt.toISOString(),
@@ -119,15 +120,18 @@ function deviceMetadata(c: Context) {
   };
 }
 
-function authBody(input: {
-  user: DbUser;
-  token: string;
-  impersonation: AuthImpersonation | null;
-  sessionMode: "legacy" | "managed";
-  refreshToken?: string | undefined;
-}) {
+function authBody(
+  c: Context,
+  input: {
+    user: DbUser;
+    token: string;
+    impersonation: AuthImpersonation | null;
+    sessionMode: "legacy" | "managed";
+    refreshToken?: string | undefined;
+  },
+) {
   return {
-    user: toUserShape(input.user),
+    user: toUserShape(c, input.user),
     token: input.token,
     refreshToken: input.refreshToken,
     sessionMode: input.sessionMode,
@@ -145,7 +149,7 @@ async function issueSignIn(c: Context, user: DbUser) {
   if (!wantsManagedSession(c)) {
     return authOk(
       c,
-      authBody({
+      authBody(c, {
         user,
         token: signSession(user.id),
         impersonation: null,
@@ -158,7 +162,7 @@ async function issueSignIn(c: Context, user: DbUser) {
   setRefreshCredential(c, created.refreshToken);
   return authOk(
     c,
-    authBody({
+    authBody(c, {
       user,
       token: signSession(user.id, {
         sessionId: created.session.id,
@@ -514,7 +518,7 @@ authRoutes.post("/session", requireAuth, async (c) => {
   setRefreshCredential(c, created.refreshToken);
   return authOk(
     c,
-    authBody({
+    authBody(c, {
       user: subject,
       token: signSession(subject.id, {
         impersonatorUserId: impersonation ? owner.id : null,
@@ -579,7 +583,7 @@ authRoutes.post("/refresh", async (c) => {
   setRefreshCredential(c, rotated.refreshToken);
   return authOk(
     c,
-    authBody({
+    authBody(c, {
       user: subject,
       token: signSession(subject.id, {
         impersonatorUserId: impersonation ? owner.id : null,
@@ -645,7 +649,7 @@ authRoutes.post("/impersonate", requireAuth, async (c) => {
   }
   return authOk(
     c,
-    authBody({
+    authBody(c, {
       user: target,
       token: signSession(target.id, {
         impersonatorUserId: admin.id,
@@ -677,7 +681,7 @@ authRoutes.post("/impersonation/stop", requireAuth, async (c) => {
   }
   return authOk(
     c,
-    authBody({
+    authBody(c, {
       user: admin,
       token: signSession(admin.id, { sessionId, sessionVersion: c.get("sessionVersion") }),
       impersonation: null,
@@ -692,5 +696,8 @@ authRoutes.get("/me", requireAuth, async (c) => {
   if (!u) return err(c, "NOT_FOUND", "user not found");
   const impersonatorUserId = c.get("impersonatorUserId");
   const admin = impersonatorUserId ? await userById(impersonatorUserId) : null;
-  return ok(c, { user: toUserShape(u), impersonation: admin ? toImpersonationShape(admin) : null });
+  return ok(c, {
+    user: toUserShape(c, u),
+    impersonation: admin ? toImpersonationShape(admin) : null,
+  });
 });

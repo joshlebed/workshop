@@ -31,11 +31,17 @@ export const users = pgTable(
     /** See `users_display_name_check` below and `lib/displayName.ts`. */
     displayName: text("display_name"),
     /**
-     * Profile picture, stored as a base64 `data:` URL (same approach as list
-     * cover photos — no object store yet). NULL = no custom avatar; clients
-     * fall back to initials. Capped by `avatarUrlSchema` in routes/v1/users.ts.
+     * Legacy: the profile picture as a base64 `data:` URL, from before
+     * pictures moved to image storage. Read only for rows the `image-backfill`
+     * job has not moved yet; nothing writes it. See `lib/images.ts`.
      */
     avatarUrl: text("avatar_url"),
+    /**
+     * Key of the profile picture in image storage
+     * (`avatars/<userId>/<content hash>.<ext>`). NULL = initials, unless the
+     * legacy `avatar_url` still holds one.
+     */
+    avatarKey: text("avatar_key"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
     /**
@@ -224,7 +230,10 @@ export const lists = pgTable(
     emoji: text("emoji").notNull(),
     color: text("color").notNull(),
     description: text("description"),
+    /** Legacy inline `data:` URL cover photo; see `users.avatarUrl`. */
     coverPhotoUrl: text("cover_photo_url"),
+    /** Key of the cover photo in image storage (`list-covers/<listId>/<hash>.<ext>`). */
+    coverPhotoKey: text("cover_photo_key"),
     ownerId: uuid("owner_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),

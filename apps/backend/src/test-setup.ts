@@ -1,3 +1,6 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { vi } from "vitest";
 
 // The auth middleware now consults the DB-backed `sessionRevocation` helper
@@ -18,3 +21,7 @@ vi.mock("./lib/sessionRevocation.js", () => ({
 // the repo root, so pin it here. Safe: the pool is `forks`, and every backend
 // file runs this setup, so the chdir is per-process and idempotent.
 process.chdir(new URL("..", import.meta.url).pathname);
+
+// Uploaded images go to the local `fs` image driver (lib/imageStorage.ts).
+// Give every test process its own throwaway directory instead of the repo's.
+process.env.IMAGE_STORAGE_DIR = mkdtempSync(join(tmpdir(), "workshop-images-"));

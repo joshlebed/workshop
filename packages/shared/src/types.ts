@@ -79,7 +79,11 @@ export interface User {
   displayName: string | null;
   /** Server-authored admin flag. Clients use it only to reveal admin UI. */
   isAdmin: boolean;
-  /** Base64 `data:` URL of the profile picture, or null when using initials. */
+  /**
+   * The profile picture as something an image can load: an `https` URL of the
+   * API's image route (a legacy base64 `data:` URL for a picture not yet moved
+   * there). Null when using initials. Uploads send a `data:` URL here.
+   */
   avatarUrl: string | null;
   /**
    * Account-level Letterboxd username — set once in settings, reused by
@@ -511,6 +515,7 @@ export interface List {
   emoji: string;
   color: ListColor;
   description: string | null;
+  /** An `https` image URL, like `User.avatarUrl`. Uploads send a `data:` URL. */
   coverPhotoUrl: string | null;
   ownerId: string;
   /**

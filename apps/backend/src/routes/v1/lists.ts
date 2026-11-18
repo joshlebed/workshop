@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type {
   ConfigWarning,
   List,
@@ -14,7 +15,7 @@ import { resolveListModules } from "@workshop/shared/listKinds";
 import { MODULE_NAMES, type ModuleName, normalizeModules } from "@workshop/shared/modules";
 import { SOURCE_KIND_NAMES, type SourceKind } from "@workshop/shared/sourceKinds";
 import { and, eq, isNull, sql } from "drizzle-orm";
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { getDb } from "../../db/client.js";
 import { withDbRetry } from "../../db/retry.js";
@@ -31,6 +32,14 @@ import {
 import { toIsoString } from "../../lib/dates.js";
 import { notifyDiscord } from "../../lib/discord.js";
 import { recordEvent } from "../../lib/events.js";
+import { imageStorageAvailable } from "../../lib/imageStorage.js";
+import {
+  copyImage,
+  discardImage,
+  imageUrlForClient,
+  resolveImageWrite,
+  storeImage,
+} from "../../lib/images.js";
 import {
   countSources,
   featureNotOfferedResponse,
@@ -144,7 +153,9 @@ const updateListSchema = z
     emoji: emojiSchema.optional(),
     color: colorSchema.optional(),
     description: z.union([descriptionSchema, z.null()]).optional(),
-    coverPhotoUrl: z.union([coverPhotoUrlSchema, z.null()]).optional(),
+    // A `data:` URL is a new photo; the image URL this API handed out means
+    // "unchanged" (`resolveImageWrite`).
+    coverPhotoUrl: z.union([coverPhotoUrlSchema, z.string().url().max(2048), z.null()]).optional(),
     itemKind: z.union([itemKindSchema, z.null()]).optional(),
     modules: modulesSchema.optional(),
     acknowledgedWarnings: z.array(z.string()).optional(),
@@ -215,14 +226,14 @@ function retiredGameListResponse(c: Parameters<typeof err>[0]) {
   });
 }
 
-function toListShape(l: DbList): List {
+function toListShape(c: Context, l: DbList): List {
   return {
     id: l.id,
     name: l.name,
     emoji: l.emoji,
     color: l.color as ListColor,
     description: l.description,
-    coverPhotoUrl: l.coverPhotoUrl,
+    coverPhotoUrl: imageUrlForClient(c, { inline: l.coverPhotoUrl, key: l.coverPhotoKey }),
     ownerId: l.ownerId,
     itemKind: (l.itemKind && isItemKind(l.itemKind) ? (l.itemKind as ItemKind) : null) ?? null,
     modules: (l.modules ?? []) as ModuleName[],
@@ -515,6 +526,7 @@ listRoutes.get("/", async (c) => {
     color: string;
     description: string | null;
     cover_photo_url: string | null;
+    cover_photo_key: string | null;
     owner_id: string;
     item_kind: string | null;
     modules: string[];
@@ -535,7 +547,7 @@ listRoutes.get("/", async (c) => {
     db,
     sql`
       SELECT
-        l.id, l.name, l.emoji, l.color, l.description, l.cover_photo_url, l.owner_id,
+        l.id, l.name, l.emoji, l.color, l.description, l.cover_photo_url, l.cover_photo_key, l.owner_id,
         l.item_kind, l.modules, l.share_slug, l.share_visibility, l.created_at, l.updated_at,
         me.role::text AS my_role, me.pinned_at, me.archived_at, me.muted_at,
         (SELECT COUNT(*)::int FROM list_members m WHERE m.list_id = l.id) AS member_count,
@@ -582,7 +594,7 @@ listRoutes.get("/", async (c) => {
     emoji: r.emoji,
     color: r.color as ListColor,
     description: r.description,
-    coverPhotoUrl: r.cover_photo_url,
+    coverPhotoUrl: imageUrlForClient(c, { inline: r.cover_photo_url, key: r.cover_photo_key }),
     ownerId: r.owner_id,
     itemKind: (r.item_kind && isItemKind(r.item_kind) ? r.item_kind : null) as ItemKind | null,
     modules: (r.modules ?? []) as ModuleName[],
@@ -654,6 +666,17 @@ listRoutes.post("/", async (c) => {
     validatedSources.push({ kind: source.kind, config: validated.config });
   }
 
+  // The cover photo goes to image storage first, under the id the list is
+  // about to get, so the row never holds the upload itself.
+  const newListId = randomUUID();
+  let coverPhotoKey: string | null = null;
+  if (data.coverPhotoUrl) {
+    if (!imageStorageAvailable()) {
+      return err(c, "INTERNAL", "cover photos are unavailable right now", undefined, 503);
+    }
+    coverPhotoKey = await storeImage("list-covers", newListId, data.coverPhotoUrl);
+  }
+
   const created: DbList = await db.transaction(async (tx) => {
     // Retry the insert on the (rare) unique_violation when our random
     // 8-char base62 slug collides with an existing row. Postgres aborts
@@ -669,8 +692,9 @@ listRoutes.post("/", async (c) => {
             name: data.name,
             emoji: data.emoji,
             color: data.color,
+            id: newListId,
             description: data.description ?? null,
-            coverPhotoUrl: data.coverPhotoUrl ?? null,
+            coverPhotoKey,
             ownerId: userId,
             itemKind,
             modules: resolved.modules,
@@ -745,7 +769,7 @@ listRoutes.post("/", async (c) => {
 
   await notifyNewList(userId, created);
 
-  return ok(c, { list: toListShape(created) }, 201);
+  return ok(c, { list: toListShape(c, created) }, 201);
 });
 
 listRoutes.get("/:id", requireListMember, async (c) => {
@@ -779,7 +803,7 @@ listRoutes.get("/:id", requireListMember, async (c) => {
   const sources = await fetchSourcesForList(listId);
 
   return ok(c, {
-    list: toListShape(list),
+    list: toListShape(c, list),
     members,
     sources,
   });
@@ -935,7 +959,7 @@ listRoutes.post("/by-slug/:slug/join", async (c) => {
     joinedAt: result.member.joinedAt.toISOString(),
   };
 
-  return ok(c, { list: toListShape(result.list), member: memberSummary });
+  return ok(c, { list: toListShape(c, result.list), member: memberSummary });
 });
 
 listRoutes.patch("/:id", requireListMember, async (c) => {
@@ -1062,7 +1086,21 @@ listRoutes.patch("/:id", requireListMember, async (c) => {
   if (data.emoji !== undefined) patch.emoji = data.emoji;
   if (data.color !== undefined) patch.color = data.color;
   if (data.description !== undefined) patch.description = data.description;
-  if (data.coverPhotoUrl !== undefined) patch.coverPhotoUrl = data.coverPhotoUrl;
+  let replacedCoverKey: string | null = null;
+  if (data.coverPhotoUrl !== undefined) {
+    const current = { inline: existing.coverPhotoUrl, key: existing.coverPhotoKey };
+    const write = await resolveImageWrite("list-covers", listId, data.coverPhotoUrl, current);
+    if (!write.ok) {
+      return write.reason === "unavailable"
+        ? err(c, "INTERNAL", "cover photos are unavailable right now", undefined, 503)
+        : err(c, "VALIDATION", "cover photo must be a base64 data URL");
+    }
+    if (write.changed) {
+      if (current.key !== write.key) replacedCoverKey = current.key;
+      patch.coverPhotoKey = write.key;
+      patch.coverPhotoUrl = null;
+    }
+  }
   if (wantsItemKind) patch.itemKind = data.itemKind ?? null;
   if (nextModules) patch.modules = nextModules;
 
@@ -1107,8 +1145,9 @@ listRoutes.patch("/:id", requireListMember, async (c) => {
     return row;
   });
   if (!updated) return err(c, "NOT_FOUND", "list not found");
+  await discardImage(replacedCoverKey);
 
-  return ok(c, { list: toListShape(updated) });
+  return ok(c, { list: toListShape(c, updated) });
 });
 
 // --- Config preview ---
@@ -1320,6 +1359,18 @@ listRoutes.post(
       }
     }
 
+    // The copy gets its own cover object, so archiving or re-covering one list
+    // never takes the other's photo.
+    const dupId = randomUUID();
+    let dupCoverKey: string | null = null;
+    if (imageStorageAvailable()) {
+      if (source.coverPhotoKey) {
+        dupCoverKey = await copyImage(source.coverPhotoKey, "list-covers", dupId);
+      } else if (source.coverPhotoUrl) {
+        dupCoverKey = await storeImage("list-covers", dupId, source.coverPhotoUrl);
+      }
+    }
+
     const dup = await db.transaction(async (tx) => {
       let createdDup: DbList | undefined;
       for (let attempt = 0; attempt < 5; attempt++) {
@@ -1331,7 +1382,8 @@ listRoutes.post(
               emoji: parsed.data.emoji ?? source.emoji,
               color: (parsed.data.color ?? source.color) as ListColor,
               description: parsed.data.description ?? source.description,
-              coverPhotoUrl: source.coverPhotoUrl,
+              id: dupId,
+              coverPhotoKey: dupCoverKey,
               ownerId: userId,
               itemKind: nextItemKind,
               modules: nextModules,
@@ -1449,7 +1501,7 @@ listRoutes.post(
 
     await notifyNewList(userId, dup, true);
 
-    return ok(c, { list: toListShape(dup) }, 201);
+    return ok(c, { list: toListShape(c, dup) }, 201);
   },
 );
 

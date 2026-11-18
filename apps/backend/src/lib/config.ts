@@ -153,6 +153,16 @@ const configSchema = z.object({
     .optional()
     .transform((v) => v?.trim() || DEFAULT_EXPO_PUSH_URL)
     .pipe(z.string().url()),
+  // S3 bucket for user-uploaded images (lib/imageStorage.ts). Set by
+  // Terraform in prod; unset locally, where images go to `imageStorageDir`.
+  imageBucket: z.string().optional().default(""),
+  // S3-compatible endpoint override, for a local stub. Never set in prod.
+  imageS3Endpoint: z.string().optional().default(""),
+  // Directory the local `fs` image driver reads and writes.
+  imageStorageDir: z
+    .string()
+    .optional()
+    .transform((v) => v?.trim() || ".data/images"),
 });
 
 type Config = z.infer<typeof configSchema> & { isLocal: boolean };
@@ -193,6 +203,9 @@ export function getConfig(): Config {
     spotifyClientSecret: process.env.SPOTIFY_CLIENT_SECRET,
     discordNotifyWebhookUrl: process.env.DISCORD_NOTIFY_WEBHOOK_URL,
     expoPushUrl: process.env.EXPO_PUSH_URL,
+    imageBucket: process.env.IMAGE_BUCKET,
+    imageS3Endpoint: process.env.IMAGE_S3_ENDPOINT,
+    imageStorageDir: process.env.IMAGE_STORAGE_DIR,
   });
   cached = { ...parsed, isLocal: parsed.stage === "local" };
   return cached;
