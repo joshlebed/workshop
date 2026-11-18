@@ -4,15 +4,15 @@ import {
   currentStreak,
   emptyHeading,
   friendsSinceLabel,
-  leadLabel,
-  leadSeries,
   mutualFriendsLabel,
   recentForm,
   shortDate,
   shortName,
+  stepSegments,
   streakLabel,
   totals,
   winPercent,
+  winsSeries,
 } from "./headToHead";
 
 function day(periodKey: string, outcome: HeadToHeadOutcome): HeadToHeadDay {
@@ -59,12 +59,6 @@ describe("copy", () => {
   it("is a percent of decided days", () => {
     expect(winPercent({ wins: 2, losses: 1, ties: 1 })).toBe(50);
     expect(winPercent({ wins: 0, losses: 0, ties: 0 })).toBeNull();
-  });
-
-  it("labels the lead like a scoreboard", () => {
-    expect(leadLabel(3, "Alex")).toBe("YOU +3");
-    expect(leadLabel(-2, "Alex")).toBe("ALEX +2");
-    expect(leadLabel(0, "Alex")).toBe("EVEN");
   });
 
   it("uses a first name in labels", () => {
@@ -121,26 +115,41 @@ describe("streaks and form", () => {
   });
 });
 
-describe("leadSeries", () => {
+describe("winsSeries", () => {
   const games = [
-    game("a", [day("2026-06-01", "win"), day("2026-06-02", "loss"), day("2026-06-03", "win")]),
-    game("b", [day("2026-06-01", "win"), day("2026-06-03", "tie"), day("2026-06-04", "loss")]),
+    game("a", [day("2026-06-01", "win"), day("2026-06-02", "loss"), day("2026-06-04", "win")]),
+    game("b", [day("2026-06-01", "win"), day("2026-06-02", "tie"), day("2026-06-04", "loss")]),
   ];
 
-  it("accumulates wins minus losses by day across games", () => {
-    expect(leadSeries(games, 40)).toEqual([
-      { periodKey: "2026-06-01", lead: 2 },
-      { periodKey: "2026-06-02", lead: 1 },
-      { periodKey: "2026-06-03", lead: 2 },
-      { periodKey: "2026-06-04", lead: 1 },
+  it("keeps two running totals that end on the score, one equal slot per day", () => {
+    expect(winsSeries(games, 40)).toEqual([
+      { periodKey: "2026-06-01", x: 0, viewer: 2, friend: 0 },
+      { periodKey: "2026-06-02", x: 0.25, viewer: 2, friend: 1 },
+      { periodKey: "2026-06-04", x: 0.75, viewer: 3, friend: 2 },
     ]);
+    expect(winsSeries([], 40)).toEqual([]);
   });
 
   it("thins to the cap and still ends on the last day", () => {
-    const thinned = leadSeries(games, 2);
-    expect(thinned).toEqual([
-      { periodKey: "2026-06-02", lead: 1 },
-      { periodKey: "2026-06-04", lead: 1 },
+    const thinned = winsSeries(games, 2);
+    expect(thinned.map((p) => p.periodKey)).toEqual(["2026-06-02", "2026-06-04"]);
+    expect(thinned[1]).toMatchObject({ viewer: 3, friend: 2 });
+  });
+
+  it("turns a total into flat runs and rises, starting from zero", () => {
+    const points = winsSeries(games, 40);
+    expect(stepSegments(points, "viewer")).toEqual([
+      { kind: "rise", x: 0, y0: 0, y1: 2 },
+      { kind: "run", x0: 0, x1: 0.75, y: 2 },
+      { kind: "rise", x: 0.75, y0: 2, y1: 3 },
+      { kind: "run", x0: 0.75, x1: 1, y: 3 },
+    ]);
+    expect(stepSegments(points, "friend")).toEqual([
+      { kind: "run", x0: 0, x1: 0.25, y: 0 },
+      { kind: "rise", x: 0.25, y0: 0, y1: 1 },
+      { kind: "run", x0: 0.25, x1: 0.75, y: 1 },
+      { kind: "rise", x: 0.75, y0: 1, y1: 2 },
+      { kind: "run", x0: 0.75, x1: 1, y: 2 },
     ]);
   });
 });

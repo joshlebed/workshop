@@ -23,16 +23,16 @@ import {
 import { RECORD_COLOR, RecordBar } from "../components/RecordBar";
 import {
   emptyHeading,
-  type LeadPoint,
-  leadLabel,
-  leadSeries,
   RANGE_OPTIONS,
   recentForm,
   shortDate,
   shortName,
+  stepSegments,
   streakLabel,
   totals,
+  type WinsPoint,
   winPercent,
+  winsSeries,
 } from "../lib/headToHead";
 import { goBack } from "../lib/navigation";
 import { useGamesRuntime } from "../runtime";
@@ -54,51 +54,92 @@ const NONE = RECORD_COLOR.none;
 const OUTCOME_WORD = { win: "won", loss: "lost", tie: "tied", none: "no result" } as const;
 
 const FORM_DAYS = 20;
-const LEAD_POINTS = 45;
-const LEAD_HALF = 44;
+const WINS_POINTS = 120;
+const WINS_PLOT = 104;
+const WINS_LABEL = 16;
+const WINS_LINE = 2;
+const WINS_ENDS = 36;
 
-/** Running lead by day: columns above the line when you're ahead, below when behind. */
-function LeadChart({ points, friendName }: { points: LeadPoint[]; friendName: string }) {
-  const max = points.reduce((m, p) => Math.max(m, Math.abs(p.lead)), 0) || 1;
+/**
+ * Matchups won over the range: two step lines of running totals that end on
+ * the scoreboard's numbers, so the chart needs no explaining. The gap between
+ * the lines is the lead. Each end is labelled with its total.
+ */
+function WinsChart({ points, friendName }: { points: WinsPoint[]; friendName: string }) {
   const first = points[0];
   const last = points[points.length - 1];
   if (!first || !last) return null;
-  const peak = points.reduce((m, p) => Math.max(m, p.lead), 0);
-  const trough = points.reduce((m, p) => Math.min(m, p.lead), 0);
+  const max = Math.max(last.viewer, last.friend, 1);
+  // End labels sit at their line's height, nudged apart when the totals are close.
+  const at = (v: number) => (v / max) * WINS_PLOT;
+  let viewerY = at(last.viewer);
+  let friendY = at(last.friend);
+  if (Math.abs(viewerY - friendY) < WINS_LABEL) {
+    if (last.viewer >= last.friend) {
+      friendY = Math.max(0, viewerY - WINS_LABEL);
+      viewerY = friendY + WINS_LABEL;
+    } else {
+      viewerY = Math.max(0, friendY - WINS_LABEL);
+      friendY = viewerY + WINS_LABEL;
+    }
+  }
+  const lines = [
+    { key: "friend", color: LOSS, segments: stepSegments(points, "friend") },
+    { key: "viewer", color: WIN, segments: stepSegments(points, "viewer") },
+  ];
   return (
     <View
-      style={styles.leadRoot}
+      style={styles.winsRoot}
       accessible
-      accessibilityLabel={`Running lead from ${shortDate(first.periodKey)} to ${shortDate(
+      accessibilityLabel={`Matchups won from ${shortDate(first.periodKey)} to ${shortDate(
         last.periodKey,
-      )}. Your biggest lead ${peak}, ${friendName}'s biggest lead ${-trough}, now ${last.lead}.`}
-      testID="h2h-lead-chart"
+      )}: you ${last.viewer}, ${friendName} ${last.friend}.`}
+      testID="h2h-wins-chart"
     >
-      <Text style={styles.label}>You</Text>
-      <View style={styles.leadPlot}>
-        <View style={styles.leadColumns}>
-          {points.map((p) => {
-            const h = Math.max(Math.round((Math.abs(p.lead) / max) * LEAD_HALF), 2);
-            return (
-              <View key={p.periodKey} style={styles.leadColumn}>
-                <View style={styles.leadHalfTop}>
-                  {p.lead > 0 ? (
-                    <View style={[styles.leadBar, { height: h, backgroundColor: WIN }]} />
-                  ) : null}
-                </View>
-                <View style={styles.leadHalfBottom}>
-                  {p.lead < 0 ? (
-                    <View style={[styles.leadBar, { height: h, backgroundColor: LOSS }]} />
-                  ) : null}
-                </View>
-              </View>
-            );
-          })}
+      <View style={styles.winsBody}>
+        <View style={styles.winsPlot}>
+          {lines.map((line) =>
+            line.segments.map((seg) =>
+              seg.kind === "run" ? (
+                <View
+                  key={`${line.key}-run-${seg.x0}`}
+                  style={[
+                    styles.winsRun,
+                    {
+                      left: `${seg.x0 * 100}%`,
+                      width: `${(seg.x1 - seg.x0) * 100}%`,
+                      bottom: `${(seg.y / max) * 100}%`,
+                      backgroundColor: line.color,
+                    },
+                  ]}
+                />
+              ) : (
+                <View
+                  key={`${line.key}-rise-${seg.x}`}
+                  style={[
+                    styles.winsRise,
+                    {
+                      left: `${seg.x * 100}%`,
+                      bottom: `${(seg.y0 / max) * 100}%`,
+                      height: `${((seg.y1 - seg.y0) / max) * 100}%`,
+                      backgroundColor: line.color,
+                    },
+                  ]}
+                />
+              ),
+            ),
+          )}
         </View>
-        <View style={styles.leadAxis} />
+        <View style={styles.winsEnds}>
+          <Text style={[styles.winsEnd, { bottom: friendY - WINS_LABEL / 2, color: LOSS }]}>
+            {last.friend}
+          </Text>
+          <Text style={[styles.winsEnd, { bottom: viewerY - WINS_LABEL / 2, color: WIN }]}>
+            {last.viewer}
+          </Text>
+        </View>
       </View>
-      <Text style={styles.label}>{friendName}</Text>
-      <View style={styles.leadDates}>
+      <View style={styles.winsDates}>
         <Text variant="caption" tone="muted">
           {shortDate(first.periodKey)}
         </Text>
@@ -295,7 +336,7 @@ export default function HeadToHeadScreen() {
   const games = data?.games ?? [];
   const all = totals(games);
   const overallPct = winPercent(all);
-  const lead = leadSeries(games, LEAD_POINTS);
+  const wins = winsSeries(games, WINS_POINTS);
 
   return (
     <Screen testID="head-to-head-screen">
@@ -399,15 +440,10 @@ export default function HeadToHeadScreen() {
               )}
             </View>
 
-            {lead.length > 1 ? (
+            {wins.length > 1 ? (
               <View style={styles.card}>
-                <View style={styles.leadHead}>
-                  <Text style={styles.label}>Lead</Text>
-                  <Text style={styles.leadNow} testID="h2h-lead-now">
-                    {leadLabel(lead[lead.length - 1]?.lead ?? 0, friendName)}
-                  </Text>
-                </View>
-                <LeadChart points={lead} friendName={friendName} />
+                <Text style={styles.label}>Matchups won</Text>
+                <WinsChart points={wins} friendName={friendName} />
               </View>
             ) : null}
 
@@ -503,22 +539,30 @@ const styles = StyleSheet.create({
   statValue: { ...scoreType(14), color: tokens.text.primary },
   statLabel: { textAlign: "center" },
 
-  leadPlot: { height: LEAD_HALF * 2 + 2, marginVertical: tokens.space.xs },
-  leadColumns: { flexDirection: "row", gap: 2, height: LEAD_HALF * 2 + 2 },
-  leadColumn: { flex: 1, minWidth: 1 },
-  leadHalfTop: { height: LEAD_HALF, justifyContent: "flex-end", marginBottom: 2 },
-  leadHalfBottom: { height: LEAD_HALF, justifyContent: "flex-start" },
-  leadBar: { borderRadius: 1 },
-  leadAxis: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    top: LEAD_HALF,
-    height: 2,
-    backgroundColor: tokens.border.default,
+  winsRoot: { gap: tokens.space.xs },
+  winsBody: { flexDirection: "row", paddingTop: WINS_LABEL / 2 },
+  winsPlot: {
+    flex: 1,
+    height: WINS_PLOT + WINS_LINE,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: tokens.border.default,
   },
-  leadRoot: { gap: 2 },
-  leadDates: { flexDirection: "row", justifyContent: "space-between" },
+  winsRun: { position: "absolute", height: WINS_LINE },
+  winsRise: { position: "absolute", width: WINS_LINE },
+  winsEnds: { width: WINS_ENDS, height: WINS_PLOT + WINS_LINE },
+  winsEnd: {
+    ...scoreType(10),
+    lineHeight: WINS_LABEL,
+    position: "absolute",
+    right: 0,
+    left: 0,
+    textAlign: "right",
+  },
+  winsDates: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginRight: WINS_ENDS,
+  },
 
   legend: { flexDirection: "row", justifyContent: "center", gap: tokens.space.lg },
   legendItem: { flexDirection: "row", alignItems: "center", gap: 6 },
@@ -540,7 +584,6 @@ const styles = StyleSheet.create({
   gameRecordValue: { ...scoreType(14), color: tokens.text.primary },
 
   label: { ...sectionLabelType(), color: tokens.text.secondary },
-  leadNow: { ...scoreType(10), lineHeight: 14, color: tokens.text.primary },
   avgBlock: { gap: 6 },
   avgHead: { flexDirection: "row", justifyContent: "space-between", gap: tokens.space.sm },
   avgRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
@@ -556,12 +599,6 @@ const styles = StyleSheet.create({
     color: tokens.text.secondary,
   },
   avgValueBetter: { color: tokens.neon.yellow },
-  leadHead: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: tokens.space.sm,
-  },
   formBlock: { gap: tokens.space.xs },
   form: { flexDirection: "row", gap: 3 },
   formCell: { flex: 1, maxWidth: 16, height: 12, borderRadius: 2 },

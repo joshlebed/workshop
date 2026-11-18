@@ -51,12 +51,6 @@ export function shortName(displayName: string | null | undefined): string {
   return displayName?.trim().split(/\s+/)[0] || "Them";
 }
 
-/** The current lead, as a signed score: `YOU +3`, `ALEX +2`, `EVEN`. Set in the pixel face. */
-export function leadLabel(lead: number, friendName: string): string {
-  if (lead === 0) return "EVEN";
-  return lead > 0 ? `YOU +${lead}` : `${friendName.toUpperCase()} +${-lead}`;
-}
-
 /** The whole empty state, one line. */
 export function emptyHeading(range: HeadToHeadRange): string {
   if (range === "all") return "No games in common yet";
@@ -95,40 +89,83 @@ export function recentForm(days: readonly HeadToHeadDay[], count: number): HeadT
   return days.slice(Math.max(0, days.length - count));
 }
 
-export interface LeadPoint {
+export interface WinsPoint {
   periodKey: string;
-  /** Viewer's wins minus losses across every game, up to and including this day. */
-  lead: number;
+  /** Where the day starts on the time axis, 0–1. Each day is one equal slot. */
+  x: number;
+  /** Matchups each side has won across every game, up to and including this day. */
+  viewer: number;
+  friend: number;
 }
 
+const DAY_MS = 86_400_000;
+const dayNumber = (periodKey: string) => Math.round(Date.parse(`${periodKey}T00:00:00Z`) / DAY_MS);
+
 /**
- * Running lead (wins − losses) by day across all games, for the "who's
- * ahead" chart. More days than `maxPoints` are thinned to evenly spaced
- * samples that always keep the last day, so the chart ends on today's lead.
+ * Matchups won by day across all games, as two running totals: the series
+ * behind the "Matchups won" chart. The last point's totals are the
+ * scoreboard's score. Ties and undecided days move neither total. More days
+ * than `maxPoints` are thinned to evenly spaced samples that keep the last.
  */
-export function leadSeries(games: readonly HeadToHeadGame[], maxPoints: number): LeadPoint[] {
-  const net = new Map<string, number>();
+export function winsSeries(games: readonly HeadToHeadGame[], maxPoints: number): WinsPoint[] {
+  const byDay = new Map<string, { viewer: number; friend: number }>();
   for (const g of games) {
     for (const d of g.days) {
-      const delta = d.outcome === "win" ? 1 : d.outcome === "loss" ? -1 : 0;
-      net.set(d.periodKey, (net.get(d.periodKey) ?? 0) + delta);
+      const day = byDay.get(d.periodKey) ?? { viewer: 0, friend: 0 };
+      if (d.outcome === "win") day.viewer += 1;
+      if (d.outcome === "loss") day.friend += 1;
+      byDay.set(d.periodKey, day);
     }
   }
-  let lead = 0;
-  const points = [...net.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([periodKey, delta]) => {
-      lead += delta;
-      return { periodKey, lead };
-    });
+  const keys = [...byDay.keys()].sort();
+  const first = keys[0];
+  const last = keys[keys.length - 1];
+  if (!first || !last) return [];
+  const start = dayNumber(first);
+  const slots = dayNumber(last) - start + 1;
+  let viewer = 0;
+  let friend = 0;
+  const points = keys.map((periodKey) => {
+    const day = byDay.get(periodKey);
+    viewer += day?.viewer ?? 0;
+    friend += day?.friend ?? 0;
+    return { periodKey, x: (dayNumber(periodKey) - start) / slots, viewer, friend };
+  });
   if (points.length <= maxPoints || maxPoints < 1) return points;
-  const sampled: LeadPoint[] = [];
+  const sampled: WinsPoint[] = [];
   for (let i = 0; i < maxPoints; i++) {
-    const idx = Math.round(((i + 1) * points.length) / maxPoints) - 1;
-    const p = points[idx];
+    const p = points[Math.round(((i + 1) * points.length) / maxPoints) - 1];
     if (p) sampled.push(p);
   }
   return sampled;
+}
+
+export type StepSegment =
+  | { kind: "run"; x0: number; x1: number; y: number }
+  | { kind: "rise"; x: number; y0: number; y1: number };
+
+/**
+ * One side's running total as a step line from 0: a flat run until the next
+ * win, then a rise. Only horizontal and vertical pieces, so it draws with
+ * plain views. Values are raw counts; the chart scales them.
+ */
+export function stepSegments(
+  points: readonly WinsPoint[],
+  side: "viewer" | "friend",
+): StepSegment[] {
+  const segments: StepSegment[] = [];
+  let x = 0;
+  let y = 0;
+  for (const p of points) {
+    const next = p[side];
+    if (next === y) continue;
+    if (p.x > x) segments.push({ kind: "run", x0: x, x1: p.x, y });
+    segments.push({ kind: "rise", x: p.x, y0: y, y1: next });
+    x = p.x;
+    y = next;
+  }
+  segments.push({ kind: "run", x0: x, x1: 1, y });
+  return segments;
 }
 
 /** `2026-06-30` → `Jun 30`. */
