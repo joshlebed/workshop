@@ -62,9 +62,9 @@ describe("copy", () => {
   });
 
   it("labels the lead like a scoreboard", () => {
-    expect(leadLabel(3, "Alex")).toBe("You by 3");
-    expect(leadLabel(-2, "Alex")).toBe("Alex by 2");
-    expect(leadLabel(0, "Alex")).toBe("Level");
+    expect(leadLabel(3, "Alex")).toBe("YOU +3");
+    expect(leadLabel(-2, "Alex")).toBe("ALEX +2");
+    expect(leadLabel(0, "Alex")).toBe("EVEN");
   });
 
   it("uses a first name in labels", () => {

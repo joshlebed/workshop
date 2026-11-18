@@ -117,7 +117,7 @@ function FormStrip({ days }: { days: HeadToHeadDay[] }) {
     <View
       style={styles.form}
       accessible
-      accessibilityLabel={`Last ${days.length} days you both played: ${summary.join(", ")}`}
+      accessibilityLabel={`Last ${days.length} matchups: ${summary.join(", ")}`}
     >
       {days.map((d) => (
         <View
@@ -129,6 +129,59 @@ function FormStrip({ days }: { days: HeadToHeadDay[] }) {
               : { backgroundColor: RECORD_COLOR[d.outcome] },
           ]}
         />
+      ))}
+    </View>
+  );
+}
+
+/**
+ * Average scores as two bars on one scale. The better average is lit yellow
+ * (the spotlight colour); a tie lights neither.
+ */
+function AverageBars({
+  viewer,
+  friend,
+  friendName,
+  lowerWins,
+  format,
+}: {
+  viewer: number;
+  friend: number;
+  friendName: string;
+  lowerWins: boolean;
+  format: (v: number) => string;
+}) {
+  const max = Math.max(viewer, friend, 0);
+  const viewerBetter = lowerWins ? viewer < friend : viewer > friend;
+  const friendBetter = lowerWins ? friend < viewer : friend > viewer;
+  const rows = [
+    { key: "you", name: "You", value: viewer, better: viewerBetter },
+    { key: "them", name: friendName, value: friend, better: friendBetter },
+  ];
+  return (
+    <View style={styles.avgBlock}>
+      <View style={styles.avgHead}>
+        <Text style={styles.label}>Average score</Text>
+        <Text style={styles.label}>{lowerWins ? "Lower is better" : "Higher is better"}</Text>
+      </View>
+      {rows.map((r) => (
+        <View key={r.key} style={styles.avgRow}>
+          <Text variant="caption" tone="secondary" numberOfLines={1} style={styles.avgName}>
+            {r.name}
+          </Text>
+          <View style={styles.avgTrack}>
+            <View
+              style={[
+                styles.avgBar,
+                { width: `${max > 0 ? Math.max((r.value / max) * 100, 2) : 2}%` },
+                r.better && styles.avgBarBetter,
+              ]}
+            />
+          </View>
+          <Text style={[styles.avgValue, r.better && styles.avgValueBetter]}>
+            {format(r.value)}
+          </Text>
+        </View>
       ))}
     </View>
   );
@@ -150,9 +203,7 @@ function GameCard({ row, friendName }: { row: HeadToHeadGame; friendName: string
   const streak = streakLabel(row.days, friendName);
   const form = recentForm(row.days, FORM_DAYS);
   const unit = row.game.scoreUnit;
-  const avg = (v: number | null) =>
-    v === null ? "–" : formatScoreValue(Math.round(v * 10) / 10, unit);
-  const hasAverages = row.viewer.averageScore !== null || row.friend.averageScore !== null;
+  const avg = (v: number) => formatScoreValue(Math.round(v * 10) / 10, unit);
   return (
     <View style={styles.card} testID={`h2h-game-${row.game.id}`}>
       <View style={styles.gameHead}>
@@ -197,24 +248,27 @@ function GameCard({ row, friendName }: { row: HeadToHeadGame; friendName: string
       <View style={styles.stats}>
         <Stat value={String(row.viewer.plays)} label="You played" />
         <Stat value={String(row.friend.plays)} label={`${friendName} played`} />
-        <Stat value={String(row.sharedDays)} label="Same day" />
+        <Stat value={String(row.sharedDays)} label="Matchups" />
         <Stat value={pct === null ? "–" : `${pct}%`} label="You won" />
       </View>
 
       {form.length > 0 ? (
         <View style={styles.formBlock}>
           <Text style={styles.label}>
-            {form.length < row.days.length ? `Last ${form.length} same days` : "Same days"}
+            {form.length < row.days.length ? `Last ${form.length} matchups` : "Matchups"}
           </Text>
           <FormStrip days={form} />
         </View>
       ) : null}
 
-      {hasAverages ? (
-        <Text variant="caption" tone="muted">
-          Average · You {avg(row.viewer.averageScore)} · {friendName} {avg(row.friend.averageScore)}
-          {row.game.scoreDirection === "asc" ? " · Lower is better" : ""}
-        </Text>
+      {row.viewer.averageScore !== null && row.friend.averageScore !== null ? (
+        <AverageBars
+          viewer={row.viewer.averageScore}
+          friend={row.friend.averageScore}
+          friendName={friendName}
+          lowerWins={row.game.scoreDirection === "asc"}
+          format={avg}
+        />
       ) : null}
     </View>
   );
@@ -338,7 +392,7 @@ export default function HeadToHeadScreen() {
                 </>
               ) : (
                 <View style={styles.stats}>
-                  <Stat value={String(all.sharedDays)} label="Same day" />
+                  <Stat value={String(all.sharedDays)} label="Matchups" />
                   <Stat value={String(all.ties)} label={all.ties === 1 ? "Tie" : "Ties"} />
                   <Stat value={overallPct === null ? "–" : `${overallPct}%`} label="You won" />
                 </View>
@@ -348,8 +402,8 @@ export default function HeadToHeadScreen() {
             {lead.length > 1 ? (
               <View style={styles.card}>
                 <View style={styles.leadHead}>
-                  <Text variant="heading">Who's been ahead</Text>
-                  <Text style={styles.label} testID="h2h-lead-now">
+                  <Text style={styles.label}>Lead</Text>
+                  <Text style={styles.leadNow} testID="h2h-lead-now">
                     {leadLabel(lead[lead.length - 1]?.lead ?? 0, friendName)}
                   </Text>
                 </View>
@@ -486,6 +540,22 @@ const styles = StyleSheet.create({
   gameRecordValue: { ...scoreType(14), color: tokens.text.primary },
 
   label: { ...sectionLabelType(), color: tokens.text.secondary },
+  leadNow: { ...scoreType(10), lineHeight: 14, color: tokens.text.primary },
+  avgBlock: { gap: 6 },
+  avgHead: { flexDirection: "row", justifyContent: "space-between", gap: tokens.space.sm },
+  avgRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
+  avgName: { width: 64 },
+  avgTrack: { flex: 1, height: 8, justifyContent: "center" },
+  avgBar: { height: 8, borderRadius: 2, backgroundColor: tokens.border.default },
+  avgBarBetter: { backgroundColor: tokens.neon.yellow },
+  avgValue: {
+    ...scoreType(10),
+    lineHeight: 14,
+    minWidth: 56,
+    textAlign: "right",
+    color: tokens.text.secondary,
+  },
+  avgValueBetter: { color: tokens.neon.yellow },
   leadHead: {
     flexDirection: "row",
     alignItems: "center",

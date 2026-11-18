@@ -51,10 +51,10 @@ export function shortName(displayName: string | null | undefined): string {
   return displayName?.trim().split(/\s+/)[0] || "Them";
 }
 
-/** The current lead, scoreboard style: `You by 3`, `Alex by 2`, `Level`. */
+/** The current lead, as a signed score: `YOU +3`, `ALEX +2`, `EVEN`. Set in the pixel face. */
 export function leadLabel(lead: number, friendName: string): string {
-  if (lead === 0) return "Level";
-  return lead > 0 ? `You by ${lead}` : `${friendName} by ${-lead}`;
+  if (lead === 0) return "EVEN";
+  return lead > 0 ? `YOU +${lead}` : `${friendName.toUpperCase()} +${-lead}`;
 }
 
 /** The whole empty state, one line. */
