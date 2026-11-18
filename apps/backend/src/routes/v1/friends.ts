@@ -4,22 +4,24 @@
 // `routes/v1/games.ts`).
 
 import { WORKSHOP_CLIENTS, type WorkshopClient } from "@workshop/shared/constants";
-import type {
-  AcceptFriendRequestResponse,
-  FriendInviteResponse,
-  FriendProfileGame,
-  FriendProfileResponse,
-  FriendRequestPreview,
-  FriendRequestStatus,
-  FriendRequestSummary,
-  FriendRequestsResponse,
-  FriendSummary,
-  FriendshipState,
-  FriendsResponse,
-  FriendUser,
-  MutualSummary,
-  MutualsResponse,
-  SendFriendRequestResponse,
+import {
+  type AcceptFriendRequestResponse,
+  type FriendInviteResponse,
+  type FriendProfileGame,
+  type FriendProfileResponse,
+  type FriendRequestPreview,
+  type FriendRequestStatus,
+  type FriendRequestSummary,
+  type FriendRequestsResponse,
+  type FriendSummary,
+  type FriendshipState,
+  type FriendsResponse,
+  type FriendUser,
+  HEAD_TO_HEAD_RANGES,
+  type HeadToHeadResponse,
+  type MutualSummary,
+  type MutualsResponse,
+  type SendFriendRequestResponse,
 } from "@workshop/shared/friends";
 import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
@@ -42,6 +44,7 @@ import { addFriendship, canonicalPair, friendsOf, removeFriendship } from "../..
 import { scoreCodeFields } from "../../lib/gameCodeService.js";
 import { todayPeriodKey, toGameShape } from "../../lib/gameShapes.js";
 import { resolveGameShareLink } from "../../lib/gameShareLinks.js";
+import { loadHeadToHead } from "../../lib/headToHead.js";
 import {
   notifyFirstFriendAfterSignup,
   notifyFriendRequestSent,
@@ -884,6 +887,57 @@ friendRoutes.get("/users/:userId", requireAuth, async (c) => {
     mutualFriends,
     periodKey,
     games: profileGames,
+  };
+  return ok(c, response);
+});
+
+// --- GET /v1/friends/users/:userId/head-to-head — me vs. one friend ---
+// Friends only: anyone else (a stranger, a pending request, a block, yourself)
+// gets the same 404 as a missing user. `today` is the viewer's local date —
+// period keys are client-local, so the range has to end on the client's day.
+
+const headToHeadQuerySchema = z.object({
+  range: z.enum(HEAD_TO_HEAD_RANGES).default("30"),
+  today: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
+});
+
+friendRoutes.get("/users/:userId/head-to-head", requireAuth, async (c) => {
+  const viewerId = c.get("userId");
+  const targetId = c.req.param("userId");
+  if (!UUID_RE.test(targetId) || targetId === viewerId) {
+    return err(c, "NOT_FOUND", "user not found");
+  }
+  const query = headToHeadQuerySchema.safeParse({
+    range: c.req.query("range"),
+    today: c.req.query("today"),
+  });
+  if (!query.success) return err(c, "VALIDATION", "invalid range or today");
+
+  const [target] = await getDb()
+    .select({ id: users.id, displayName: users.displayName })
+    .from(users)
+    .where(eq(users.id, targetId))
+    .limit(1);
+  if (!target) return err(c, "NOT_FOUND", "user not found");
+  if (await blockedEitherWay(viewerId, targetId)) return err(c, "NOT_FOUND", "user not found");
+  if (!(await friendshipEdge(viewerId, targetId))) return err(c, "NOT_FOUND", "user not found");
+
+  const today = query.data.today ?? todayPeriodKey();
+  const { from, games: h2hGames } = await loadHeadToHead(
+    viewerId,
+    targetId,
+    query.data.range,
+    today,
+  );
+  const response: HeadToHeadResponse = {
+    friend: { userId: target.id, displayName: target.displayName },
+    range: query.data.range,
+    from,
+    to: today,
+    games: h2hGames,
   };
   return ok(c, response);
 });

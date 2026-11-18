@@ -15,6 +15,8 @@ import type {
   FriendRequestPreview,
   FriendRequestsResponse,
   FriendsResponse,
+  HeadToHeadRange,
+  HeadToHeadResponse,
   MutualsResponse,
   SendFriendRequestResponse,
 } from "@workshop/shared/friends";
@@ -142,21 +144,23 @@ const mutualsResponseSchema = z.object({
   ),
 });
 
+const gameSchema = z.object({
+  id: z.string(),
+  url: z.string(),
+  normalizedUrl: z.string(),
+  title: z.string(),
+  iconUrl: z.string().nullable(),
+  gameKey: z.string().nullable(),
+  scoreDirection: z.enum(["asc", "desc"]),
+  scoreUnit: z.enum(["seconds"]).nullable().optional(),
+  // Validated into a ScoreSpec (or null) so the parsed type matches `Game`.
+  scoreSpec: z.unknown().transform((v) => safeParseScoreSpec(v)),
+  summarySpec: z.unknown().transform((v) => safeParseSummarySpec(v)),
+  createdAt: z.string(),
+});
+
 const profileGameSchema = z.object({
-  game: z.object({
-    id: z.string(),
-    url: z.string(),
-    normalizedUrl: z.string(),
-    title: z.string(),
-    iconUrl: z.string().nullable(),
-    gameKey: z.string().nullable(),
-    scoreDirection: z.enum(["asc", "desc"]),
-    scoreUnit: z.enum(["seconds"]).nullable().optional(),
-    // Validated into a ScoreSpec (or null) so the parsed type matches `Game`.
-    scoreSpec: z.unknown().transform((v) => safeParseScoreSpec(v)),
-    summarySpec: z.unknown().transform((v) => safeParseSummarySpec(v)),
-    createdAt: z.string(),
-  }),
+  game: gameSchema,
   viewerHasGame: z.boolean(),
   score: z
     .object({
@@ -261,4 +265,55 @@ export async function fetchFriendProfile(
     token,
   });
   return friendProfileResponseSchema.parse(raw);
+}
+
+const headToHeadSideSchema = z.object({
+  plays: z.number(),
+  averageScore: z.number().nullable(),
+});
+
+const headToHeadResponseSchema = z.object({
+  friend: friendUserSchema,
+  range: z.enum(["7", "30", "all"]),
+  from: z.string().nullable(),
+  to: z.string(),
+  games: z.array(
+    z.object({
+      game: gameSchema,
+      viewer: headToHeadSideSchema,
+      friend: headToHeadSideSchema,
+      sharedDays: z.number(),
+      wins: z.number(),
+      losses: z.number(),
+      ties: z.number(),
+      days: z.array(
+        z.object({
+          periodKey: z.string(),
+          outcome: z.enum(["win", "loss", "tie", "none"]),
+          viewerScore: z.number().nullable(),
+          friendScore: z.number().nullable(),
+        }),
+      ),
+    }),
+  ),
+});
+
+/**
+ * `GET /v1/friends/users/:userId/head-to-head` — me vs. one friend, per game
+ * we both played in the range ending on `today` (my local date). 404 unless
+ * we are friends.
+ */
+export async function fetchHeadToHead(
+  userId: string,
+  range: HeadToHeadRange,
+  today: string,
+  token: string | null,
+): Promise<HeadToHeadResponse> {
+  const params = new URLSearchParams({ range, today });
+  const raw = await apiRequest<unknown>({
+    method: "GET",
+    path: `/v1/friends/users/${encodeURIComponent(userId)}/head-to-head?${params.toString()}`,
+    token,
+  });
+  return headToHeadResponseSchema.parse(raw);
 }

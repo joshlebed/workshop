@@ -121,3 +121,55 @@ export interface FriendProfileResponse {
    */
   games: FriendProfileGame[] | null;
 }
+
+/** Ranges the head-to-head screen offers. `all` = every day on record. */
+export const HEAD_TO_HEAD_RANGES = ["7", "30", "all"] as const;
+export type HeadToHeadRange = (typeof HEAD_TO_HEAD_RANGES)[number];
+
+/** Who took a day both players posted. `none` = neither result could be compared. */
+export type HeadToHeadOutcome = "win" | "loss" | "tie" | "none";
+
+/** One day both players posted a score for the game, from the viewer's side. */
+export interface HeadToHeadDay {
+  periodKey: string;
+  outcome: HeadToHeadOutcome;
+  /** Parsed scores; null for a loss with no score or an unread share. */
+  viewerScore: number | null;
+  friendScore: number | null;
+}
+
+/** Totals for one side of a game in the range. */
+export interface HeadToHeadSide {
+  /** Days this player posted, whether or not the other did. */
+  plays: number;
+  /** Mean of their numeric scores in the range; null with none. */
+  averageScore: number | null;
+}
+
+export interface HeadToHeadGame {
+  game: Game;
+  viewer: HeadToHeadSide;
+  friend: HeadToHeadSide;
+  /** Days both posted. `wins + losses + ties` can be lower (see `HeadToHeadOutcome`). */
+  sharedDays: number;
+  wins: number;
+  losses: number;
+  ties: number;
+  /** The shared days, oldest first. */
+  days: HeadToHeadDay[];
+}
+
+/** `GET /v1/friends/users/:userId/head-to-head?range=&today=` — friends only. */
+export interface HeadToHeadResponse {
+  friend: FriendUser;
+  range: HeadToHeadRange;
+  /** Inclusive first day of the range; null for `all`. */
+  from: string | null;
+  /** The viewer's "today" the range ends on. */
+  to: string;
+  /**
+   * Every game both players posted to in the range, most shared days first.
+   * A game only one of them played is not a head-to-head and is left out.
+   */
+  games: HeadToHeadGame[];
+}
