@@ -412,7 +412,7 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   losses tie, and a day with an unread or legacy-null score is shared but goes to nobody, so
   `wins + losses + ties` can be less than `sharedDays`. The client (`src/games/lib/headToHead.ts`,
   `screens/HeadToHead.tsx`) only sums and draws — plain views, no SVG — and never re-judges a
-  score. The entry is the "You vs <name>" panel on a friend's profile (`FriendProfile.tsx`), which
+  score. The entry is the "Head to head" panel on a friend's profile (`FriendProfile.tsx`), which
   shows the 30-day record from the same query the screen opens on. That profile is laid out
   like the You page: unboxed identity, ruled game rows, and remove / report / block as quiet
   rows at the bottom; keep it ruled, not boxed.
