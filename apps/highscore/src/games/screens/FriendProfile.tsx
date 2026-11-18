@@ -38,7 +38,8 @@ import { useToday } from "../state/viewDay";
  * Friend profile page — `/friends/:userId`. Shows the relationship state with
  * the matching action (add / cancel / accept-decline / remove), mutual
  * friends, and — for friends (or yourself) — their game list with today's
- * score per game and a one-tap add for games you don't have. Non-friends see
+ * score per game and a one-tap add for games you don't have. Friends also get
+ * the way into head-to-head (`HeadToHead.tsx`). Non-friends see
  * a locked message instead of games. The backend 404s profiles of users with
  * no relationship and no mutual friends, so this page can't probe strangers.
  */
@@ -335,6 +336,13 @@ export default function FriendProfileScreen() {
                   testID="friend-profile-decline"
                 />
               </View>
+            ) : null}
+            {profile.relationship === "friends" ? (
+              <Button
+                label={`See how you and ${name} stack up`}
+                onPress={() => router.push(routes.headToHead(userId) as Href)}
+                testID="friend-profile-head-to-head"
+              />
             ) : null}
             {profile.relationship === "friends" ? (
               <Button

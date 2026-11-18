@@ -63,6 +63,7 @@ const HIGHSCORE_GAMES_ROUTES: GamesRoutes = {
     `/games/${encodeURIComponent(gameId)}${date ? `?date=${encodeURIComponent(date)}` : ""}`,
   friendProfile: (userId, via) =>
     `/friends/${encodeURIComponent(userId)}${via ? `?via=${encodeURIComponent(via)}` : ""}`,
+  headToHead: (userId) => `/friends/${encodeURIComponent(userId)}/versus`,
 };
 
 function GamesRuntimeBridge({ children }: { children: ReactNode }) {
@@ -290,7 +291,8 @@ function AuthGate() {
         <Stack.Screen name="games/add" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="games/[id]" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="friends/index" options={{ animation: "slide_from_right" }} />
-        <Stack.Screen name="friends/[userId]" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="friends/[userId]/index" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="friends/[userId]/versus" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="friends/accept/[token]" />
         <Stack.Screen name="g/[token]" />
         <Stack.Screen name="share/index" />

@@ -403,6 +403,17 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   `EXPO_PUSH_URL` before tapping the hand in a sandbox** — the DB is a prod copy with real
   tokens. `game_nudges` is in `actionRows`.
 
+- **Head to head (`/friends/:userId/versus` in HighScore) is one endpoint and one rule set.**
+  `GET /v1/friends/users/:userId/head-to-head?range=7|30|all&today=<viewer's local date>`
+  (`apps/backend/src/lib/headToHead.ts`) is friends-only (everyone else, a block included, gets
+  the profile's 404) and returns every game both players posted to in the range: each side's
+  plays, the days both played, and who took each of those days. A day's winner comes from
+  `rankEntries`, so it follows the board (direction, a `no_result` loss behind any score); two
+  losses tie, and a day with an unread or legacy-null score is shared but goes to nobody, so
+  `wins + losses + ties` can be less than `sharedDays`. The client (`src/games/lib/headToHead.ts`,
+  `screens/HeadToHead.tsx`) only sums and draws — plain views, no SVG — and never re-judges a
+  score. The entry is the "See how you and <name> stack up" button on a friend's profile.
+
 - **Vendor-credit alarms are reactive and live in `infra/vendor_alarms.tf`.** OpenAI
   (`lib/teach/openai.ts`) and TypeSafe (`lib/jev.ts`) swallow every non-2xx and fall back,
   so a dead balance or revoked key is only visible as a `logger.warn` line. CloudWatch

@@ -20,6 +20,8 @@ export interface GamesRoutes {
   /** Per-game board; `date` (YYYY-MM-DD) preselects that day on its rail. */
   game: (gameId: string, date?: string) => string;
   friendProfile: (userId: string, via?: string) => string;
+  /** Head-to-head between the viewer and one friend. */
+  headToHead: (userId: string) => string;
 }
 
 export interface GamesRuntimeValue {
