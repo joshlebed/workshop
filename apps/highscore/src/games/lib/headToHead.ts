@@ -65,17 +65,49 @@ export function winPercent(r: WinRecord): number | null {
   return decided === 0 ? null : Math.round((r.wins / decided) * 100);
 }
 
-/** `12–8`, with ties appended only when there are any: `12–8–2`. */
-export function recordLabel(r: WinRecord): string {
-  return r.ties > 0 ? `${r.wins}–${r.losses}–${r.ties}` : `${r.wins}–${r.losses}`;
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+/** Under the big score: what it is a score of. `33 days you both played · 6 ties`. */
+export function sharedDaysLine(sharedDays: number, ties: number): string {
+  const days = `${plural(sharedDays, "day")} you both played`;
+  return ties > 0 ? `${days} · ${plural(ties, "tie")}` : days;
 }
 
-/** The one-line verdict over a record, from the viewer's side. */
-export function verdict(r: WinRecord, friendName: string): string {
-  if (r.wins + r.losses + r.ties === 0) return "No days decided yet";
-  if (r.wins > r.losses) return `You lead ${r.wins}–${r.losses}`;
-  if (r.wins < r.losses) return `${friendName} leads ${r.losses}–${r.wins}`;
-  return `All square at ${r.wins}–${r.losses}`;
+/** Under a game's name: `You win 38% of the time`. Null with no record. */
+export function winRateLine(r: WinRecord): string | null {
+  const pct = winPercent(r);
+  return pct === null ? null : `You win ${pct}% of the time`;
+}
+
+/**
+ * Who is ahead in how many games, as a sentence. Null when there is one game
+ * or fewer with a record: its own card already says it.
+ */
+export function gamesLine(t: Totals, friendName: string): string | null {
+  const { gamesLed: led, gamesTrailed: trailed, gamesLevel: level } = t;
+  if (led + trailed + level < 2) return null;
+  const even = level === 0 ? "" : level === 1 ? " 1 is even." : ` ${level} are even.`;
+  if (led > 0 && trailed > 0) {
+    return `You're ahead in ${plural(led, "game")}, ${friendName} in ${trailed}.${even}`;
+  }
+  if (led > 0) {
+    return level === 0
+      ? `You're ahead in all ${led} games.`
+      : `You're ahead in ${plural(led, "game")}.${even}`;
+  }
+  if (trailed > 0) {
+    return level === 0
+      ? `${friendName} is ahead in all ${trailed} games.`
+      : `${friendName} is ahead in ${plural(trailed, "game")}.${even}`;
+  }
+  return "Dead even in every game.";
+}
+
+/** The empty state under the range chips. */
+export function emptyLine(range: HeadToHeadRange, friendName: string): string {
+  if (range === "all") return `You and ${friendName} haven't played any of the same games yet.`;
+  const span = range === "7" ? "week" : "month";
+  return `You and ${friendName} haven't played the same game this ${span}.`;
 }
 
 /**
@@ -101,8 +133,8 @@ export function streakLabel(days: readonly HeadToHeadDay[], friendName: string):
   const s = currentStreak(days);
   if (!s || s.length < 2) return null;
   if (s.outcome === "win") return `You've won the last ${s.length}`;
-  if (s.outcome === "loss") return `${friendName} has won the last ${s.length}`;
-  return `Tied the last ${s.length}`;
+  if (s.outcome === "loss") return `${friendName} won the last ${s.length}`;
+  return `${s.length} ties in a row`;
 }
 
 /** The last `count` shared days, oldest first: the form strip. */
@@ -151,4 +183,24 @@ export function shortDate(periodKey: string): string {
   const d = new Date(`${periodKey}T00:00:00Z`);
   if (Number.isNaN(d.getTime())) return periodKey;
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+}
+
+/** `Friends since Nov 4`, with the year once it isn't this one. */
+export function friendsSinceLabel(iso: string, now: Date = new Date()): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "Friends";
+  const sameYear = d.getFullYear() === now.getFullYear();
+  const date = d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    ...(sameYear ? {} : { year: "numeric" }),
+  });
+  return `Friends since ${date}`;
+}
+
+/** Up to three mutual friends by name, a count past that; null with none. */
+export function mutualFriendsLabel(names: readonly string[]): string | null {
+  if (names.length === 0) return null;
+  if (names.length > 3) return `${names.length} mutual friends`;
+  return `${names.length === 1 ? "Mutual friend" : "Mutual friends"}: ${names.join(", ")}`;
 }

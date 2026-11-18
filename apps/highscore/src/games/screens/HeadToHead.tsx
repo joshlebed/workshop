@@ -16,21 +16,23 @@ import {
   PixelIcon,
   Screen,
   scoreType,
+  sectionLabelType,
   Text,
   tokens,
 } from "../../theme";
+import { RECORD_COLOR, RecordBar } from "../components/RecordBar";
 import {
+  emptyLine,
+  gamesLine,
   type LeadPoint,
   leadSeries,
   RANGE_OPTIONS,
   recentForm,
-  recordLabel,
+  sharedDaysLine,
   shortDate,
   streakLabel,
   totals,
-  verdict,
-  type WinRecord,
-  winPercent,
+  winRateLine,
 } from "../lib/headToHead";
 import { goBack } from "../lib/navigation";
 import { useGamesRuntime } from "../runtime";
@@ -44,41 +46,16 @@ import { useToday } from "../state/viewDay";
  * views, so the screen reaches every binary by OTA.
  */
 
-const WIN = tokens.neon.chartreuse;
-const LOSS = tokens.status.danger;
-const TIE = tokens.text.secondary;
-const NONE = tokens.border.default;
+const WIN = RECORD_COLOR.win;
+const LOSS = RECORD_COLOR.loss;
+const TIE = RECORD_COLOR.tie;
+const NONE = RECORD_COLOR.none;
 
-const OUTCOME_COLOR = { win: WIN, loss: LOSS, tie: TIE, none: NONE } as const;
 const OUTCOME_WORD = { win: "won", loss: "lost", tie: "tied", none: "no result" } as const;
 
 const FORM_DAYS = 20;
 const LEAD_POINTS = 45;
 const LEAD_HALF = 44;
-
-/** Wins · ties · losses as one bar; an even grey track when nothing is decided. */
-function SplitBar({ record, height = 10 }: { record: WinRecord; height?: number }) {
-  const decided = record.wins + record.losses + record.ties;
-  return (
-    <View style={[styles.splitBar, { height }]}>
-      {decided === 0 ? (
-        <View style={[styles.splitSeg, { flex: 1, backgroundColor: NONE }]} />
-      ) : (
-        <>
-          {record.wins > 0 ? (
-            <View style={[styles.splitSeg, { flex: record.wins, backgroundColor: WIN }]} />
-          ) : null}
-          {record.ties > 0 ? (
-            <View style={[styles.splitSeg, { flex: record.ties, backgroundColor: TIE }]} />
-          ) : null}
-          {record.losses > 0 ? (
-            <View style={[styles.splitSeg, { flex: record.losses, backgroundColor: LOSS }]} />
-          ) : null}
-        </>
-      )}
-    </View>
-  );
-}
 
 /** Running lead by day: columns above the line when you're ahead, below when behind. */
 function LeadChart({ points, friendName }: { points: LeadPoint[]; friendName: string }) {
@@ -98,7 +75,7 @@ function LeadChart({ points, friendName }: { points: LeadPoint[]; friendName: st
       testID="h2h-lead-chart"
     >
       <Text variant="caption" tone="muted">
-        You ahead{peak > 0 ? ` · up to +${peak}` : ""}
+        You're ahead
       </Text>
       <View style={styles.leadPlot}>
         <View style={styles.leadColumns}>
@@ -123,7 +100,7 @@ function LeadChart({ points, friendName }: { points: LeadPoint[]; friendName: st
         <View style={styles.leadAxis} />
       </View>
       <Text variant="caption" tone="muted">
-        {friendName} ahead{trough < 0 ? ` · up to +${-trough}` : ""}
+        {friendName} is ahead
       </Text>
       <View style={styles.leadDates}>
         <Text variant="caption" tone="muted">
@@ -153,7 +130,7 @@ function FormStrip({ days }: { days: HeadToHeadDay[] }) {
             styles.formCell,
             d.outcome === "none"
               ? styles.formCellNone
-              : { backgroundColor: OUTCOME_COLOR[d.outcome] },
+              : { backgroundColor: RECORD_COLOR[d.outcome] },
           ]}
         />
       ))}
@@ -173,7 +150,7 @@ function Stat({ value, label }: { value: string; label: string }) {
 }
 
 function GameCard({ row, friendName }: { row: HeadToHeadGame; friendName: string }) {
-  const pct = winPercent(row);
+  const rate = winRateLine(row);
   const streak = streakLabel(row.days, friendName);
   const form = recentForm(row.days, FORM_DAYS);
   const unit = row.game.scoreUnit;
@@ -198,31 +175,40 @@ function GameCard({ row, friendName }: { row: HeadToHeadGame; friendName: string
           <Text variant="game" numberOfLines={1}>
             {row.game.title}
           </Text>
-          <Text variant="caption" tone="muted" numberOfLines={1}>
-            {verdict(row, friendName)}
-          </Text>
+          {rate ? (
+            <Text variant="caption" tone="muted" numberOfLines={1}>
+              {rate}
+            </Text>
+          ) : null}
         </View>
         <View style={styles.gameRecord}>
-          <Text style={styles.gameRecordValue}>{recordLabel(row)}</Text>
-          <Text variant="caption" tone="muted">
-            {pct === null ? "no record" : `${pct}% won`}
+          <Text
+            style={styles.gameRecordValue}
+            accessibilityLabel={`${row.wins} wins, ${row.losses} losses, ${row.ties} ties`}
+          >
+            {row.wins}–{row.losses}
           </Text>
+          {row.ties > 0 ? (
+            <Text variant="caption" tone="muted">
+              {row.ties === 1 ? "1 tie" : `${row.ties} ties`}
+            </Text>
+          ) : null}
         </View>
       </View>
 
-      <SplitBar record={row} />
+      <RecordBar wins={row.wins} ties={row.ties} losses={row.losses} />
 
       <View style={styles.stats}>
         <Stat value={String(row.viewer.plays)} label="You played" />
         <Stat value={String(row.friend.plays)} label={`${friendName} played`} />
-        <Stat value={String(row.sharedDays)} label="Same day" />
+        <Stat value={String(row.sharedDays)} label="Both played" />
       </View>
 
       {form.length > 0 ? (
         <View style={styles.formBlock}>
           <View style={styles.formHead}>
-            <Text variant="overline" tone="muted">
-              {form.length < row.days.length ? `Last ${form.length} same days` : "Same days"}
+            <Text style={styles.formLabel}>
+              {form.length < row.days.length ? `Last ${form.length} days` : "Day by day"}
             </Text>
             {streak ? (
               <Text variant="caption" tone="secondary" numberOfLines={1}>
@@ -236,9 +222,9 @@ function GameCard({ row, friendName }: { row: HeadToHeadGame; friendName: string
 
       {hasAverages ? (
         <Text variant="caption" tone="muted">
-          Average score · You {avg(row.viewer.averageScore)} · {friendName}{" "}
-          {avg(row.friend.averageScore)}
-          {row.game.scoreDirection === "asc" ? " · lower wins" : ""}
+          Average score: you {avg(row.viewer.averageScore)}, {friendName}{" "}
+          {avg(row.friend.averageScore)}.
+          {row.game.scoreDirection === "asc" ? " Lower is better." : ""}
         </Text>
       ) : null}
     </View>
@@ -265,9 +251,8 @@ export default function HeadToHeadScreen() {
   const friendName = data?.friend.displayName?.trim() || "Them";
   const games = data?.games ?? [];
   const all = totals(games);
-  const overallPct = winPercent(all);
+  const byGame = gamesLine(all, friendName);
   const lead = leadSeries(games, LEAD_POINTS);
-  const rangeWords = range === "all" ? "all time" : `the last ${range === "7" ? "7" : "30"} days`;
 
   return (
     <Screen testID="head-to-head-screen">
@@ -307,8 +292,8 @@ export default function HeadToHeadScreen() {
         ) : query.isError || !data ? (
           <View style={styles.center}>
             <EmptyState
-              title="Couldn't load this matchup"
-              description={errorMessage(query.error, "Head to head is for friends.")}
+              title="Couldn't load head to head"
+              description={errorMessage(query.error, "Try again in a moment.")}
               action={<Button label="Back" variant="secondary" onPress={back} />}
             />
           </View>
@@ -347,41 +332,43 @@ export default function HeadToHeadScreen() {
                   </Text>
                 </View>
               </View>
-              <SplitBar record={all} height={14} />
-              <Text variant="heading" style={styles.verdict} testID="h2h-verdict">
-                {games.length === 0 ? "Nothing to compare yet" : verdict(all, friendName)}
-              </Text>
-              <Text variant="caption" tone="muted" style={styles.verdictSub}>
-                {games.length === 0
-                  ? `You and ${friendName} haven't played the same game in ${rangeWords}.`
-                  : `${all.sharedDays} ${all.sharedDays === 1 ? "day" : "days"} played against each other across ${
-                      games.length
-                    } ${games.length === 1 ? "game" : "games"}${
-                      overallPct === null ? "" : ` · you won ${overallPct}%`
-                    }${all.ties > 0 ? ` · ${all.ties} tied` : ""}`}
-              </Text>
-              {games.length > 1 ? (
-                <View style={styles.stats}>
-                  <Stat value={String(all.gamesLed)} label="Games you lead" />
-                  <Stat value={String(all.gamesLevel)} label="Level" />
-                  <Stat value={String(all.gamesTrailed)} label={`${friendName} leads`} />
-                </View>
-              ) : null}
-              {games.length === 0 && range !== "all" ? (
-                <Button
-                  label="Look at all time"
-                  variant="secondary"
-                  onPress={() => setRange("all")}
-                  testID="h2h-all-time"
-                />
-              ) : null}
+              <RecordBar wins={all.wins} ties={all.ties} losses={all.losses} height={14} />
+              {games.length === 0 ? (
+                <>
+                  <Text variant="heading" style={styles.centered} testID="h2h-empty">
+                    No games in common
+                  </Text>
+                  <Text tone="secondary" style={styles.centered}>
+                    {emptyLine(range, friendName)}
+                  </Text>
+                  {range !== "all" ? (
+                    <Button
+                      label="Show all time"
+                      variant="secondary"
+                      onPress={() => setRange("all")}
+                      testID="h2h-all-time"
+                    />
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  <Text tone="secondary" style={styles.centered} testID="h2h-shared-days">
+                    {sharedDaysLine(all.sharedDays, all.ties)}
+                  </Text>
+                  {byGame ? (
+                    <Text variant="caption" tone="muted" style={styles.centered}>
+                      {byGame}
+                    </Text>
+                  ) : null}
+                </>
+              )}
             </View>
 
             {lead.length > 1 ? (
               <View style={styles.card}>
                 <Text variant="heading">Who's been ahead</Text>
                 <Text variant="caption" tone="muted">
-                  Wins minus losses across every game, day by day.
+                  Your wins minus {friendName}'s, added up day by day.
                 </Text>
                 <LeadChart points={lead} friendName={friendName} />
               </View>
@@ -398,7 +385,7 @@ export default function HeadToHeadScreen() {
                 <View style={styles.legendItem}>
                   <View style={[styles.legendSwatch, { backgroundColor: TIE }]} />
                   <Text variant="caption" tone="secondary">
-                    Tied
+                    Tie
                   </Text>
                 </View>
                 <View style={styles.legendItem}>
@@ -463,16 +450,7 @@ const styles = StyleSheet.create({
   bigRecord: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
   bigNumber: { ...scoreType(28) },
   bigDash: { ...scoreType(18), color: tokens.text.secondary },
-  verdict: { textAlign: "center" },
-  verdictSub: { textAlign: "center" },
-
-  splitBar: {
-    flexDirection: "row",
-    gap: 2,
-    borderRadius: tokens.radius.sm,
-    overflow: "hidden",
-  },
-  splitSeg: { minWidth: 4 },
+  centered: { textAlign: "center" },
 
   stats: { flexDirection: "row", gap: tokens.space.sm },
   stat: {
@@ -524,6 +502,7 @@ const styles = StyleSheet.create({
   gameRecord: { alignItems: "flex-end", gap: 2 },
   gameRecordValue: { ...scoreType(14), color: tokens.text.primary },
 
+  formLabel: { ...sectionLabelType(), color: tokens.text.secondary },
   formBlock: { gap: tokens.space.xs },
   formHead: {
     flexDirection: "row",

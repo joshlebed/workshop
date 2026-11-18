@@ -412,7 +412,10 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   losses tie, and a day with an unread or legacy-null score is shared but goes to nobody, so
   `wins + losses + ties` can be less than `sharedDays`. The client (`src/games/lib/headToHead.ts`,
   `screens/HeadToHead.tsx`) only sums and draws — plain views, no SVG — and never re-judges a
-  score. The entry is the "See how you and <name> stack up" button on a friend's profile.
+  score. The entry is the "You vs <name>" panel on a friend's profile (`FriendProfile.tsx`), which
+  shows the 30-day record from the same query the screen opens on. That profile is laid out
+  like the You page: unboxed identity, ruled game rows, and remove / report / block as quiet
+  rows at the bottom; keep it ruled, not boxed.
 
 - **Vendor-credit alarms are reactive and live in `infra/vendor_alarms.tf`.** OpenAI
   (`lib/teach/openai.ts`) and TypeSafe (`lib/jev.ts`) swallow every non-2xx and fall back,
