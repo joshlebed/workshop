@@ -34,7 +34,7 @@ import {
 } from "../../theme";
 import { addGame } from "../api/games";
 import { RECORD_COLOR, RecordBar } from "../components/RecordBar";
-import { friendsSinceLabel, mutualFriendsLabel, totals } from "../lib/headToHead";
+import { friendsSinceLabel, mutualFriendsLabel, shortName, totals } from "../lib/headToHead";
 import { goBack } from "../lib/navigation";
 import { useGamesRuntime } from "../runtime";
 import { useToday } from "../state/viewDay";
@@ -226,6 +226,9 @@ export default function FriendProfileScreen() {
     ? mutualFriendsLabel(profile.mutualFriends.map((f) => f.displayName?.trim() || "Someone"))
     : null;
   const isFriend = profile?.relationship === "friends";
+  // The panel's lines are short on purpose: a first name fits a small phone
+  // where "See how you and <full name> stack up" was cut off.
+  const firstName = shortName(profile?.user.displayName);
 
   // Same key as the head-to-head screen's default range, so opening it is instant.
   const versusQuery = useQuery({
@@ -282,7 +285,7 @@ export default function FriendProfileScreen() {
                 <Text variant="title" numberOfLines={2} testID="friend-profile-name">
                   {name}
                 </Text>
-                <Text tone="secondary" numberOfLines={1} testID="friend-profile-status">
+                <Text tone="secondary" numberOfLines={2} testID="friend-profile-status">
                   {relationshipLine(profile)}
                 </Text>
                 {mutuals ? (
@@ -344,7 +347,7 @@ export default function FriendProfileScreen() {
             {isFriend ? (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={`See how you and ${name} stack up`}
+                accessibilityLabel={`See how you and ${firstName} stack up`}
                 onPress={() => router.push(routes.headToHead(userId) as Href)}
                 testID="friend-profile-head-to-head"
                 style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
@@ -353,7 +356,7 @@ export default function FriendProfileScreen() {
                 ]}
               >
                 <View style={styles.versusHead}>
-                  <Text style={styles.sectionLabel}>You vs {name}</Text>
+                  <Text style={styles.sectionLabel}>Head to head</Text>
                   <Text style={styles.sectionLabel}>Last 30 days</Text>
                 </View>
                 {versus && versus.sharedDays === 0 ? (
@@ -380,8 +383,8 @@ export default function FriendProfileScreen() {
                   </>
                 )}
                 <View style={styles.versusCta}>
-                  <Text style={styles.versusCtaLabel} numberOfLines={1}>
-                    See how you and {name} stack up
+                  <Text style={styles.versusCtaLabel} testID="friend-profile-versus-cta">
+                    See how you and {firstName} stack up
                   </Text>
                   <PixelIcon name="chevron-right" size={16} color={tokens.neon.pink} />
                 </View>
