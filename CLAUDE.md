@@ -1204,14 +1204,20 @@ includes `http://localhost:8082` (Workshop) and `http://localhost:8081` (HighSco
 ### Database in the Niteshift sandbox
 
 The sandbox runs **local docker Postgres 17 only**, seeded with a **wholesale copy of prod**
-so repros are realistic. `.niteshift/setup` starts the `postgres` service, reads the prod URL
-from SSM `/workshop-prod/db/url` through the sandbox AWS role, `pg_dump`s prod from the
-`postgres:17` image, `pg_restore`s it into the local `workshop` DB, then runs this branch's
-migrations on top. Any `DATABASE_URL` Niteshift injects (the Neon Database integration) is
+so repros are realistic. `.niteshift/setup` starts the `postgres` service, gets a dump of prod,
+`pg_restore`s it into the local `workshop` DB, runs this branch's migrations on top, and syncs
+prod's uploaded images (`s3://workshop-prod-images-<account>`) into
+`apps/backend/.data/images` so the copied rows have their pictures. **The dump is shared:** it
+comes from `s3://workshop-prod-dev-snapshots-<account>/prod.dump` when that is under 24h old,
+and only otherwise from prod itself (the prod URL from SSM `/workshop-prod/db/url`, `pg_dump`
+from the `postgres:17` image, minus `rate_limits` rows), after which it is uploaded for the
+next sandbox. One dump a day reaches Neon instead of one per task — per-task dumps were about
+a fifth of Neon's monthly transfer allowance. So sandbox data can be up to a day old;
+`SNAPSHOT_FRESH=1 .niteshift/files/snapshot-prod.sh` takes a new dump. Any `DATABASE_URL` Niteshift injects (the Neon Database integration) is
 **ignored** — turn that integration off in Settings → Repositories → `joshlebed/workshop` →
 Database so tasks stop minting Neon branches. `PROD_SNAPSHOT=0` skips the copy (falls back to
 the synthetic seed). Data persists in the `workshop-pg17-data` volume across suspend; it is
-not re-copied on resume. Re-copy (drops local data) with:
+not re-copied on resume. Re-copy (drops local data, re-syncs images) with:
 
 ```bash
 .niteshift/files/snapshot-prod.sh
@@ -1295,7 +1301,9 @@ Gotchas: services get **platform env + manifest `environment` + `PORT` only**, n
 repository variables setup sees — that's why `backend` goes through
 `.niteshift/files/backend.sh` and the dotenv. `dev-api-proxy.js` falls back to `$PORT` for
 the backend port, so the web services pin `DEV_API_PROXY_PORT=8787` (otherwise `/api` loops
-back into Metro). `.niteshift/files/expo-web.sh` derives the per-port preview origin for
+back into Metro). The same proxy passes the browser's origin to the backend as
+`X-Workshop-Public-Base` (read only when `STAGE=local`), which is how image URLs in API
+responses point at the preview instead of `localhost:8787`. `.niteshift/files/expo-web.sh` derives the per-port preview origin for
 Expo CLI's CORS allow-list from `NITESHIFT_PORT_<port>_URL` / the preview URL template and
 exports it as `EXPO_DEV_SERVER_ALLOWED_ORIGIN` (read by each app's `app.config.ts`).
 
