@@ -58,7 +58,11 @@ resource "aws_scheduler_schedule" "request_rollups" {
   name        = "${local.prefix}-request-rollups"
   description = "Materialize hourly request rollups from the request log"
 
-  schedule_expression          = "cron(5 * * * ? *)"
+  # One minute after play-reminders (on the hour), so the two hourly jobs share
+  # one wake of the database instead of keeping it up twice: Neon bills compute
+  # by the hour it is awake and stays awake ~5 minutes after each use. A late
+  # log line is picked up by the next run, which re-computes the last 3 hours.
+  schedule_expression          = "cron(1 * * * ? *)"
   schedule_expression_timezone = "UTC"
 
   flexible_time_window {

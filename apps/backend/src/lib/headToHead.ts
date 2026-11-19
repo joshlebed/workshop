@@ -12,7 +12,7 @@ import type {
 import { and, gte, inArray, lte } from "drizzle-orm";
 import { getDb } from "../db/client.js";
 import { gameScores, games } from "../db/schema.js";
-import { toGameShape } from "./gameShapes.js";
+import { gameShapeColumns, toGameShape } from "./gameShapes.js";
 import { rankEntries } from "./ranking.js";
 
 const DATE_KEY = /^\d{4}-\d{2}-\d{2}$/;
@@ -115,7 +115,10 @@ export async function loadHeadToHead(
     .map(([id]) => id);
   if (sharedGameIds.length === 0) return { from, games: [] };
 
-  const gameRows = await db.select().from(games).where(inArray(games.id, sharedGameIds));
+  const gameRows = await db
+    .select(gameShapeColumns)
+    .from(games)
+    .where(inArray(games.id, sharedGameIds));
 
   const result: HeadToHeadGame[] = [];
   for (const row of gameRows) {
