@@ -442,6 +442,13 @@
       "when": 1795047564558,
       "tag": "0062_image_storage_keys",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1795048146895,
+      "tag": "0063_drop_inline_image_columns",
+      "breakpoints": true
     }
   ]
 }
