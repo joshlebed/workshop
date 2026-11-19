@@ -547,6 +547,16 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   Transient bootstrap errors preserve credentials and show retry UI; only an explicit auth rejection
   may clear them. See `docs/decisions.md` and the app/backend CLAUDE files before changing auth.
 - **Postgres pool**: `postgres({ max: 1 })` — correct for Lambda. Each container has its own.
+- **What a query reads out of Neon is metered, so select the columns a response needs.** Neon's
+  free plan allows 5 GB of network transfer and 100 compute-hours a month, and exceeding either
+  suspends the database. A response that shapes a game for a client selects
+  `gameShapeColumns` (`lib/gameShapes.ts`), never the whole `games` row: the parser and
+  formatter source is ~1 KB a row and only its existence reaches a client. Aggregate in SQL
+  rather than reading rows to add up in JS (the analytics dashboard read 640 KB of
+  `request_rollups` per load). To see what a route costs, put a byte-counting TCP proxy between
+  a local backend and the local Postgres. Each new connection also costs ~13 KB (TLS handshake
+  plus postgres.js's type lookup) and the pool drops idle connections after 20s; that is known
+  and deliberately left alone, since `fetch_types: false` would stop arrays parsing in raw SQL.
 - **Runtime imports from `@workshop/shared` go through a subpath, not the barrel.** The barrel
   re-exports `./types.js` for backend's NodeNext resolution; Metro can't resolve those `.js`
   extensions at runtime. `import type` from the bare specifier is fine (Metro elides it); a

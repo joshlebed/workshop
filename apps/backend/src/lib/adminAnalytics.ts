@@ -511,50 +511,65 @@ const SHORT_PLATFORM: Record<AdminAnalyticsPlatform, string> = {
 /**
  * Request traffic from `request_rollups` — a backend-wide fact (both apps
  * share one API), so it is not filtered by client; the client split is a
- * breakdown instead. Everything is summed from hourly rows in JS.
+ * breakdown instead.
  */
 async function requestSeries(db: Db, buckets: Bucket[], last: string) {
   const first = buckets[0]?.start ?? utcDay(new Date());
   const sinceTs = new Date(`${first}T00:00:00Z`);
-  const rows = await db
-    .select({
-      hour: requestRollups.hour,
-      client: requestRollups.client,
-      platform: requestRollups.platform,
-      appVersion: requestRollups.appVersion,
-      method: requestRollups.method,
-      route: requestRollups.route,
-      requests: requestRollups.requests,
-      errors: requestRollups.errors,
-    })
-    .from(requestRollups)
-    .where(gte(requestRollups.hour, sinceTs));
-  const dayOf = (hour: Date) => utcDay(hour);
+  const last24 = new Date(Date.parse(`${last}T00:00:00Z`) + DAY_MS - 24 * 3_600_000);
+  const sevenDays = new Date(Date.parse(`${last}T00:00:00Z`) - 6 * DAY_MS);
+  const day = sql<string>`to_char((${requestRollups.hour} AT TIME ZONE 'UTC')::date, 'YYYY-MM-DD')`;
+  const requests = sql<number>`sum(${requestRollups.requests})::int`;
+  // Summed in SQL. The table has a row per hour x client x platform x version
+  // x route, and reading them all to add up here was ~640 KB out of the
+  // database for one dashboard load.
+  const [rows, [recent], week, [through]] = await Promise.all([
+    db
+      .select({ day, platform: requestRollups.platform, requests })
+      .from(requestRollups)
+      .where(gte(requestRollups.hour, sinceTs))
+      .groupBy(day, requestRollups.platform),
+    db
+      .select({ requests, errors: sql<number>`sum(${requestRollups.errors})::int` })
+      .from(requestRollups)
+      .where(gte(requestRollups.hour, last24)),
+    db
+      .select({
+        client: requestRollups.client,
+        platform: requestRollups.platform,
+        appVersion: requestRollups.appVersion,
+        method: requestRollups.method,
+        route: requestRollups.route,
+        requests,
+      })
+      .from(requestRollups)
+      .where(gte(requestRollups.hour, sevenDays))
+      .groupBy(
+        requestRollups.client,
+        requestRollups.platform,
+        requestRollups.appVersion,
+        requestRollups.method,
+        requestRollups.route,
+      ),
+    db.select({ max: sql<string | null>`max(${requestRollups.hour})` }).from(requestRollups),
+  ]);
   const counts = (list: typeof rows) => {
     const byDay = new Map<string, number>();
-    for (const r of list) byDay.set(dayOf(r.hour), (byDay.get(dayOf(r.hour)) ?? 0) + r.requests);
+    for (const r of list) byDay.set(r.day, (byDay.get(r.day) ?? 0) + r.requests);
     return sumSeries(buckets, byDay);
   };
-  const [through] = await db
-    .select({ max: sql<string | null>`max(${requestRollups.hour})` })
-    .from(requestRollups);
-
-  const last24 = new Date(Date.parse(`${last}T00:00:00Z`) + DAY_MS - 24 * 3_600_000);
-  const recent = rows.filter((r) => r.hour >= last24);
-  const sevenDays = new Date(Date.parse(`${last}T00:00:00Z`) - 6 * DAY_MS);
-  const week = rows.filter((r) => r.hour >= sevenDays);
-  const tally = <K extends string>(list: typeof rows, keyOf: (r: (typeof rows)[number]) => K) => {
+  const tally = <K extends string>(keyOf: (r: (typeof week)[number]) => K) => {
     const out = new Map<K, number>();
-    for (const r of list) out.set(keyOf(r), (out.get(keyOf(r)) ?? 0) + r.requests);
+    for (const r of week) out.set(keyOf(r), (out.get(keyOf(r)) ?? 0) + r.requests);
     return out;
   };
 
-  const versionLabel = (r: (typeof rows)[number]) =>
+  const versionLabel = (r: (typeof week)[number]) =>
     `${CLIENT_LABELS[r.client] ?? r.client} · ${SHORT_PLATFORM[platformSegment(r.platform)]} · ${r.appVersion}`;
-  const byClientVersion = tally(week, versionLabel);
+  const byClientVersion = tally(versionLabel);
   const platformOfLabel = new Map<string, AdminAnalyticsPlatform>();
   for (const r of week) platformOfLabel.set(versionLabel(r), platformSegment(r.platform));
-  const byRoute = tally(week, (r) => `${r.method} ${r.route}`);
+  const byRoute = tally((r) => `${r.method} ${r.route}`);
   const topN = (m: Map<string, number>, n: number) =>
     [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, n);
 
@@ -563,8 +578,8 @@ async function requestSeries(db: Db, buckets: Bucket[], last: string) {
     requestsStack: stackOf(
       byPlatform(rows).map((g) => ({ seg: g.seg, label: g.label, points: counts(g.rows) })),
     ),
-    requests24h: recent.reduce((a, r) => a + r.requests, 0),
-    errors24h: recent.reduce((a, r) => a + r.errors, 0),
+    requests24h: recent?.requests ?? 0,
+    errors24h: recent?.errors ?? 0,
     versions: topN(byClientVersion, 12).map(([label, value]) => ({
       label,
       value,

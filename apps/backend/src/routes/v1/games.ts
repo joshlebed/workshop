@@ -68,7 +68,7 @@ import {
   recognizeGameForUser,
   shadowRecognizePostedScore,
 } from "../../lib/gameRecognitionService.js";
-import { todayPeriodKey, toGameShape } from "../../lib/gameShapes.js";
+import { gameShapeColumns, todayPeriodKey, toGameShape } from "../../lib/gameShapes.js";
 import {
   loadReactionsForScores,
   loadStandingsByGame,
@@ -186,7 +186,11 @@ gameRoutes.get("/", async (c) => {
 
   const db = getDb();
   const rows = await db
-    .select({ game: games, position: userGames.position, addedAt: userGames.addedAt })
+    .select({
+      game: gameShapeColumns,
+      position: userGames.position,
+      addedAt: userGames.addedAt,
+    })
     .from(userGames)
     .innerJoin(games, eq(games.id, userGames.gameId))
     .where(eq(userGames.userId, userId))
@@ -344,7 +348,7 @@ gameRoutes.get("/discovery", async (c) => {
 
   const rows = await db
     .select({
-      game: games,
+      game: gameShapeColumns,
       friendId: userGames.userId,
       displayName: users.displayName,
       addedAt: userGames.addedAt,
@@ -404,7 +408,7 @@ gameRoutes.get("/catalog", async (c) => {
 
   const playerCount = sql<number>`count(${userGames.userId})::int`;
   const allGames = await db
-    .select({ game: games, playerCount })
+    .select({ game: gameShapeColumns, playerCount })
     .from(games)
     .leftJoin(userGames, eq(userGames.gameId, games.id))
     .groupBy(games.id)

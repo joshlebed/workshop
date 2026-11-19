@@ -42,7 +42,7 @@ import { toIsoString } from "../../lib/dates.js";
 import { sendFriendRequestPush } from "../../lib/friendRequestPush.js";
 import { addFriendship, canonicalPair, friendsOf, removeFriendship } from "../../lib/friends.js";
 import { scoreCodeFields } from "../../lib/gameCodeService.js";
-import { todayPeriodKey, toGameShape } from "../../lib/gameShapes.js";
+import { gameShapeColumns, todayPeriodKey, toGameShape } from "../../lib/gameShapes.js";
 import { resolveGameShareLink } from "../../lib/gameShareLinks.js";
 import { loadHeadToHead } from "../../lib/headToHead.js";
 import {
@@ -831,7 +831,7 @@ friendRoutes.get("/users/:userId", requireAuth, async (c) => {
   let profileGames: FriendProfileGame[];
   {
     const rows = await db
-      .select({ game: games })
+      .select({ game: gameShapeColumns })
       .from(userGames)
       .innerJoin(games, eq(games.id, userGames.gameId))
       .where(eq(userGames.userId, targetId))
