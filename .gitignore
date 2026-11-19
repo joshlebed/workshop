@@ -83,3 +83,6 @@ playwright-report/
 # setup work (no secrets, just pointers).
 docs/plans/*
 !docs/plans/HANDOFF.md
+
+# Local image storage (apps/backend `fs` image driver)
+.data/

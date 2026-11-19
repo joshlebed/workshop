@@ -856,7 +856,8 @@ and `GAME_CODE_PARSING` (each `off` | `shadow` | `on`) and `GAME_TEACH` (`off` |
 **default to `on` since the 2026-10-08 rollout to everyone**; set `off` as a kill switch (see
 `apps/backend/CLAUDE.md`),
 `SPOTIFY_CLIENT_ID`,
-`SPOTIFY_CLIENT_SECRET`, `DISCORD_NOTIFY_WEBHOOK_URL`, `LOG_LEVEL` from env vars set by Terraform.
+`SPOTIFY_CLIENT_SECRET`, `DISCORD_NOTIFY_WEBHOOK_URL`, `IMAGE_BUCKET`, `LOG_LEVEL` from env vars set by
+Terraform.
 `OPENAI_TEACH_TARGETS_MODEL` / `OPENAI_TEACH_CODEGEN_MODEL` and `OPENAI_TEACH_TARGETS_EFFORT` /
 `OPENAI_TEACH_CODEGEN_EFFORT` are optional overrides that Terraform does not set; `lib/config.ts`
 defaults both steps to `gpt-6-luna` at reasoning effort `none` (picked for latency under the 15s
