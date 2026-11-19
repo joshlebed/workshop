@@ -69,6 +69,8 @@ if [ "${PROD_SNAPSHOT:-1}" = "1" ]; then
   log "copying prod database into local postgres"
   if workshop_snapshot_prod_into_local; then
     SNAPSHOTTED=1
+    # The prod rows point at pictures in the image bucket; bring those too.
+    workshop_sync_prod_images
   else
     log "prod snapshot unavailable — falling back to synthetic seed"
   fi

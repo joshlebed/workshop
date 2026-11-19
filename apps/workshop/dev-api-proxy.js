@@ -9,6 +9,22 @@ const BACKEND_HOST = process.env.DEV_API_PROXY_HOST || "127.0.0.1";
 const BACKEND_PORT = Number(process.env.DEV_API_PROXY_PORT || process.env.PORT || 8787);
 const PREFIX = "/api";
 
+function browserOrigin(req) {
+  for (const value of [req.headers.origin, req.headers.referer]) {
+    try {
+      if (value) return new URL(value).origin;
+    } catch {
+      // Not a URL; try the next one.
+    }
+  }
+  const host = req.headers["x-forwarded-host"] || req.headers.host;
+  if (!host) return null;
+  const proto = String(req.headers["x-forwarded-proto"] || "http")
+    .split(",")[0]
+    .trim();
+  return `${proto}://${host}`;
+}
+
 function devApiProxy(req, res, next) {
   if (!req.url || (!req.url.startsWith(`${PREFIX}/`) && req.url !== PREFIX)) {
     return next();
@@ -16,6 +32,13 @@ function devApiProxy(req, res, next) {
 
   const forwardedPath = req.url.slice(PREFIX.length) || "/";
   const headers = { ...req.headers };
+  // Tell the backend where the browser reaches it, so URLs it hands back
+  // (uploaded images) point at this proxy rather than at its own localhost.
+  // The page's own origin (Origin / Referer) is what the browser really used,
+  // whatever a preview proxy in front did to Host. The backend reads this
+  // header only when STAGE=local.
+  const publicOrigin = browserOrigin(req);
+  if (publicOrigin) headers["x-workshop-public-base"] = `${publicOrigin}${PREFIX}`;
   delete headers.host;
   delete headers["content-length"];
 

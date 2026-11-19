@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Re-copy prod into the sandbox's local postgres (drops local data), then
-# apply any migrations on this branch. Run from an agent shell:
-#   .niteshift/files/snapshot-prod.sh
+# apply any migrations on this branch and re-sync prod's uploaded images.
+# Run from an agent shell:
+#   .niteshift/files/snapshot-prod.sh                  # cached dump if < 24h old
+#   SNAPSHOT_FRESH=1 .niteshift/files/snapshot-prod.sh # dump prod now
 set -euo pipefail
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_DIR"
@@ -18,3 +20,4 @@ workshop_resolve_database_url
 workshop_ensure_local_postgres
 workshop_snapshot_prod_into_local
 pnpm --filter @workshop/backend run db:migrate
+workshop_sync_prod_images
