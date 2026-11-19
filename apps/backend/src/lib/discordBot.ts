@@ -1,13 +1,9 @@
 // Discord bot for #workshop-admin: lets the operator start a Niteshift task
-// from Discord. Three entry points share this module:
+// from Discord. Two entry points share this module:
 //
 //   - `POST /discord/interactions` (routes/discordInteractions.ts): the
 //     `/niteshift <prompt>` slash command and the "Send to Niteshift" message
 //     context-menu command. Discord signs every request with Ed25519.
-//   - `{ "job": "discord-mentions" }` (jobs/discordMentions.ts): a per-minute
-//     poll for `@Niteshift` mentions. Mentions are gateway-only events and a
-//     Lambda can't hold a websocket, so we read the channel over REST and mark
-//     handled messages with the bot's own 🌒 reaction (stateless: no table).
 //   - `scripts/discord.mjs` (agents): read / post / register commands. Same
 //     config, read from SSM.
 //
@@ -184,7 +180,6 @@ export function startedText(taskUrl: string): string {
 // --- Discord REST ------------------------------------------------------------
 
 const API = "https://discord.com/api/v10";
-export const HANDLED_EMOJI = "🌒";
 
 export async function discordApi(
   config: DiscordBotConfig,
@@ -201,79 +196,6 @@ export async function discordApi(
     ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
     signal: AbortSignal.timeout(init.timeoutMs ?? 4000),
   });
-}
-
-export const discordMessageSchema = z.object({
-  id: z.string(),
-  content: z.string(),
-  author: z.object({
-    id: z.string(),
-    username: z.string(),
-    global_name: z.string().nullish(),
-    bot: z.boolean().optional(),
-  }),
-  mentions: z.array(z.object({ id: z.string() })).default([]),
-  mention_roles: z.array(z.string()).default([]),
-  reactions: z
-    .array(z.object({ me: z.boolean(), emoji: z.object({ name: z.string().nullable() }) }))
-    .optional(),
-  referenced_message: z
-    .object({
-      id: z.string(),
-      content: z.string(),
-      author: z.object({ username: z.string(), global_name: z.string().nullish() }),
-    })
-    .nullish(),
-});
-export type DiscordMessage = z.infer<typeof discordMessageSchema>;
-
-export function displayName(author: {
-  username: string;
-  global_name?: string | null | undefined;
-}): string {
-  return author.global_name || author.username;
-}
-
-/** Snowflake → creation time (ms since epoch). */
-export function snowflakeTime(id: string): number {
-  return Number((BigInt(id) >> 22n) + 1420070400000n);
-}
-
-// Discord doesn't run a slash command typed inside a reply — it posts the text.
-// Treat a message that starts with `/niteshift` as a trigger, so "reply to a
-// feedback message with /niteshift fix this" works like an @mention.
-const TEXT_COMMAND = /^\s*\/niteshift\b/i;
-
-/**
- * Does this message ask the bot for a task? An @mention of the bot user (a bot
- * user's id is its application id), of its managed role, or a text
- * `/niteshift …`.
- */
-export function triggersBot(message: DiscordMessage, config: DiscordBotConfig): boolean {
-  return (
-    message.mentions.some((u) => u.id === config.applicationId) ||
-    (config.botRoleId !== undefined && message.mention_roles.includes(config.botRoleId)) ||
-    TEXT_COMMAND.test(message.content)
-  );
-}
-
-/** Strip the trigger (mentions of the bot / its role, a leading `/niteshift`). */
-function stripTrigger(content: string, config: DiscordBotConfig): string {
-  let out = content.replace(new RegExp(`<@!?${config.applicationId}>`, "g"), "");
-  if (config.botRoleId) out = out.replace(new RegExp(`<@&${config.botRoleId}>`, "g"), "");
-  return out.replace(TEXT_COMMAND, "").trim();
-}
-
-/**
- * The task prompt for a message that triggers the bot. A reply carries the
- * message it replied to, so "@Niteshift implement this" under a feedback
- * message hands the agent both.
- */
-export function promptFromMention(message: DiscordMessage, config: DiscordBotConfig): string {
-  const ask = stripTrigger(message.content, config) || "Act on the message below.";
-  const ref = message.referenced_message;
-  if (!ref) return ask;
-  return `${ask}\n\nThe operator replied to this message:\n\n${untrustedBlock(displayName(ref.author), ref.id, ref.content)}`;
 }
 
 // --- Untrusted text ------------------------------------------------------------

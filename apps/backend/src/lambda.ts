@@ -1,7 +1,6 @@
 import { handle, type LambdaEvent } from "hono/aws-lambda";
 import { buildApp } from "./app.js";
 import { runDiscordHealthJob } from "./jobs/discordHealth.js";
-import { runDiscordMentionsJob } from "./jobs/discordMentions.js";
 import { runDiscordMergedJob } from "./jobs/discordMerged.js";
 import { runPlayReminderJob } from "./jobs/playReminders.js";
 import { runRequestRollupJob } from "./jobs/requestRollups.js";
@@ -14,13 +13,7 @@ const app = buildApp();
 warmGameCodeSandboxIfEnabled();
 const apiHandler = handle(app);
 
-const JOBS = [
-  "play-reminders",
-  "request-rollups",
-  "discord-mentions",
-  "discord-health",
-  "discord-merged",
-] as const;
+const JOBS = ["play-reminders", "request-rollups", "discord-health", "discord-merged"] as const;
 type JobName = (typeof JOBS)[number];
 
 interface JobEvent {
@@ -43,8 +36,6 @@ export async function handler(
       return runPlayReminderJob();
     case "request-rollups":
       return runRequestRollupJob();
-    case "discord-mentions":
-      return runDiscordMentionsJob();
     case "discord-health":
       return runDiscordHealthJob();
     case "discord-merged":

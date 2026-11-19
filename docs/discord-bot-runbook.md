@@ -1,27 +1,29 @@
 # Discord bot runbook (#workshop-admin ↔ Niteshift)
 
 The **Niteshift** Discord bot lets agents read and post in `#workshop-admin`, and lets the
-operator start a Niteshift task from Discord three ways:
+operator start a Niteshift task from Discord two ways:
 
-| How                                                      | Path                                                         | Latency |
-| -------------------------------------------------------- | ------------------------------------------------------------ | ------- |
-| `/niteshift prompt:<text>`                               | Discord → `POST <api>/discord/interactions` → Niteshift      | instant |
-| Right-click a message → Apps → **Send to Niteshift**     | same; the message text is the prompt, the task replies to it | instant |
-| `@Niteshift <text>` (optionally as a reply to a message) | `{job: "discord-mentions"}` polls every minute               | ≤ 1 min |
-| A message starting `/niteshift <text>` (e.g. in a reply) | same poll — Discord doesn't run slash commands in replies    | ≤ 1 min |
+| How                                                  | Path                                                         | Latency |
+| ---------------------------------------------------- | ------------------------------------------------------------ | ------- |
+| `/niteshift prompt:<text>`                           | Discord → `POST <api>/discord/interactions` → Niteshift      | instant |
+| Right-click a message → Apps → **Send to Niteshift** | same; the message text is the prompt, the task replies to it | instant |
+
+Both are pushed by Discord; nothing polls. An `@Niteshift` mention or a typed `/niteshift …`
+message does **nothing** (they were polled once a minute until Nov 2026): Discord only delivers
+mentions over its gateway websocket, which a Lambda can't hold. To act on an existing message,
+or from inside a reply, use **Send to Niteshift** on it.
 
 Each one fires the Niteshift automation **"Discord /niteshift → task"**
 (<https://niteshift.dev/automations/aut__pCmyroVGLTOEY-mPObcx>, repo `joshlebed/workshop`),
 which sends `{ prompt, author, messageId, threadId, source }`. Niteshift prepends that JSON to
 the automation prompt as-is and does **not** fill in `{{placeholders}}`, so the automation
 prompt names the fields instead. Only Discord user ids in `allowedUserIds` can start tasks; the
-commands are also limited to server admins and to the configured channel. A handled mention
-gets the bot's 🌒 reaction.
+commands are also limited to server admins and to the configured channel.
 
 ## Task lifecycle in Discord
 
 1. **Thread.** Each task gets a public thread on its starter message: the triggering message
-   (mention, Send to Niteshift), or for `/niteshift` a message the bot posts with the request.
+   (Send to Niteshift), or for `/niteshift` a message the bot posts with the request.
    A thread's id is its starter message's id. The task link goes into the thread, and the task
    posts progress and its PR there (`post --thread <id>`). A message can start only one
    thread, so a second **Send to Niteshift** on the same message answers "already has a task
@@ -117,7 +119,7 @@ Message text is real user feedback — fine in the sandbox, never in a public Ac
 ## Troubleshooting
 
 - **Logs**: `./scripts/logs.sh --filter discord` — `discord interaction refused`,
-  `niteshift webhook non-2xx`, `discord mentions: …`, `discord bot config invalid`,
+  `niteshift webhook non-2xx`, `discord bot config invalid`,
   `discord thread create failed`, `discord health`, `discord merged: …`.
 - **No ✅ after a merge**: the PR body needs a line `Discord-Message: <id>` on its own, the merge
   must be < 2 days old, and GitHub's anonymous rate limit (60/hour per IP, shared on Lambda
@@ -127,5 +129,4 @@ Message text is real user feedback — fine in the sandbox, never in a public Ac
 - **Rotate the bot token**: Reset Token in the portal, re-run `setup`, then `register`.
 - **Rotate the Niteshift webhook secret**: on the automation page, then edit
   `niteshiftWebhookSecret` in the SSM JSON.
-- **Mentions not picked up**: the bot needs Read Message History + Message Content Intent; the
-  message must be < 10 min old, from an allowed user, and not already 🌒-reacted by the bot.
+- **An `@Niteshift` mention did nothing**: by design; use `/niteshift` or **Send to Niteshift**.
