@@ -48,8 +48,8 @@ describe("GET /v1/admin/graph", () => {
     await migrate(testDb, { migrationsFolder: "./drizzle" });
 
     await run(
-      `INSERT INTO users (id, email, display_name, created_at, avatar_url) VALUES
-       ($1, 'joshlebed@gmail.com', 'Josh', now() - interval '40 days', 'data:image/png;base64,AAAA'),
+      `INSERT INTO users (id, email, display_name, created_at, avatar_key) VALUES
+       ($1, 'joshlebed@gmail.com', 'Josh', now() - interval '40 days', 'avatars/u/aaaaaaaaaaaaaaaa.png'),
        ($2, 'player@example.com', 'Player', now() - interval '20 days', NULL),
        ($3, 'lurker@example.com', 'Lurker', now() - interval '10 days', NULL),
        ($4, 'lists@example.com', 'Lists only', now() - interval '5 days', NULL)`,

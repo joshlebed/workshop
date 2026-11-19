@@ -9,6 +9,7 @@ vi.mock("../../db/client.js", () => ({
   getDb: () => testDb,
 }));
 
+import { storeImage } from "../../lib/images.js";
 import { publicUserRoutes } from "./users.js";
 
 const userWithAvatar = "00000000-0000-4000-8000-000000000021";
@@ -30,10 +31,14 @@ describe("GET /v1/users/:id/avatar", () => {
     await migrate(testDb, { migrationsFolder: "./drizzle" });
 
     await rows(
-      `INSERT INTO users (id, email, display_name, avatar_url) VALUES
-       ($1, 'avatar@example.com', 'Avatar', 'data:image/png;base64,AQID'),
+      `INSERT INTO users (id, email, display_name, avatar_key) VALUES
+       ($1, 'avatar@example.com', 'Avatar', $3),
        ($2, 'plain@example.com', 'Plain', NULL)`,
-      [userWithAvatar, userWithoutAvatar],
+      [
+        userWithAvatar,
+        userWithoutAvatar,
+        await storeImage("avatars", userWithAvatar, "data:image/png;base64,AQID"),
+      ],
     );
   });
 
@@ -78,9 +83,9 @@ describe("GET /v1/users/:id/avatar", () => {
   it("answers a re-check without reading the picture, and serves a changed one", async () => {
     const other = "00000000-0000-4000-8000-000000000023";
     await rows(
-      `INSERT INTO users (id, email, display_name, avatar_url) VALUES
-       ($1, 'changing@example.com', 'Changing', 'data:image/png;base64,AQID')`,
-      [other],
+      `INSERT INTO users (id, email, display_name, avatar_key) VALUES
+       ($1, 'changing@example.com', 'Changing', $2)`,
+      [other, await storeImage("avatars", other, "data:image/png;base64,AQID")],
     );
     const first = await publicUserRoutes.request(`/${other}/avatar`);
     const etag = first.headers.get("etag") ?? "";
@@ -93,8 +98,9 @@ describe("GET /v1/users/:id/avatar", () => {
     expect(select).toHaveBeenCalledTimes(1);
     select.mockRestore();
 
-    await rows(`UPDATE users SET avatar_url = 'data:image/jpeg;base64,BAUG' WHERE id = $1`, [
+    await rows(`UPDATE users SET avatar_key = $2 WHERE id = $1`, [
       other,
+      await storeImage("avatars", other, "data:image/jpeg;base64,BAUG"),
     ]);
     const changed = await publicUserRoutes.request(`/${other}/avatar`, {
       headers: { "If-None-Match": etag },

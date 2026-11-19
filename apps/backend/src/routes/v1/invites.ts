@@ -46,7 +46,7 @@ function toListShape(c: Context, l: DbList) {
     emoji: l.emoji,
     color: l.color as ListColor,
     description: l.description,
-    coverPhotoUrl: imageUrlForClient(c, { inline: l.coverPhotoUrl, key: l.coverPhotoKey }),
+    coverPhotoUrl: imageUrlForClient(c, l.coverPhotoKey),
     ownerId: l.ownerId,
     itemKind: l.itemKind,
     modules: l.modules,

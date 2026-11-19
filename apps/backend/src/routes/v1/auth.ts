@@ -93,7 +93,7 @@ function toUserShape(c: Context, u: DbUser) {
     email: u.email,
     displayName: u.displayName,
     isAdmin: isAdminUser(u),
-    avatarUrl: imageUrlForClient(c, { inline: u.avatarUrl, key: u.avatarKey }),
+    avatarUrl: imageUrlForClient(c, u.avatarKey),
     letterboxdUsername: u.letterboxdUsername,
     createdAt: u.createdAt.toISOString(),
     updatedAt: u.updatedAt.toISOString(),
