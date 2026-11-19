@@ -21,6 +21,7 @@ import {
   users,
 } from "../db/schema.js";
 import { isAdminUser } from "./admin.js";
+import { avatarVersionSql } from "./images.js";
 import { utcDay } from "./userActivity.js";
 
 const DAY_MS = 86_400_000;
@@ -133,7 +134,7 @@ export async function buildAdminGraph(now = new Date()): Promise<AdminGraphRespo
       createdAt: users.createdAt,
       signupSource: users.signupSource,
       referredByUserId: users.referredByUserId,
-      avatarVersion: sql<string | null>`left(md5(${users.avatarUrl}), 8)`,
+      avatarVersion: avatarVersionSql,
     })
     .from(users)
     .where(sql`${users.id} in ${[...memberIds]}`);

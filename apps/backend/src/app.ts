@@ -15,6 +15,7 @@ import { clientRoutes } from "./routes/v1/client.js";
 import { friendRoutes } from "./routes/v1/friends.js";
 import { gameShareRoutes } from "./routes/v1/gameShare.js";
 import { gameRoutes } from "./routes/v1/games.js";
+import { imageRoutes } from "./routes/v1/images.js";
 import { inviteRoutes, publicInviteRoutes } from "./routes/v1/invites.js";
 import { itemRoutes } from "./routes/v1/items.js";
 import { itemAcceptRoutes, listLetterboxdRoutes } from "./routes/v1/letterboxd.js";
@@ -151,6 +152,7 @@ export function buildApp() {
   );
 
   app.route("/v1/auth", authRoutes);
+  app.route("/v1/images", imageRoutes);
   app.route("/v1/users", publicUserRoutes);
   app.route("/v1/users", userRoutes);
   app.route("/v1", moderationRoutes);

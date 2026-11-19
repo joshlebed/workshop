@@ -440,6 +440,21 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   (1 min), `discord-merged` (10 min), `discord-health` (daily; re-sets a blanked endpoint URL).
   Only `allowedUserIds` can start tasks. Runbook: `docs/discord-bot-runbook.md`.
 
+- **Uploaded images (profile pictures, list cover photos) never live in Postgres, and one
+  module owns the rule: `apps/backend/src/lib/images.ts`.** A picture is an object in image
+  storage (`lib/imageStorage.ts`: the private S3 bucket when `IMAGE_BUCKET` is set, a directory
+  under `apps/backend/.data/images` locally and in tests) at
+  `<kind>/<owner id>/<content hash>.<ext>`, and the row keeps only that key (`users.avatar_key`,
+  `lists.cover_photo_key`). `GET /v1/images/<key>` serves it `immutable` with no database
+  query. Clients are unchanged: they upload a base64 `data:` URL in `avatarUrl` /
+  `coverPhotoUrl` and get an `https` image URL back in the same field (`imageUrlForClient`), so
+  **never return a stored `data:` URL in a response and never add a column that holds one** —
+  base64 pictures in rows cost 1.75 GB of Neon's 5 GB monthly transfer in 18 days. A new image
+  kind is an entry in `IMAGE_KINDS` (and the key pattern) plus a key column. A deployed stage without a bucket
+  refuses uploads with a 503. Legacy inline pictures (`users.avatar_url`,
+  `lists.cover_photo_url`) are still read until `{ "job": "image-backfill" }` moves them
+  (`docs/image-storage-migration.md`); nothing writes those columns.
+
 - **Profile pictures are fetched by URL, so the URL must change when the picture does.**
   `GET /v1/users/:id/avatar` is the same path forever and `Avatar` latches a failed load
   (`failedUrl`) for the life of the mount, so a row mounted before a user uploaded a photo

@@ -8,10 +8,11 @@ import type {
 import { type ItemKind, isItemKind } from "@workshop/shared/itemKinds";
 import type { ModuleName } from "@workshop/shared/modules";
 import { and, eq, isNull, sql } from "drizzle-orm";
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { getDb } from "../../db/client.js";
 import { type DbList, listInvites, listMembers, lists, users } from "../../db/schema.js";
 import { recordEvent } from "../../lib/events.js";
+import { imageUrlForClient } from "../../lib/images.js";
 import { notifyListJoined } from "../../lib/opsNotifications.js";
 import { err, ok } from "../../lib/response.js";
 import { executeRows } from "../../lib/sql.js";
@@ -38,14 +39,14 @@ inviteRoutes.use("*", requireAuth);
 
 // --- POST /v1/invites/:token/accept (legacy join via old share URLs) ---
 
-function toListShape(l: DbList) {
+function toListShape(c: Context, l: DbList) {
   return {
     id: l.id,
     name: l.name,
     emoji: l.emoji,
     color: l.color as ListColor,
     description: l.description,
-    coverPhotoUrl: l.coverPhotoUrl,
+    coverPhotoUrl: imageUrlForClient(c, { inline: l.coverPhotoUrl, key: l.coverPhotoKey }),
     ownerId: l.ownerId,
     itemKind: l.itemKind,
     modules: l.modules,
@@ -141,7 +142,7 @@ inviteRoutes.post("/invites/:token/accept", async (c) => {
     joinedAt: result.member.joinedAt.toISOString(),
   };
 
-  return ok(c, { list: toListShape(result.list), member: memberSummary });
+  return ok(c, { list: toListShape(c, result.list), member: memberSummary });
 });
 
 // --- GET /v1/invites/:token/preview (legacy OG preview) ---

@@ -9,13 +9,14 @@ import type {
   ScoreReactionSummary,
 } from "@workshop/shared/games";
 import { computeGameStreak, shiftPeriodKey } from "@workshop/shared/games";
-import { and, asc, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lte } from "drizzle-orm";
 import { getDb } from "../db/client.js";
 import { type DbGame, gameScoreReactions, gameScores, users } from "../db/schema.js";
 import { toIsoOrNull } from "./dates.js";
 import { friendsOf } from "./friends.js";
 import { normalizeScoreDirection } from "./gameCatalog.js";
 import { scoreCodeFields } from "./gameCodeService.js";
+import { avatarVersionSql } from "./images.js";
 import { rankEntries } from "./ranking.js";
 import { teachModeFor } from "./teach/gate.js";
 import { scorePickFields } from "./teach/scores.js";
@@ -99,7 +100,7 @@ async function avatarVersionsFor(userIds: string[]): Promise<Map<string, string 
   const rows = await getDb()
     .select({
       id: users.id,
-      version: sql<string | null>`left(md5(${users.avatarUrl}), 8)`,
+      version: avatarVersionSql,
     })
     .from(users)
     .where(inArray(users.id, userIds));
