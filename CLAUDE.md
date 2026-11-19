@@ -451,16 +451,14 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   **never return a stored `data:` URL in a response and never add a column that holds one** —
   base64 pictures in rows cost 1.75 GB of Neon's 5 GB monthly transfer in 18 days. A new image
   kind is an entry in `IMAGE_KINDS` (and the key pattern) plus a key column. A deployed stage without a bucket
-  refuses uploads with a 503. Legacy inline pictures (`users.avatar_url`,
-  `lists.cover_photo_url`) are still read until `{ "job": "image-backfill" }` moves them
-  (`docs/image-storage-migration.md`); nothing writes those columns.
+  refuses uploads with a 503. The old inline columns (`users.avatar_url`,
+  `lists.cover_photo_url`) are unused: a one-off backfill emptied them and no code reads them.
 
 - **Profile pictures are fetched by URL, so the URL must change when the picture does.**
   `GET /v1/users/:id/avatar` is the same path forever and `Avatar` latches a failed load
   (`failedUrl`) for the life of the mount, so a row mounted before a user uploaded a photo
   kept initials while rows mounted after showed the photo (the "my pfp is different in Daily
-  Tens and Krillion" report). Standings entries now carry `avatarVersion` (`left(md5(avatar_url),
-8)`, null without a picture); build row URLs with `userAvatarImageUrl(userId, avatarVersion)`
+  Tens and Krillion" report). Standings entries now carry `avatarVersion` (`avatarVersionSql`, null without a picture); build row URLs with `userAvatarImageUrl(userId, avatarVersion)`
   so null skips the fetch and a new picture is a new `?v=` URL. Surfaces whose payload has no
   version (friends list, profiles) still call the one-arg form and inherit the stale-for-60s
   behaviour; thread a version through when you touch them. **The route must stay cheap for a

@@ -81,8 +81,8 @@ export interface User {
   isAdmin: boolean;
   /**
    * The profile picture as something an image can load: an `https` URL of the
-   * API's image route (a legacy base64 `data:` URL for a picture not yet moved
-   * there). Null when using initials. Uploads send a `data:` URL here.
+   * API's image route. Null when using initials. Uploads send a base64
+   * `data:` URL here.
    */
   avatarUrl: string | null;
   /**

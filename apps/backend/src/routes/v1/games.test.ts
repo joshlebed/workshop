@@ -458,21 +458,21 @@ describe("GET /v1/games — ordered list + standings block per game", () => {
     };
     expect(await myVersion()).toBeNull();
 
-    await rows(`UPDATE users SET avatar_url = 'data:image/png;base64,AQID' WHERE id = $1`, [
+    await rows(`UPDATE users SET avatar_key = 'avatars/u/aaaaaaaaaaaaaaaa.png' WHERE id = $1`, [
       userId,
     ]);
     const v1 = await myVersion();
     expect(v1).toMatch(/^[0-9a-f]{8}$/);
     // Same picture → same version; a different picture → a different one.
     expect(await myVersion()).toBe(v1);
-    await rows(`UPDATE users SET avatar_url = 'data:image/png;base64,BAUG' WHERE id = $1`, [
+    await rows(`UPDATE users SET avatar_key = 'avatars/u/bbbbbbbbbbbbbbbb.png' WHERE id = $1`, [
       userId,
     ]);
     const v2 = await myVersion();
     expect(v2).toMatch(/^[0-9a-f]{8}$/);
     expect(v2).not.toBe(v1);
 
-    await rows(`UPDATE users SET avatar_url = NULL WHERE id = $1`, [userId]);
+    await rows(`UPDATE users SET avatar_key = NULL WHERE id = $1`, [userId]);
   });
 
   it("returns my games in position order with a per-game standings block", async () => {

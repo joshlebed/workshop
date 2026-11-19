@@ -9,7 +9,6 @@ import { notifyDiscord } from "../../lib/discord.js";
 import { displayNameSchema } from "../../lib/displayName.js";
 import {
   avatarVersionSql,
-  decodeImageDataUrl,
   discardImage,
   imageUrlForClient,
   readImage,
@@ -79,7 +78,7 @@ function toUserShape(c: Context, u: DbUser) {
     email: u.email,
     displayName: u.displayName,
     isAdmin: isAdminUser(u),
-    avatarUrl: imageUrlForClient(c, { inline: u.avatarUrl, key: u.avatarKey }),
+    avatarUrl: imageUrlForClient(c, u.avatarKey),
     letterboxdUsername: u.letterboxdUsername,
     createdAt: u.createdAt.toISOString(),
     updatedAt: u.updatedAt.toISOString(),
@@ -108,9 +107,8 @@ const AVATAR_CACHE_UNVERSIONED = "private, max-age=60, stale-while-revalidate=60
 /**
  * Serves a profile picture. The first query reads only the picture's version
  * (the same `avatarVersion` the standings carry) and is the response's ETag, so
- * a client re-checking its copy gets a 304 and the picture itself is read (from
- * image storage, or the row for one not yet moved there) only for a client
- * that has no current copy.
+ * a client re-checking its copy gets a 304 and the picture itself is read from
+ * image storage only for a client that has no current copy.
  */
 publicUserRoutes.get("/:id/avatar", async (c) => {
   const parsed = uuidSchema.safeParse(c.req.param("id"));
@@ -138,15 +136,11 @@ publicUserRoutes.get("/:id/avatar", async (c) => {
   }
 
   const [user] = await db
-    .select({ avatarUrl: users.avatarUrl, avatarKey: users.avatarKey })
+    .select({ avatarKey: users.avatarKey })
     .from(users)
     .where(eq(users.id, userId))
     .limit(1);
-  const image = user?.avatarKey
-    ? await readImage(user.avatarKey)
-    : user?.avatarUrl
-      ? decodeImageDataUrl(user.avatarUrl)
-      : null;
+  const image = user?.avatarKey ? await readImage(user.avatarKey) : null;
   if (!image) return err(c, "NOT_FOUND", "profile picture not found");
 
   return new Response(image.body, {
@@ -176,7 +170,7 @@ userRoutes.patch("/me", async (c) => {
   if (!parsed.ok) return parsed.response;
   const userId = c.get("userId");
   const db = getDb();
-  const patch: Partial<Pick<DbUser, "displayName" | "avatarUrl" | "avatarKey">> & {
+  const patch: Partial<Pick<DbUser, "displayName" | "avatarKey">> & {
     updatedAt: Date;
   } = { updatedAt: new Date() };
   if (parsed.data.displayName !== undefined) patch.displayName = parsed.data.displayName;
@@ -186,12 +180,12 @@ userRoutes.patch("/me", async (c) => {
   let previousKey: string | null = null;
   if (parsed.data.avatarUrl !== undefined) {
     const [current] = await db
-      .select({ inline: users.avatarUrl, key: users.avatarKey })
+      .select({ key: users.avatarKey })
       .from(users)
       .where(eq(users.id, userId))
       .limit(1);
     if (!current) return err(c, "NOT_FOUND", "user not found");
-    const write = await resolveImageWrite("avatars", userId, parsed.data.avatarUrl, current);
+    const write = await resolveImageWrite("avatars", userId, parsed.data.avatarUrl, current.key);
     if (!write.ok) {
       return write.reason === "unavailable"
         ? err(c, "INTERNAL", "profile pictures are unavailable right now", undefined, 503)
@@ -200,7 +194,6 @@ userRoutes.patch("/me", async (c) => {
     if (write.changed) {
       if (current.key !== write.key) previousKey = current.key;
       patch.avatarKey = write.key;
-      patch.avatarUrl = null;
     }
   }
   const [updated] = await db.update(users).set(patch).where(eq(users.id, userId)).returning();

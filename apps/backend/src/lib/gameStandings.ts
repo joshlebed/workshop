@@ -91,8 +91,7 @@ export async function loadReactionsForScores(
 
 /**
  * Per-user profile-picture version for standings rows: the first 8 hex chars
- * of `md5(avatar_url)`, null for users without one. Hashed once per user (not
- * per score row) because a data-URL avatar can run to ~1MB.
+ * of the picture key's md5 (`avatarVersionSql`), null for users without one.
  */
 async function avatarVersionsFor(userIds: string[]): Promise<Map<string, string | null>> {
   const versions = new Map<string, string | null>();

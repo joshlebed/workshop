@@ -1,6 +1,6 @@
 // Uploaded images end to end, on real SQL (PGlite) and the real local image
 // driver (a temp directory, set in test-setup.ts): profile pictures, list
-// cover photos, the image route, and the backfill of legacy inline pictures.
+// cover photos, and the image route.
 
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -16,7 +16,6 @@ let testDb: ReturnType<typeof drizzle>;
 vi.mock("../../db/client.js", () => ({ getDb: () => testDb }));
 vi.mock("../../lib/discord.js", () => ({ notifyDiscord: vi.fn() }));
 
-import { runImageBackfillJob } from "../../jobs/imageBackfill.js";
 import { imageRoutes } from "./images.js";
 import { listRoutes } from "./lists.js";
 import { publicUserRoutes, userRoutes } from "./users.js";
@@ -28,8 +27,6 @@ const app = new Hono()
   .route("/v1/lists", listRoutes);
 
 const userId = "00000000-0000-4000-8000-000000000041";
-const legacyUserId = "00000000-0000-4000-8000-000000000042";
-const legacyListId = "00000000-0000-4000-8000-0000000000d1";
 const PNG = "data:image/png;base64,AQID";
 const JPEG = "data:image/jpeg;base64,BAUG";
 const API = "http://api.test";
@@ -71,18 +68,7 @@ beforeAll(async () => {
   process.env.SESSION_SECRET = "x".repeat(32);
   testDb = drizzle(new PGlite());
   await migrate(testDb, { migrationsFolder: "./drizzle" });
-  await rows(
-    `INSERT INTO users (id, email, display_name, avatar_url) VALUES
-       ($1, 'i@example.com', 'Imogen', NULL), ($2, 'l@example.com', 'Legacy', $3)`,
-    [userId, legacyUserId, "data:image/webp;base64,BwgJ"],
-  );
-  await rows(
-    `INSERT INTO lists (id, name, emoji, color, share_slug, owner_id, cover_photo_url)
-     VALUES ($1, 'Legacy', '📝', 'ocean', 'legacy', $2, $3)`,
-    [legacyListId, userId, "data:image/gif;base64,CgsM"],
-  );
-  await rows(`INSERT INTO list_members (list_id, user_id, role) VALUES ($1, $2, 'owner')`, [
-    legacyListId,
+  await rows(`INSERT INTO users (id, email, display_name) VALUES ($1, 'i@example.com', 'Imogen')`, [
     userId,
   ]);
 }, 60_000);
@@ -96,8 +82,8 @@ describe("profile pictures", () => {
     expect(status).toBe(200);
     const url = body.user.avatarUrl;
     expect(url).toMatch(new RegExp(`^${API}/v1/images/avatars/${userId}/[0-9a-f]{16}\\.png$`));
-    expect(await rows(`SELECT avatar_url, avatar_key FROM users WHERE id = $1`, [userId])).toEqual([
-      { avatar_url: null, avatar_key: keyOf(url) },
+    expect(await rows(`SELECT avatar_key FROM users WHERE id = $1`, [userId])).toEqual([
+      { avatar_key: keyOf(url) },
     ]);
     expect(await fetchImage(url)).toEqual({
       status: 200,
@@ -160,8 +146,8 @@ describe("list cover photos", () => {
     expect(created.status).toBe(201);
     const { id, coverPhotoUrl: first } = created.body.list;
     expect(first).toMatch(new RegExp(`^${API}/v1/images/list-covers/${id}/[0-9a-f]{16}\\.png$`));
-    expect(await rows(`SELECT cover_photo_url FROM lists WHERE id = $1`, [id])).toEqual([
-      { cover_photo_url: null },
+    expect(await rows(`SELECT cover_photo_key FROM lists WHERE id = $1`, [id])).toEqual([
+      { cover_photo_key: keyOf(first) },
     ]);
     expect((await fetchImage(first)).bytes).toEqual([1, 2, 3]);
 
@@ -197,55 +183,5 @@ describe("GET /v1/images", () => {
     ]) {
       expect((await app.request(`${API}${path}`)).status).toBe(404);
     }
-  });
-});
-
-describe("image backfill", () => {
-  it("serves legacy inline pictures untouched before the backfill", async () => {
-    const avatar = await fetchImage(`${API}/v1/users/${legacyUserId}/avatar`);
-    expect(avatar).toMatchObject({ status: 200, type: "image/webp", bytes: [7, 8, 9] });
-    const home = await call<{ lists: ListBody["list"][] }>("GET", "/v1/lists");
-    expect(home.body.lists.find((l) => l.id === legacyListId)?.coverPhotoUrl).toBe(
-      "data:image/gif;base64,CgsM",
-    );
-  });
-
-  it("reports in a dry run, then moves both kinds and is safe to re-run", async () => {
-    expect(await runImageBackfillJob({ dryRun: true })).toEqual({
-      dryRun: true,
-      moved: 2,
-      unreadable: 0,
-      remaining: 2,
-    });
-    expect(await runImageBackfillJob()).toEqual({
-      dryRun: false,
-      moved: 2,
-      unreadable: 0,
-      remaining: 0,
-    });
-
-    const [user] = await rows<{ avatar_url: string | null; avatar_key: string }>(
-      `SELECT avatar_url, avatar_key FROM users WHERE id = $1`,
-      [legacyUserId],
-    );
-    expect(user?.avatar_url).toBeNull();
-    expect(await fetchImage(`${API}/v1/images/${user?.avatar_key}`)).toMatchObject({
-      type: "image/webp",
-      bytes: [7, 8, 9],
-    });
-    const home = await call<{ lists: ListBody["list"][] }>("GET", "/v1/lists");
-    const cover = home.body.lists.find((l) => l.id === legacyListId)?.coverPhotoUrl ?? null;
-    expect(cover).toContain(`/v1/images/list-covers/${legacyListId}/`);
-    expect(await fetchImage(cover)).toMatchObject({ type: "image/gif", bytes: [10, 11, 12] });
-
-    expect(await runImageBackfillJob()).toMatchObject({ moved: 0, remaining: 0 });
-  });
-
-  it("leaves a row alone when its inline value is not a picture", async () => {
-    await rows(`UPDATE users SET avatar_url = 'not a picture', avatar_key = NULL WHERE id = $1`, [
-      legacyUserId,
-    ]);
-    expect(await runImageBackfillJob()).toMatchObject({ moved: 0, unreadable: 1, remaining: 1 });
-    await rows(`UPDATE users SET avatar_url = NULL WHERE id = $1`, [legacyUserId]);
   });
 });

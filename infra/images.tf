@@ -4,7 +4,7 @@
 # against Neon's network transfer allowance (4.25 of 5 GB by day 18 of
 # Nov 2026). An S3 object in the Lambda's own region costs nothing to read and
 # ~$0.023/GB-month to keep. Migration plan and runbook:
-# docs/image-storage-migration.md.
+# the image storage migration (Nov 2026).
 #
 # The bucket is private. Images are served by the API (`GET /v1/images/*`,
 # apps/backend/src/lib/images.ts), so there is no public URL and no CDN.

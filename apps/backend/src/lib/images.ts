@@ -23,10 +23,6 @@ import { logger } from "./logger.js";
  * Clients upload a base64 `data:` URL in the field they always used
  * (`avatarUrl`, `coverPhotoUrl`) and get back an `https` URL of the image
  * route in that same field.
- *
- * Legacy: rows written before the move still hold the `data:` URL itself in
- * `users.avatar_url` / `lists.cover_photo_url`. They are read as before until
- * the `image-backfill` job moves them; nothing writes those columns any more.
  */
 
 const IMAGE_KINDS = ["avatars", "list-covers"] as const;
@@ -50,7 +46,7 @@ function contentTypeOfExt(ext: string): string {
 }
 
 /** A `data:` URL's picture, or null when it is not one we accept. */
-export function decodeImageDataUrl(dataUrl: string): (Image & { ext: string }) | null {
+function decodeImageDataUrl(dataUrl: string): (Image & { ext: string }) | null {
   const match = dataUrl.match(DATA_URL_RE);
   if (!match) return null;
   const kind = match[1] ?? "png";
@@ -125,19 +121,12 @@ function publicApiBase(c: Context): string {
   return new URL(c.req.url).origin;
 }
 
-interface StoredImageColumns {
-  /** Legacy `data:` URL column. */
-  inline: string | null;
-  key: string | null;
-}
-
 /**
  * What a client gets in `avatarUrl` / `coverPhotoUrl`: the image route's URL
- * for a stored picture, the legacy `data:` URL for a row not yet moved.
+ * for the stored picture, null without one.
  */
-export function imageUrlForClient(c: Context, image: StoredImageColumns): string | null {
-  if (image.key) return `${publicApiBase(c)}/v1/images/${image.key}`;
-  return image.inline;
+export function imageUrlForClient(c: Context, key: string | null): string | null {
+  return key ? `${publicApiBase(c)}/v1/images/${key}` : null;
 }
 
 /**
@@ -154,19 +143,16 @@ export async function resolveImageWrite(
   kind: ImageKind,
   ownerId: string,
   value: string | null,
-  current: StoredImageColumns,
+  currentKey: string | null,
 ): Promise<
   | { ok: true; changed: boolean; key: string | null }
   | { ok: false; reason: "invalid" | "unavailable" }
 > {
   if (value === null) {
-    return { ok: true, changed: current.key !== null || current.inline !== null, key: null };
+    return { ok: true, changed: currentKey !== null, key: null };
   }
-  if (current.key && value.endsWith(`/v1/images/${current.key}`)) {
-    return { ok: true, changed: false, key: current.key };
-  }
-  if (!current.key && current.inline !== null && value === current.inline) {
-    return { ok: true, changed: false, key: null };
+  if (currentKey && value.endsWith(`/v1/images/${currentKey}`)) {
+    return { ok: true, changed: false, key: currentKey };
   }
   if (!decodeImageDataUrl(value)) return { ok: false, reason: "invalid" };
   if (!imageStorageAvailable()) return { ok: false, reason: "unavailable" };
@@ -180,6 +166,4 @@ export async function resolveImageWrite(
  * picture does, NULL without one. The key carries a content hash, so hashing
  * the key is hashing the picture.
  */
-export const avatarVersionSql = sql<
-  string | null
->`left(md5(coalesce(${users.avatarKey}, ${users.avatarUrl})), 8)`;
+export const avatarVersionSql = sql<string | null>`left(md5(${users.avatarKey}), 8)`;

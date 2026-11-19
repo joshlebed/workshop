@@ -3,7 +3,6 @@ import { buildApp } from "./app.js";
 import { runDiscordHealthJob } from "./jobs/discordHealth.js";
 import { runDiscordMentionsJob } from "./jobs/discordMentions.js";
 import { runDiscordMergedJob } from "./jobs/discordMerged.js";
-import { runImageBackfillJob } from "./jobs/imageBackfill.js";
 import { runPlayReminderJob } from "./jobs/playReminders.js";
 import { runRequestRollupJob } from "./jobs/requestRollups.js";
 import { isSnsEvent, runVendorAlarmJob } from "./jobs/vendorAlarm.js";
@@ -21,7 +20,6 @@ const JOBS = [
   "discord-mentions",
   "discord-health",
   "discord-merged",
-  "image-backfill",
 ] as const;
 type JobName = (typeof JOBS)[number];
 
@@ -51,8 +49,6 @@ export async function handler(
       return runDiscordHealthJob();
     case "discord-merged":
       return runDiscordMergedJob();
-    case "image-backfill":
-      return runImageBackfillJob({ dryRun: (event as { dryRun?: unknown }).dryRun === true });
     default:
       return apiHandler(event as LambdaEvent, context);
   }

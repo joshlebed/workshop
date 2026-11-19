@@ -233,7 +233,7 @@ function toListShape(c: Context, l: DbList): List {
     emoji: l.emoji,
     color: l.color as ListColor,
     description: l.description,
-    coverPhotoUrl: imageUrlForClient(c, { inline: l.coverPhotoUrl, key: l.coverPhotoKey }),
+    coverPhotoUrl: imageUrlForClient(c, l.coverPhotoKey),
     ownerId: l.ownerId,
     itemKind: (l.itemKind && isItemKind(l.itemKind) ? (l.itemKind as ItemKind) : null) ?? null,
     modules: (l.modules ?? []) as ModuleName[],
@@ -525,7 +525,6 @@ listRoutes.get("/", async (c) => {
     emoji: string;
     color: string;
     description: string | null;
-    cover_photo_url: string | null;
     cover_photo_key: string | null;
     owner_id: string;
     item_kind: string | null;
@@ -547,7 +546,7 @@ listRoutes.get("/", async (c) => {
     db,
     sql`
       SELECT
-        l.id, l.name, l.emoji, l.color, l.description, l.cover_photo_url, l.cover_photo_key, l.owner_id,
+        l.id, l.name, l.emoji, l.color, l.description, l.cover_photo_key, l.owner_id,
         l.item_kind, l.modules, l.share_slug, l.share_visibility, l.created_at, l.updated_at,
         me.role::text AS my_role, me.pinned_at, me.archived_at, me.muted_at,
         (SELECT COUNT(*)::int FROM list_members m WHERE m.list_id = l.id) AS member_count,
@@ -594,7 +593,7 @@ listRoutes.get("/", async (c) => {
     emoji: r.emoji,
     color: r.color as ListColor,
     description: r.description,
-    coverPhotoUrl: imageUrlForClient(c, { inline: r.cover_photo_url, key: r.cover_photo_key }),
+    coverPhotoUrl: imageUrlForClient(c, r.cover_photo_key),
     ownerId: r.owner_id,
     itemKind: (r.item_kind && isItemKind(r.item_kind) ? r.item_kind : null) as ItemKind | null,
     modules: (r.modules ?? []) as ModuleName[],
@@ -1088,17 +1087,16 @@ listRoutes.patch("/:id", requireListMember, async (c) => {
   if (data.description !== undefined) patch.description = data.description;
   let replacedCoverKey: string | null = null;
   if (data.coverPhotoUrl !== undefined) {
-    const current = { inline: existing.coverPhotoUrl, key: existing.coverPhotoKey };
-    const write = await resolveImageWrite("list-covers", listId, data.coverPhotoUrl, current);
+    const currentKey = existing.coverPhotoKey;
+    const write = await resolveImageWrite("list-covers", listId, data.coverPhotoUrl, currentKey);
     if (!write.ok) {
       return write.reason === "unavailable"
         ? err(c, "INTERNAL", "cover photos are unavailable right now", undefined, 503)
         : err(c, "VALIDATION", "cover photo must be a base64 data URL");
     }
     if (write.changed) {
-      if (current.key !== write.key) replacedCoverKey = current.key;
+      if (currentKey !== write.key) replacedCoverKey = currentKey;
       patch.coverPhotoKey = write.key;
-      patch.coverPhotoUrl = null;
     }
   }
   if (wantsItemKind) patch.itemKind = data.itemKind ?? null;
@@ -1363,12 +1361,8 @@ listRoutes.post(
     // never takes the other's photo.
     const dupId = randomUUID();
     let dupCoverKey: string | null = null;
-    if (imageStorageAvailable()) {
-      if (source.coverPhotoKey) {
-        dupCoverKey = await copyImage(source.coverPhotoKey, "list-covers", dupId);
-      } else if (source.coverPhotoUrl) {
-        dupCoverKey = await storeImage("list-covers", dupId, source.coverPhotoUrl);
-      }
+    if (source.coverPhotoKey && imageStorageAvailable()) {
+      dupCoverKey = await copyImage(source.coverPhotoKey, "list-covers", dupId);
     }
 
     const dup = await db.transaction(async (tx) => {
