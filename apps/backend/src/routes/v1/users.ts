@@ -93,25 +93,58 @@ function toImpersonationTargetShape(u: {
   };
 }
 
+// A URL carrying the picture's current version can never show a different
+// picture, so the client keeps it for good. The bare URL is fresh for a minute,
+// then shown from the client's copy while it is re-checked in the background.
+const AVATAR_CACHE_VERSIONED = "public, max-age=31536000, immutable";
+const AVATAR_CACHE_UNVERSIONED = "private, max-age=60, stale-while-revalidate=604800";
+
+/**
+ * Serves a profile picture. The first query reads only the picture's version
+ * (the same `avatarVersion` the standings carry) and is the response's ETag, so
+ * a client re-checking its copy gets a 304 and the stored picture (a ~185KB
+ * base64 string, once the largest use of the database's network transfer) is
+ * read only for a client that has no current copy.
+ */
 publicUserRoutes.get("/:id/avatar", async (c) => {
   const parsed = uuidSchema.safeParse(c.req.param("id"));
   if (!parsed.success) return err(c, "NOT_FOUND", "profile picture not found");
+  const userId = parsed.data;
 
   const db = getDb();
+  const [meta] = await db
+    .select({ version: sql<string | null>`left(md5(${users.avatarUrl}), 8)` })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  const version = meta?.version;
+  if (!version) return err(c, "NOT_FOUND", "profile picture not found");
+
+  const etag = `"${version}"`;
+  const cacheControl =
+    c.req.query("v") === version ? AVATAR_CACHE_VERSIONED : AVATAR_CACHE_UNVERSIONED;
+  const ifNoneMatch = c.req.header("if-none-match");
+  if (ifNoneMatch?.split(",").some((tag) => tag.trim().replace(/^W\//, "") === etag)) {
+    return new Response(null, {
+      status: 304,
+      headers: { "Cache-Control": cacheControl, ETag: etag },
+    });
+  }
+
   const [user] = await db
     .select({ avatarUrl: users.avatarUrl })
     .from(users)
-    .where(eq(users.id, parsed.data))
+    .where(eq(users.id, userId))
     .limit(1);
   const match = user?.avatarUrl?.match(avatarDataUrlRe);
   if (!match) return err(c, "NOT_FOUND", "profile picture not found");
-
   const [, kind, payload] = match;
-  const body = Buffer.from(payload ?? "", "base64");
-  return new Response(body, {
+
+  return new Response(Buffer.from(payload ?? "", "base64"), {
     headers: {
-      "Cache-Control": "private, max-age=60",
+      "Cache-Control": cacheControl,
       "Content-Type": avatarContentType(kind ?? "png"),
+      ETag: etag,
     },
   });
 });

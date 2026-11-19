@@ -448,7 +448,11 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
 8)`, null without a picture); build row URLs with `userAvatarImageUrl(userId, avatarVersion)`
   so null skips the fetch and a new picture is a new `?v=` URL. Surfaces whose payload has no
   version (friends list, profiles) still call the one-arg form and inherit the stale-for-60s
-  behaviour; thread a version through when you touch them.
+  behaviour; thread a version through when you touch them. **The route must stay cheap for a
+  client that already has the picture:** the version is the response's `ETag`, a matching
+  `If-None-Match` gets a 304 from a version-only query, and a URL whose `?v=` is current is
+  `immutable`. Before that (Nov 2026) every request re-read the ~185KB base64 picture from
+  Neon — 1.75 GB of the 5 GB monthly transfer allowance in 18 days.
 
 - **Backend-minted app links carry a validated client identity.** Every request from
   `@workshop/api-client` includes `X-Workshop-Client: workshop|highscore`, configured once in

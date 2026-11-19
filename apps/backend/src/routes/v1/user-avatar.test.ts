@@ -42,8 +42,66 @@ describe("GET /v1/users/:id/avatar", () => {
 
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("image/png");
-    expect(res.headers.get("cache-control")).toBe("private, max-age=60");
+    expect(res.headers.get("cache-control")).toBe(
+      "private, max-age=60, stale-while-revalidate=604800",
+    );
     expect(Buffer.from(await res.arrayBuffer())).toEqual(Buffer.from([1, 2, 3]));
+  });
+
+  it("caches a URL carrying the current version for good", async () => {
+    const first = await publicUserRoutes.request(`/${userWithAvatar}/avatar`);
+    const version = first.headers.get("etag")?.replaceAll('"', "");
+    expect(version).toHaveLength(8);
+
+    const current = await publicUserRoutes.request(`/${userWithAvatar}/avatar?v=${version}`);
+    expect(current.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+
+    const stale = await publicUserRoutes.request(`/${userWithAvatar}/avatar?v=00000000`);
+    expect(stale.status).toBe(200);
+    expect(stale.headers.get("cache-control")).toBe(
+      "private, max-age=60, stale-while-revalidate=604800",
+    );
+  });
+
+  it("answers a matching If-None-Match with 304 and no body", async () => {
+    const first = await publicUserRoutes.request(`/${userWithAvatar}/avatar`);
+    const etag = first.headers.get("etag") ?? "";
+
+    const res = await publicUserRoutes.request(`/${userWithAvatar}/avatar`, {
+      headers: { "If-None-Match": etag },
+    });
+    expect(res.status).toBe(304);
+    expect(res.headers.get("etag")).toBe(etag);
+    expect((await res.arrayBuffer()).byteLength).toBe(0);
+  });
+
+  it("answers a re-check without reading the picture, and serves a changed one", async () => {
+    const other = "00000000-0000-4000-8000-000000000023";
+    await rows(
+      `INSERT INTO users (id, email, display_name, avatar_url) VALUES
+       ($1, 'changing@example.com', 'Changing', 'data:image/png;base64,AQID')`,
+      [other],
+    );
+    const first = await publicUserRoutes.request(`/${other}/avatar`);
+    const etag = first.headers.get("etag") ?? "";
+
+    const select = vi.spyOn(testDb, "select");
+    const recheck = await publicUserRoutes.request(`/${other}/avatar`, {
+      headers: { "If-None-Match": etag },
+    });
+    expect(recheck.status).toBe(304);
+    expect(select).toHaveBeenCalledTimes(1);
+    select.mockRestore();
+
+    await rows(`UPDATE users SET avatar_url = 'data:image/jpeg;base64,BAUG' WHERE id = $1`, [
+      other,
+    ]);
+    const changed = await publicUserRoutes.request(`/${other}/avatar`, {
+      headers: { "If-None-Match": etag },
+    });
+    expect(changed.status).toBe(200);
+    expect(changed.headers.get("content-type")).toBe("image/jpeg");
+    expect(Buffer.from(await changed.arrayBuffer())).toEqual(Buffer.from([4, 5, 6]));
   });
 
   it("404s when the user has no profile picture", async () => {
