@@ -452,7 +452,7 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   base64 pictures in rows cost 1.75 GB of Neon's 5 GB monthly transfer in 18 days. A new image
   kind is an entry in `IMAGE_KINDS` (and the key pattern) plus a key column. A deployed stage without a bucket
   refuses uploads with a 503. The old inline columns (`users.avatar_url`,
-  `lists.cover_photo_url`) are unused: a one-off backfill emptied them and no code reads them.
+  `lists.cover_photo_url`) were dropped in migration 0063 after a one-off backfill.
 
 - **Profile pictures are fetched by URL, so the URL must change when the picture does.**
   `GET /v1/users/:id/avatar` is the same path forever and `Avatar` latches a failed load
