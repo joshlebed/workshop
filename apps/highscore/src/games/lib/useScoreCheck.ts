@@ -1,5 +1,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { GameScoreDirection, GamesResponse, ScoreEntryPoint } from "@workshop/shared/games";
+import type {
+  GameScoreDirection,
+  GamesResponse,
+  PreviewGameScoreRequest,
+  ScoreEntryPoint,
+} from "@workshop/shared/games";
 import {
   computeScoreFeatures,
   type ScoreFeature,
@@ -110,8 +115,13 @@ export function useScoreCheck(input: {
    * point (open from the start) and a wrong-game match is not asked again.
    */
   fixing?: boolean;
+  /**
+   * How this device recognized the game on its own, when it did. Only
+   * reported with the preview (the server logs it); not part of the answer.
+   */
+  recognizedBy?: PreviewGameScoreRequest["recognizedBy"];
 }): ScoreCheck {
-  const { gameId, periodKey, entry, today } = input;
+  const { gameId, periodKey, entry, today, recognizedBy } = input;
   const { token } = useGamesRuntime();
   const available = useTeachAvailable();
   const parserListed = useListedHasParser(gameId);
@@ -160,7 +170,12 @@ export function useScoreCheck(input: {
     // Not under ["games"]: posting a score invalidates that prefix.
     queryKey: ["game-score-check", gameId, periodKey, settled],
     queryFn: ({ signal }) =>
-      previewTeachScore(gameId ?? "", { scoreRaw: settled, periodKey, entry }, token, signal),
+      previewTeachScore(
+        gameId ?? "",
+        { scoreRaw: settled, periodKey, entry, ...(recognizedBy ? { recognizedBy } : {}) },
+        token,
+        signal,
+      ),
     enabled: offered && settled.length > 0,
     staleTime: 60_000,
     retry: false,

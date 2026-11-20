@@ -38,6 +38,7 @@ import {
   PENDING_FRIEND_INVITE_TOKEN_KEY,
   PENDING_GAME_SHARE_TOKEN_KEY,
 } from "../games/lib/inviteStash";
+import { clearStoredRecognizers } from "../games/lib/useGameRecognizers";
 import { runAccountDeletion } from "../lib/accountDeletion";
 import { unregisterPushToken } from "../lib/pushRegistration";
 
@@ -330,6 +331,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // signed-out marker so an uncleared HttpOnly cookie cannot sign back in.
     }
     await clearSessionCredentials();
+    clearStoredRecognizers();
     setState({ status: "signed-out", user: null, token: null, impersonation: null });
   }, [state.token]);
 
