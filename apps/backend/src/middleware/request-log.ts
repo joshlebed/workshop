@@ -1,4 +1,5 @@
-import type { Context, MiddlewareHandler } from "hono";
+import type { MiddlewareHandler } from "hono";
+import { callerIp } from "../lib/clientIp.js";
 import { logger } from "../lib/logger.js";
 import {
   requestClientContextFromHeaders,
@@ -19,15 +20,6 @@ const MAX_VERSION = 32;
 function truncate(value: string | undefined, max: number): string | undefined {
   if (!value) return undefined;
   return value.length > max ? value.slice(0, max) : value;
-}
-
-function clientIp(c: Context): string {
-  const xff = c.req.header("x-forwarded-for");
-  if (xff) {
-    const first = xff.split(",")[0]?.trim();
-    if (first) return first;
-  }
-  return c.req.header("x-real-ip") ?? "unknown";
 }
 
 /**
@@ -91,7 +83,7 @@ export const requestLog: MiddlewareHandler = async (c, next) => {
       client: clientContext.client,
       platform: platformHeader ?? detectPlatform(userAgent),
       app_version: truncate(appVersion, MAX_VERSION),
-      ip: clientIp(c),
+      ip: callerIp(c) ?? "unknown",
       origin: truncate(c.req.header("origin"), MAX_URL),
       referer: truncate(c.req.header("referer"), MAX_URL),
       user_agent: truncate(userAgent, MAX_UA),

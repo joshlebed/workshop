@@ -13,6 +13,7 @@ import { Hono } from "hono";
 import { getDb } from "../../db/client.js";
 import { withDbRetry } from "../../db/retry.js";
 import { users } from "../../db/schema.js";
+import { callerIpKey } from "../../lib/clientIp.js";
 import { getConfig } from "../../lib/config.js";
 import { friendsOf } from "../../lib/friends.js";
 import { todayPeriodKey } from "../../lib/gameShapes.js";
@@ -20,17 +21,8 @@ import { findOrCreateGameShareLink, resolveGameShareLink } from "../../lib/gameS
 import { err, ok } from "../../lib/response.js";
 import { isValidShareSlug } from "../../lib/shareSlug.js";
 import { optionalAuth, requireAuth } from "../../middleware/auth.js";
-import { type RateLimitKeyFn, rateLimit } from "../../middleware/rate-limit.js";
+import { rateLimit } from "../../middleware/rate-limit.js";
 import { workshopGamesSunset } from "../../middleware/workshop-games-sunset.js";
-
-const ipKey: RateLimitKeyFn = (c) => {
-  const xff = c.req.header("x-forwarded-for");
-  if (xff) {
-    const first = xff.split(",")[0]?.trim();
-    if (first) return first;
-  }
-  return c.req.header("x-real-ip") ?? "unknown";
-};
 
 /**
  * Where the play link lands — the short, app-routable `/g/:token` form (iOS
@@ -89,7 +81,7 @@ gameShareRoutes.post(
 gameShareRoutes.get(
   "/:token",
   optionalAuth,
-  rateLimit({ family: "v1.gameShare.resolve", limit: 60, windowSec: 60, key: ipKey }),
+  rateLimit({ family: "v1.gameShare.resolve", limit: 60, windowSec: 60, key: callerIpKey }),
   async (c) => {
     const token = c.req.param("token");
     if (!isValidShareSlug(token)) return err(c, "NOT_FOUND", "link not found");

@@ -6,6 +6,8 @@ import { runPlayReminderJob } from "./jobs/playReminders.js";
 import { runRequestRollupJob } from "./jobs/requestRollups.js";
 import { isSnsEvent, runVendorAlarmJob } from "./jobs/vendorAlarm.js";
 import { warmGameCodeSandboxIfEnabled } from "./lib/gameCodeService.js";
+import { logger } from "./lib/logger.js";
+import { pruneExpiredRateLimits } from "./middleware/rate-limit.js";
 
 const app = buildApp();
 // Init runs at full CPU; a request runs at a fraction of a vCPU. See the
@@ -35,6 +37,12 @@ export async function handler(
     case "play-reminders":
       return runPlayReminderJob();
     case "request-rollups":
+      // Housekeeping rides along with the hourly job; it must not stop it.
+      await pruneExpiredRateLimits()
+        .then((removed) => {
+          if (removed > 0) logger.info("pruned expired rate limits", { removed });
+        })
+        .catch((error) => logger.warn("rate limit prune failed", { error }));
       return runRequestRollupJob();
     case "discord-health":
       return runDiscordHealthJob();
