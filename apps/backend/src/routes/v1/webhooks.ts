@@ -9,6 +9,7 @@ import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { getDb } from "../../db/client.js";
 import { listSources } from "../../db/schema.js";
+import { callerIp } from "../../lib/clientIp.js";
 import { recordEvent } from "../../lib/events.js";
 import { logger } from "../../lib/logger.js";
 import { notifySourceWebhook } from "../../lib/opsNotifications.js";
@@ -28,18 +29,9 @@ const SLUG_RE = /^[a-z0-9]{8,64}$/;
 
 // Tight rate limit by client IP — webhooks shouldn't be hot, and a flood of
 // invalid signatures is the canary for a probing attacker.
-const ipKey = (c: Parameters<Parameters<typeof webhookRoutes.use>[1]>[0]): string | null => {
-  const xff = c.req.header("x-forwarded-for");
-  if (xff) {
-    const first = xff.split(",")[0]?.trim();
-    if (first) return first;
-  }
-  return c.req.header("x-real-ip") ?? null;
-};
-
 webhookRoutes.post(
   "/sources/webhooks/:slug",
-  rateLimit({ family: "v1.sources.webhooks", limit: 120, windowSec: 60, key: ipKey }),
+  rateLimit({ family: "v1.sources.webhooks", limit: 120, windowSec: 60, key: callerIp }),
   async (c) => {
     const slug = c.req.param("slug");
     if (!SLUG_RE.test(slug)) {

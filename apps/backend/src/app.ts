@@ -2,9 +2,10 @@ import { DrizzleQueryError } from "drizzle-orm/errors";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger as honoLogger } from "hono/logger";
+import { callerIpKey } from "./lib/clientIp.js";
 import { logger } from "./lib/logger.js";
 import { err } from "./lib/response.js";
-import { type RateLimitKeyFn, rateLimit } from "./middleware/rate-limit.js";
+import { rateLimit } from "./middleware/rate-limit.js";
 import { requestLog } from "./middleware/request-log.js";
 import { discordInteractionRoutes } from "./routes/discordInteractions.js";
 import { healthRoutes } from "./routes/health.js";
@@ -30,15 +31,6 @@ import { telemetryRoutes } from "./routes/v1/telemetry.js";
 import { publicUserRoutes, userRoutes } from "./routes/v1/users.js";
 import { listViewRoutes } from "./routes/v1/views.js";
 import { webhookRoutes } from "./routes/v1/webhooks.js";
-
-const clientIp: RateLimitKeyFn = (c) => {
-  const xff = c.req.header("x-forwarded-for");
-  if (xff) {
-    const first = xff.split(",")[0]?.trim();
-    if (first) return first;
-  }
-  return c.req.header("x-real-ip") ?? "unknown";
-};
 
 // CORS allowlist. Native clients send no Origin and are unaffected; this only
 // constrains browsers. Cloudflare Pages branch previews and localhost dev are
@@ -147,7 +139,7 @@ export function buildApp() {
       family: "v1.auth",
       limit: 30,
       windowSec: 60,
-      key: clientIp,
+      key: callerIpKey,
     }),
   );
 

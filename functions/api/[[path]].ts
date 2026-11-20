@@ -52,6 +52,13 @@ export const onRequest = async ({ request, env }: PagesContext): Promise<Respons
   const headers = new Headers(request.headers);
   headers.delete("host");
   headers.delete("content-length");
+  // Tell the API who the caller is. The API sees this proxy's Cloudflare
+  // address, not the browser's, and keys its per-IP rate limits on what it is
+  // told here. `CF-Connecting-IP` is set by Cloudflare's edge; a value the
+  // caller sent for our header is discarded.
+  headers.delete("x-workshop-client-ip");
+  const callerIp = request.headers.get("CF-Connecting-IP");
+  if (callerIp) headers.set("x-workshop-client-ip", callerIp);
   // The proxy is same-origin only. Overwrite rather than trust a caller's
   // value so backend CORS and browser-cookie detection see the Pages origin.
   headers.set("origin", incomingUrl.origin);

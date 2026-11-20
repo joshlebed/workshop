@@ -537,6 +537,15 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   a version bump. Adding eas-cli to the lockfile can also re-dedupe Expo's own prebuild toolchain
   (`@expo/json-file`, `@expo/plist`, `@expo/config-plugins` patch versions) — diff the lockfile
   snapshots against `main` and keep Expo's entries unchanged.
+- **A caller's IP comes from `callerIp(c)` (`apps/backend/src/lib/clientIp.ts`), never from
+  `X-Forwarded-For`.** API Gateway appends the real address to whatever the client sent, so the
+  header's first entry is client-chosen; per-IP rate limits keyed on it could be dodged with a
+  new value per request (they were, until Nov 2026). `callerIp` uses the address the gateway
+  accepted the connection from. Web traffic comes through the Pages `/api` proxy, which passes
+  the address Cloudflare saw in `X-Workshop-Client-Ip`; the backend believes that header only
+  on a connection from Cloudflare's published ranges (hard-coded in that file; refresh them if
+  Cloudflare changes its list). `rate_limits` rows older than two days are deleted by the
+  hourly `request-rollups` invocation (`pruneExpiredRateLimits`).
 - **Logger**: use `logger` from `apps/backend/src/lib/logger.ts`. Pass full errors:
   `logger.error("failed to x", { error })`, not `{ error: error.message }` (loses stack).
 - **Managed sessions are version-negotiated.** Updated clients send

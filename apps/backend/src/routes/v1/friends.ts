@@ -37,6 +37,7 @@ import {
   users,
 } from "../../db/schema.js";
 import { blockedEitherWay, blockedIdsFor } from "../../lib/blocks.js";
+import { callerIpKey } from "../../lib/clientIp.js";
 import { getConfig } from "../../lib/config.js";
 import { toIsoString } from "../../lib/dates.js";
 import { sendFriendRequestPush } from "../../lib/friendRequestPush.js";
@@ -56,16 +57,7 @@ import { err, ok } from "../../lib/response.js";
 import { periodKeySchema } from "../../lib/scoreSchemas.js";
 import { generateShareSlug, isValidShareSlug } from "../../lib/shareSlug.js";
 import { optionalAuth, requireAuth } from "../../middleware/auth.js";
-import { type RateLimitKeyFn, rateLimit } from "../../middleware/rate-limit.js";
-
-const ipKey: RateLimitKeyFn = (c) => {
-  const xff = c.req.header("x-forwarded-for");
-  if (xff) {
-    const first = xff.split(",")[0]?.trim();
-    if (first) return first;
-  }
-  return c.req.header("x-real-ip") ?? "unknown";
-};
+import { rateLimit } from "../../middleware/rate-limit.js";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -340,7 +332,7 @@ friendRoutes.post(
 
 friendRoutes.get(
   "/requests/:token",
-  rateLimit({ family: "v1.friends.preview", limit: 60, windowSec: 60, key: ipKey }),
+  rateLimit({ family: "v1.friends.preview", limit: 60, windowSec: 60, key: callerIpKey }),
   optionalAuth,
   async (c) => {
     const token = c.req.param("token");

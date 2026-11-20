@@ -5,7 +5,7 @@ import { rateLimits } from "../db/schema.js";
 import { err } from "../lib/response.js";
 import { executeRows, type SqlExecutor } from "../lib/sql.js";
 
-export type RateLimitKeyFn = (c: Parameters<MiddlewareHandler>[0]) => string | null;
+type RateLimitKeyFn = (c: Parameters<MiddlewareHandler>[0]) => string | null;
 
 interface RateLimitOptions {
   /** Stable identifier for the route family — combined with the per-request key. */
@@ -46,6 +46,29 @@ export async function consume(
   const row = rows[0];
   if (!row) throw new Error("rate-limit insert returned no row");
   return row.count;
+}
+
+/** Longer than the longest window (one day), so a live counter is never removed. */
+const PRUNE_AFTER_DAYS = 2;
+
+/**
+ * Deletes counters whose window is long over. Nothing reads them again, and
+ * without this the table kept every (rule, caller, minute) since launch. Run
+ * from the hourly job, when the database is awake anyway.
+ */
+export async function pruneExpiredRateLimits(db: SqlExecutor = getDb()): Promise<number> {
+  const rows = await executeRows<{ n: number }>(
+    db,
+    sql`
+      WITH gone AS (
+        DELETE FROM ${rateLimits}
+        WHERE window_start < now() - make_interval(days => ${PRUNE_AFTER_DAYS})
+        RETURNING 1
+      )
+      SELECT count(*)::int AS n FROM gone
+    `,
+  );
+  return rows[0]?.n ?? 0;
 }
 
 export function rateLimit(opts: RateLimitOptions): MiddlewareHandler {
