@@ -758,7 +758,6 @@ export const UNLISTED_GAME_CATEGORIES: Readonly<Record<string, GameCategory>> = 
   "orbitdailygame.com": "geography", // rare answers, around the world
   "originle.io": "geography", // guess a person's country
   "peakle.net": "trivia",
-  "playplain.app": "trivia", // Plain; listed as playplain.app/play
   "playseldom.com": "trivia", // rarest answer wins
   "polygonle.com": "words", // word puzzle with a shape clue
   "redactle.net": "words", // uncover a redacted Wikipedia article
