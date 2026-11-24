@@ -3,9 +3,9 @@
  * the games it names — `admin:game-code --format=…` for every entry at once.
  *
  * Each game goes through the same gate as the single-game script
- * (`planGameCodeChange` → `decideGameCodeChange`): the candidate must
- * reproduce every stored score with a known result and render every example
- * in the entry as reviewed. Parse code is never touched: a game with none is
+ * (`planGameCodeChange` → `decideGameCodeChange`): the format block must run
+ * on every stored score and render every example in the entry as reviewed.
+ * Parse code is never touched, so stored readings can't move: a game with none is
  * skipped (give it a parser with `admin:game-code --parse` first). A game whose
  * stored `format_code` already equals the entry is skipped, so re-running is a
  * no-op. Stored scores are NOT rewritten — see `admin:reformat-scores` for that.
@@ -89,7 +89,9 @@ async function main() {
       continue;
     }
     const candidate = { parseCode: game.parseCode, formatCode: entry.format };
-    const plan = await planGameCodeChange(getDb(), game, candidate, entry.examples);
+    const plan = await planGameCodeChange(getDb(), game, candidate, entry.examples, {
+      parseUnchanged: true,
+    });
     const decision = decideGameCodeChange(plan);
     if (!decision.write) {
       refused += 1;

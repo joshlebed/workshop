@@ -8,8 +8,10 @@ content gate (App Review Guideline 1.2 applies here just like it does to scores 
 
 **Rule: a catalog game always has a parser and a formatter** (operator decision, 2026-11-03).
 A stranger who adds a game from the catalog should see their first paste read and rendered,
-not stored unread as raw text. An extra that isn't taught yet stays out — or comes out — until
-someone teaches it (a teach writes both). The audit enforces this on its side: it only proposes
+not stored unread as raw text. An extra missing either stays out — or comes out — until it has
+both. Teach writes only the parser, so a formatter is hand-written in
+`apps/backend/src/lib/gameCode/handwritten.ts` and installed with
+`admin:handwritten-formatters`. The audit enforces this on its side: it only proposes
 candidates with both, and reports any listed extra missing either as "not catalog-ready".
 A registry game missing one is a code fix (below), not a removal.
 
