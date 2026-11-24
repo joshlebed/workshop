@@ -110,6 +110,17 @@ jobs:
               echo "✓ Both Cloudflare Pages builds succeeded"
               exit 0
             fi
+
+            # Cloudflare only builds the newest queued commit of a production
+            # branch: when several merges land within minutes, the older
+            # commits' check runs sit at in_progress forever. Once main has
+            # moved past this SHA the newer commit's build owns the deploy, so
+            # stop waiting and smoke-test what production serves now.
+            head="$(gh api "repos/${REPO}/commits/main" --jq .sha 2>/dev/null || true)"
+            if [ -n "$head" ] && [ "$head" != "$SHA" ]; then
+              echo "↷ main moved to ${head}; Cloudflare superseded this commit's pending build(s)"
+              exit 0
+            fi
             sleep 10
           done
           echo "✗ Timed out waiting for both Cloudflare Pages builds of ${SHA}"
