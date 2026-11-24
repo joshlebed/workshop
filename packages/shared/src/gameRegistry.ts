@@ -657,11 +657,13 @@ export interface OfficialCatalogEntry {
  * `docs/catalog-ops-runbook.md`. Keep sorted by title.
  */
 export const OFFICIAL_CATALOG_EXTRAS: OfficialCatalogEntry[] = [
+  { normalizedUrl: "canucklegame.ca", title: "Canuckle", category: "words" },
   {
     normalizedUrl: "city2city.goldfishwatercooler.com",
     title: "City2City",
     category: "geography",
   },
+  { normalizedUrl: "costcodle.com", title: "COSTCODLE", category: "trivia" },
   { normalizedUrl: "hbd.gg/play", title: "EthnoGuessr", category: "geography" },
   {
     normalizedUrl: "farflung.game",
@@ -680,9 +682,14 @@ export const OFFICIAL_CATALOG_EXTRAS: OfficialCatalogEntry[] = [
     category: "geography",
   },
   { normalizedUrl: "gerrymandle.com", title: "Gerrymandle", category: "puzzles" },
+  { normalizedUrl: "headcountgame.com", title: "Headcount", category: "trivia" },
   { normalizedUrl: "krillion.io", title: "Krillion", category: "trivia" },
   { normalizedUrl: "wordle.louan.me", title: "Le Mot", category: "words" },
+  { normalizedUrl: "longshots.app", title: "LONGSHOTS", category: "trivia" },
   { normalizedUrl: "minutecryptic.com", title: "Minute Cryptic", category: "words" },
+  { normalizedUrl: "moonshotdailygame.com", title: "moonshotdailygame.com", category: "trivia" },
+  { normalizedUrl: "playdaily.org/noillirk", title: "Noillirk", category: "trivia" },
+  { normalizedUrl: "playplain.app/play", title: "Plain", category: "trivia" },
   {
     normalizedUrl: "magnitudle.com/size-it-up",
     title: "Size It Up",
