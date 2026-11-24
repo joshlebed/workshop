@@ -443,7 +443,10 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   `Discord-Message: <id>` line gets ✅ on that message when it merges. An `@Niteshift` mention
   does nothing: Discord only delivers mentions over its gateway websocket, and the once-a-minute
   poll that stood in for it was removed (Nov 2026). Jobs: `discord-merged` (10 min),
-  `discord-health` (daily; re-sets a blanked endpoint URL), `daily-digest` (12:02 UTC, on the rollup job's database wake).
+  `discord-health` (daily; re-sets a blanked endpoint URL), `daily-digest` (12:02 UTC, on the
+  rollup job's database wake), `neon-quota` (12:03 UTC; inert until SSM
+  `/workshop-prod/neon/api_key` exists). API 5xx, failed jobs and crashed invocations alarm through
+  `infra/backend_alarms.tf`; a new scheduled job must run through `runJob` in `lambda.ts`.
   Only `allowedUserIds` can start tasks. Runbook: `docs/discord-bot-runbook.md`.
 
 - **Uploaded images (profile pictures, list cover photos) never live in Postgres, and one

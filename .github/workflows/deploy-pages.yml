@@ -199,3 +199,60 @@ jobs:
             echo "  body:           $(head -c500 "$aasa_file")"
             exit 1
           done
+
+  # Ping #workshop-admin when a production check fails. One ping per run of
+  # failures, the same way the TestFlight workflows do it. The webhook secret
+  # missing degrades to a warning: the red run is the source of truth.
+  notify:
+    name: Notify on failure
+    needs: [verify]
+    if: always() && needs.verify.result == 'failure'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read # look up the previous run's conclusion
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .github/actions/repeat-failure
+
+      - name: Check for a repeat failure
+        id: repeat
+        uses: ./.github/actions/repeat-failure
+        with:
+          workflow: deploy-pages.yml
+
+      - name: Post to Discord
+        if: steps.repeat.outputs.repeat != 'true'
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_NOTIFY_WEBHOOK_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMMIT_SHA: ${{ github.sha }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          set -euo pipefail
+          if [ -z "$WEBHOOK" ]; then
+            echo "::warning::DISCORD_NOTIFY_WEBHOOK_URL not set — skipping Discord ping."
+            exit 0
+          fi
+          FIRST_LINE=$(printf '%s' "${COMMIT_MSG:-(no message)}" | head -n1)
+          PAYLOAD=$(jq -n \
+            --arg content "🔴 **Verify Pages Deploy failed** — production web may be broken" \
+            --arg desc "A Cloudflare build failed, or a production domain stopped serving its OG image or AASA file. The failed step in the run names which." \
+            --arg url "$RUN_URL" \
+            --arg commit "${COMMIT_SHA:0:7} — $FIRST_LINE" \
+            '{
+              content: $content,
+              embeds: [{
+                title: "Action required",
+                description: $desc,
+                url: $url,
+                color: 15158332,
+                fields: [
+                  {name: "Commit", value: $commit, inline: false},
+                  {name: "Run", value: $url, inline: false}
+                ]
+              }]
+            }')
+          curl -fsS -X POST -H "Content-Type: application/json" -d "$PAYLOAD" "$WEBHOOK"
+          echo "Posted failure notification to Discord."

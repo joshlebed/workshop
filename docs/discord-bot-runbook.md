@@ -49,8 +49,42 @@ UTC (07:02 Eastern in winter) for the previous Eastern day: the signup funnel, H
 friendships, first scores and list activity. Re-post it by hand with
 `aws lambda invoke --function-name workshop-prod-api --payload '{"job":"daily-digest"}' --cli-binary-format raw-in-base64-out /dev/stdout`.
 
-A TestFlight workflow pings on the first failure of a run of failures. A later failure stays
-quiet until a run succeeds, except the monthly canary, which always pings.
+A TestFlight or Verify Pages Deploy workflow pings on the first failure of a run of failures. A
+later failure stays quiet until a run succeeds, except the monthly TestFlight canary, which
+always pings.
+
+## Backend alarms
+
+`infra/backend_alarms.tf` sends these through the vendor-alarm SNS topic, so each also emails the
+operator. One burst is one ping: an alarm stays raised until 30 quiet minutes have passed, and
+there is no "recovered" message.
+
+| Alarm                         | Means                              | Find it                                                     |
+| ----------------------------- | ---------------------------------- | ----------------------------------------------------------- |
+| `workshop-prod-api-5xx`       | A request answered 5xx             | `./scripts/logs.sh --since 1h --filter '"unhandled error"'` |
+| `workshop-prod-job-failures`  | A scheduled job failed             | `./scripts/logs.sh --since 1h --filter '"job failed"'`      |
+| `workshop-prod-lambda-errors` | An invocation crashed or timed out | `./scripts/logs.sh --since 1h --filter '"Task timed out"'`  |
+
+Jobs run through `runJob`, which logs `job failed` and does not rethrow, so Lambda does not re-run
+a failed job. It runs again on its own schedule.
+
+## Neon usage alert
+
+`{ "job": "neon-quota" }` runs daily at 12:03 UTC and reads this month's usage from the Neon
+API, which does not wake the database. It pings once per metric per billing period at each of:
+on pace to pass the limit (from day 5, at 30% or more), 70%, and 90%. The limits are 5 GB of
+network transfer and 100 compute-hours; Neon suspends the database past either. To see what a
+route costs, use the byte-counting proxy described in the root `CLAUDE.md`.
+
+The job is inert until its key exists:
+
+```bash
+aws ssm put-parameter --name /workshop-prod/neon/api_key --type SecureString --value '<neon api key>'
+aws lambda invoke --function-name workshop-prod-api --payload '{"job":"neon-quota"}' --cli-binary-format raw-in-base64-out /dev/stdout
+```
+
+`{"status":"ok","alerts":0}` means it works. `{"failed":true}` plus a `job failed` log line means
+the key or `neon_project_id` in `infra/neon_quota.tf` is wrong.
 
 ## Untrusted text (prompt injection)
 

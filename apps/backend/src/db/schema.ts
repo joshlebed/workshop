@@ -947,6 +947,15 @@ export const userActivityDays = pgTable(
  * `X-Workshop-Client` (`unknown` when the request carried none — bots, curl,
  * pre-header installs). Read only by the admin analytics dashboard.
  */
+/**
+ * One row per operator alert already sent, so a daily check can say "70% of
+ * this month's quota" once. The key names the alert and its period.
+ */
+export const opsAlertMarks = pgTable("ops_alert_marks", {
+  key: text("key").primaryKey(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const requestRollups = pgTable(
   "request_rollups",
   {

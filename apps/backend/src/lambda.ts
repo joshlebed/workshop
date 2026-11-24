@@ -3,8 +3,10 @@ import { buildApp } from "./app.js";
 import { runDailyDigestJob } from "./jobs/dailyDigest.js";
 import { runDiscordHealthJob } from "./jobs/discordHealth.js";
 import { runDiscordMergedJob } from "./jobs/discordMerged.js";
+import { runNeonQuotaJob } from "./jobs/neonQuota.js";
 import { runScheduledPlayReminders } from "./jobs/playReminders.js";
 import { runRequestRollupJob } from "./jobs/requestRollups.js";
+import { runJob } from "./jobs/runJob.js";
 import { isSnsEvent, runVendorAlarmJob } from "./jobs/vendorAlarm.js";
 import { warmGameCodeSandboxIfEnabled } from "./lib/gameCodeService.js";
 import { logger } from "./lib/logger.js";
@@ -22,6 +24,7 @@ const JOBS = [
   "discord-health",
   "discord-merged",
   "daily-digest",
+  "neon-quota",
 ] as const;
 type JobName = (typeof JOBS)[number];
 
@@ -42,21 +45,25 @@ export async function handler(
   if (isSnsEvent(event)) return runVendorAlarmJob(event);
   switch (jobOf(event)) {
     case "play-reminders":
-      return runScheduledPlayReminders();
+      return runJob("play-reminders", () => runScheduledPlayReminders());
     case "request-rollups":
-      // Housekeeping rides along with this job; it must not stop it.
-      await pruneExpiredRateLimits()
-        .then((removed) => {
-          if (removed > 0) logger.info("pruned expired rate limits", { removed });
-        })
-        .catch((error) => logger.warn("rate limit prune failed", { error }));
-      return runRequestRollupJob();
+      return runJob("request-rollups", async () => {
+        // Housekeeping rides along with this job; it must not stop it.
+        await pruneExpiredRateLimits()
+          .then((removed) => {
+            if (removed > 0) logger.info("pruned expired rate limits", { removed });
+          })
+          .catch((error) => logger.warn("rate limit prune failed", { error }));
+        return runRequestRollupJob();
+      });
     case "discord-health":
-      return runDiscordHealthJob();
+      return runJob("discord-health", () => runDiscordHealthJob());
     case "discord-merged":
-      return runDiscordMergedJob();
+      return runJob("discord-merged", () => runDiscordMergedJob());
     case "daily-digest":
-      return runDailyDigestJob();
+      return runJob("daily-digest", () => runDailyDigestJob());
+    case "neon-quota":
+      return runJob("neon-quota", () => runNeonQuotaJob());
     default:
       return apiHandler(event as LambdaEvent, context);
   }
