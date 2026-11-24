@@ -676,7 +676,7 @@ function format(raw) {
     ],
   },
   {
-    ref: "playplain.app/play",
+    ref: "playplain.app",
     title: "Plain",
     // The game ships in 18 languages. Thousands may be grouped with a space,
     // dot or apostrophe ("6 651 m", "6.651 m"); all render as "6,651 m". The grid

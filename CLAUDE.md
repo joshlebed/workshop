@@ -251,7 +251,10 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   prod-only formatters, so a `/catalog` gate would hide them. The daily "HighScore catalog audit" Niteshift automation runs
   `pnpm --filter @workshop/backend run ops:catalog-audit` (read-only, prod via SSM) and opens a
   PR proposing extras + reporting parser/formatter health; the operator edits categories and
-  merges. `docs/catalog-ops-runbook.md`.
+  merges. `docs/catalog-ops-runbook.md`. **A URL path makes a new game** (`playplain.app/play` ≠
+  `playplain.app`), so one game can split across two boards: a reviewed `GAME_URL_ALIASES` entry
+  (`packages/shared/src/games.ts`, applied inside `normalizeGameUrl`) stops new splits, and
+  `admin:merge-games` (dry run by default) combines existing rows. Runbook → "Duplicate games".
 
 - **Time scores are stored in seconds and shown through `formatScoreValue`.** The candidate
   picker (`scoreCandidates.ts`) reads `0:42`, `23h 00m`, `4m 12s`, `2 hours`, `5 min`, `42s`

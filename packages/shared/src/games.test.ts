@@ -35,6 +35,16 @@ describe("normalizeGameUrl", () => {
     expect(normalizeGameUrl("https://dailytens.com/?ref=abc123")).toBe("dailytens.com");
   });
 
+  it("maps a reviewed alias to its game's address", () => {
+    expect(normalizeGameUrl("https://playplain.app/play/")).toBe("playplain.app");
+    expect(normalizeGameUrl("bandle.app/menu?x=1")).toBe("bandle.app");
+    expect(normalizeGameUrl("https://t30.teuteuf.fr/w43")).toBe("t30.teuteuf.fr");
+    expect(normalizeGameUrl("https://www.wordle.com/")).toBe("nytimes.com/games/wordle");
+    // Only the listed shapes: other paths on the same site stay their own game.
+    expect(normalizeGameUrl("https://t30.teuteuf.fr/archive")).toBe("t30.teuteuf.fr/archive");
+    expect(normalizeGameUrl("https://playplain.app/play/extra")).toBe("playplain.app/play/extra");
+  });
+
   it("strips a trailing slash", () => {
     expect(normalizeGameUrl("https://globle-game.com/")).toBe("globle-game.com");
   });
