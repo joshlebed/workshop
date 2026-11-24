@@ -127,6 +127,21 @@ function proposableCandidates(report: CatalogAuditReport): CatalogCandidate[] {
   );
 }
 
+/**
+ * The type the app already shows for an unlisted game (a reviewed
+ * `UNLISTED_GAME_CATEGORIES` entry, or a detection-only registry game's), else
+ * the keyword guess.
+ */
+function reviewedOrGuessedCategory(g: {
+  gameKey: string | null;
+  normalizedUrl: string;
+  title: string;
+  url: string;
+}): GameCategory {
+  const reviewed = gameCategoryFor(g);
+  return reviewed !== "other" ? reviewed : suggestCategory(g.title, g.url);
+}
+
 export function suggestCategory(title: string, url: string): GameCategory {
   const haystack = `${title} ${url}`;
   for (const { category, pattern } of CATEGORY_HINTS) {
@@ -201,7 +216,7 @@ export async function runCatalogAudit(now: Date = new Date()): Promise<CatalogAu
         scoresInWindow: r.scoresInWindow,
         hasParser,
         hasFormatter,
-        suggestedCategory: suggestCategory(g.title, g.url),
+        suggestedCategory: reviewedOrGuessedCategory(g),
         flags,
         ...(suggestedTitle && suggestedTitle !== g.title ? { suggestedTitle } : {}),
       });
