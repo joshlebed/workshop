@@ -1,10 +1,11 @@
 // CloudWatch alarm → SNS → this Lambda → #workshop-admin.
 //
-// `infra/vendor_alarms.tf` alarms on the "openai non-2xx" / "jev non-2xx" log
-// lines whose status says the vendor stopped serving us (quota exhausted, key
-// revoked). SNS invokes the API Lambda with the standard SNS event shape; this
-// job turns the alarm JSON into one Discord ping. The same topic also emails
-// the operator, so a Discord outage still reaches someone.
+// Two sets of alarms share the topic: `infra/vendor_alarms.tf` (the "openai
+// non-2xx" / "jev non-2xx" log lines whose status says the vendor stopped
+// serving us) and `infra/backend_alarms.tf` (API 5xx, failed jobs, crashed
+// invocations). SNS invokes the API Lambda with the standard SNS event shape;
+// this job turns the alarm JSON into one Discord ping. The same topic also
+// emails the operator, so a Discord outage still reaches someone.
 
 import { z } from "zod";
 import { notifyDiscord } from "../lib/discord.js";
@@ -47,8 +48,16 @@ export function formatAlarmMessage(message: string): string | null {
   return lines.join("\n");
 }
 
+/** The log tag for a record: vendor alarms are named `<prefix>-<vendor>-credits`. */
+export function alarmKind(message: string): "vendor-alarm" | "backend-alarm" {
+  const alarm = alarmSchema.safeParse(parseJson(message));
+  return alarm.success && !alarm.data.AlarmName.endsWith("-credits")
+    ? "backend-alarm"
+    : "vendor-alarm";
+}
+
 interface Deps {
-  notify?: (content: string) => Promise<void>;
+  notify?: (content: string, kind: string) => Promise<unknown>;
 }
 
 export async function runVendorAlarmJob(
@@ -57,7 +66,7 @@ export async function runVendorAlarmJob(
 ): Promise<{ sent: number }> {
   const notify =
     deps.notify ??
-    ((content: string) => notifyDiscord(content, { kind: "vendor-alarm", withClient: false }));
+    ((content: string, kind: string) => notifyDiscord(content, { kind, withClient: false }));
   const parsed = snsEventSchema.safeParse(event);
   if (!parsed.success) {
     logger.warn("vendor alarm: not an SNS event", { error: parsed.error });
@@ -68,7 +77,7 @@ export async function runVendorAlarmJob(
     const content =
       formatAlarmMessage(record.Sns.Message) ??
       `⚠️ ${record.Sns.Subject ?? "SNS"}: ${record.Sns.Message.slice(0, 1500)}`;
-    await notify(content);
+    await notify(content, alarmKind(record.Sns.Message));
     sent++;
   }
   logger.info("vendor alarm forwarded", { sent });

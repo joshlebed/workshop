@@ -77,6 +77,8 @@ resource "aws_lambda_function" "api" {
       SPOTIFY_CLIENT_SECRET      = aws_ssm_parameter.spotify_client_secret.value
       DISCORD_NOTIFY_WEBHOOK_URL = aws_ssm_parameter.discord_notify_webhook_url.value
       DISCORD_BOT_CONFIG_PARAM   = aws_ssm_parameter.discord_bot_config.name
+      NEON_API_KEY_PARAM         = local.neon_api_key_param
+      NEON_PROJECT_ID            = local.neon_project_id
       IMAGE_BUCKET               = aws_s3_bucket.images.bucket
       LOG_LEVEL                  = "info"
     }

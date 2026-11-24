@@ -53,7 +53,7 @@ function parseDiscordBotConfig(raw: string | undefined): DiscordBotConfig | null
   return null;
 }
 
-async function readSsmParameter(name: string): Promise<string | undefined> {
+export async function readSsmParameter(name: string): Promise<string | undefined> {
   // Lazy: the SDK is provided by the Lambda runtime and only this path needs it.
   const { SSMClient, GetParameterCommand } = await import("@aws-sdk/client-ssm");
   const out = await new SSMClient({}).send(

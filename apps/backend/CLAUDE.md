@@ -861,7 +861,12 @@ and list activity from their own tables, plus the signup funnel (signups, how ma
 action set of `actionRows` in `lib/adminAnalytics.ts`, on the Eastern day: **a new user action
 goes in both.** It returns one row of counts and sends the message last, because a thrown async
 invocation is retried by Lambda and a retry after a delivered digest would post it twice. Don't add
-a ping for a routine event: add a count to the digest. Returning sign-ins and friend requests
+a ping for a routine event: add a count to the digest. **Every scheduled job goes through
+`runJob`** (`jobs/runJob.ts`, wired in `lambda.ts`): a failure is one `job failed` log line, which
+`infra/backend_alarms.tf` turns into a ping, and it does not rethrow, because Lambda re-runs a
+failed async invocation up to twice. A job that swallows its own failure logs `job failed` itself.
+`{ "job": "neon-quota" }` (`jobs/neonQuota.ts`) warns at 70%, 90% and on pace to pass Neon's
+limits, once per period (`ops_alert_marks`). Returning sign-ins and friend requests
 don't ping at all; they are the `sign-in` and `friend request sent` log lines.
 
 `notifyDiscord` (`src/lib/discord.ts`) logs **every** outcome and resolves `true` only when Discord

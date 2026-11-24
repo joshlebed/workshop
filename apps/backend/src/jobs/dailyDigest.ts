@@ -232,5 +232,6 @@ export async function runDailyDigestJob(
   const delivered = await notify(buildDailyDigestMessage(digest));
   // Counts only: this line is the digest's record if Discord dropped it.
   logger.info("daily digest", { ...digest, delivered });
+  if (!delivered) logger.error("job failed", { job: "daily-digest", reason: "not delivered" });
   return { delivered };
 }

@@ -219,6 +219,10 @@ export async function runPlayReminderJob(
   }
   const pruned = delivery.prunedTokens.length;
 
+  // Each chunk swallows its own error, so a total Expo outage ends "successfully".
+  if (sent === 0) {
+    logger.error("job failed", { job: "play-reminders", reason: "no push request succeeded" });
+  }
   const result = { candidates, skippedPlayed, sent, pruned };
   logger.info("play reminder job complete", {
     candidates,

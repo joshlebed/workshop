@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { resetConfigForTesting } from "../lib/config.js";
-import { formatAlarmMessage, isSnsEvent, runVendorAlarmJob } from "./vendorAlarm.js";
+import { alarmKind, formatAlarmMessage, isSnsEvent, runVendorAlarmJob } from "./vendorAlarm.js";
 
 const alarm = {
   AlarmName: "workshop-prod-openai-credits",
@@ -43,6 +43,14 @@ describe("vendor alarm job", () => {
     expect(await runVendorAlarmJob(event, { notify })).toEqual({ sent: 2 });
     expect(notify).toHaveBeenCalledTimes(2);
     expect(notify.mock.calls[1]?.[0]).toBe("⚠️ ALARM: plain text");
+  });
+
+  it("tags backend alarms apart from vendor alarms", () => {
+    expect(alarmKind(JSON.stringify(alarm))).toBe("vendor-alarm");
+    expect(alarmKind(JSON.stringify({ ...alarm, AlarmName: "workshop-prod-api-5xx" }))).toBe(
+      "backend-alarm",
+    );
+    expect(alarmKind("plain text")).toBe("vendor-alarm");
   });
 
   it("ignores a non-SNS payload", async () => {
