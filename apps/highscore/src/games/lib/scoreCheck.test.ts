@@ -261,3 +261,51 @@ describe("scoreLineLabel — every read row of a board is shown the same way", (
     expect(scoreLineLabel(picked, untaughtFormat, false)).toBe("Score: 270");
   });
 });
+
+describe("resolveScoreCheck — a reading made on this device", () => {
+  const read = { kind: "score", value: 402, unit: null } as const;
+
+  it("is shown at once, while the server's dry run is still out", () => {
+    expect(resolve(undefined, { localRead: read })).toEqual({
+      kind: "score",
+      copy: "Score: 402",
+      value: 402,
+      unit: null,
+    });
+    expect(
+      resolve(undefined, { localRead: { kind: "score", value: 42, unit: "seconds" } }),
+    ).toMatchObject({
+      kind: "score",
+      copy: "Score: 0:42",
+    });
+    expect(resolve(undefined, { localRead: { kind: "no_result" } })).toEqual({
+      kind: "no_result",
+      copy: SCORE_COPY.noResult,
+    });
+  });
+
+  it("stands in for a dry run that is late or failed, instead of the picker", () => {
+    expect(resolve(undefined, { localRead: read, waitedOut: true })).toMatchObject({
+      kind: "score",
+    });
+    expect(resolve(null, { localRead: read })).toMatchObject({ kind: "score", value: 402 });
+  });
+
+  it("gives way to the server's answer the moment there is one", () => {
+    expect(resolve(preview({ scoreValue: 415 }), { localRead: read })).toMatchObject({
+      kind: "score",
+      value: 415,
+    });
+    expect(
+      resolve(preview({ parseStatus: "failed", scoreValue: null }), { localRead: read }),
+    ).toMatchObject({ kind: "unread" });
+    expect(resolve({ kind: "rejected", reason: "url_only" }, { localRead: read })).toMatchObject({
+      kind: "no_result_text",
+    });
+  });
+
+  it("changes nothing when the device read nothing", () => {
+    expect(resolve(undefined, { localRead: null })).toEqual({ kind: "checking" });
+    expect(resolve(null, { localRead: null })).toEqual({ kind: "no_preview" });
+  });
+});

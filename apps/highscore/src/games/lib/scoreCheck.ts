@@ -8,6 +8,7 @@ import { formatScoreValue } from "@workshop/shared/games";
 import type { ScoreFeatureRole } from "@workshop/shared/scoreCandidates";
 import type { PreviewAnswer } from "../api/teach";
 import { formatGameDateLabel } from "./gameDate";
+import type { LocalScoreRead } from "./localRecognition";
 
 export type ScoreCheckView =
   /** Nothing to say: no text yet. */
@@ -100,6 +101,17 @@ function rejectedView(reason: ScoreInputRejection): ScoreCheckView {
   return { kind: "none" };
 }
 
+function localReadView(read: LocalScoreRead): ScoreCheckView {
+  return read.kind === "score"
+    ? {
+        kind: "score",
+        copy: scoreReadCopy(read.value, null, read.unit),
+        value: read.value,
+        unit: read.unit,
+      }
+    : { kind: "no_result", copy: SCORE_COPY.noResult };
+}
+
 /**
  * Which state the score box is in. Order matters: nothing to post beats
  * everything; a wrong-game match is settled before the reading is shown
@@ -119,13 +131,20 @@ export function resolveScoreCheck(input: {
    * moment there is text, whatever the network is doing.
    */
   knownUntaught?: boolean;
+  /**
+   * What this device read with the game's own parse code. Shown whenever the
+   * server has not answered — on its way, late, or failed — so a recognized
+   * share states its score at once; the server's answer replaces it.
+   */
+  localRead?: LocalScoreRead | null;
 }): ScoreCheckView {
   if (input.empty) return { kind: "none" };
-  if (input.answer === undefined) {
+  if (input.answer === undefined || input.answer === null) {
+    if (input.localRead) return localReadView(input.localRead);
+    if (input.answer === null) return { kind: "no_preview" };
     if (input.knownUntaught) return { kind: "unread", copy: SCORE_COPY.unread };
     return input.waitedOut ? { kind: "no_preview" } : { kind: "checking" };
   }
-  if (input.answer === null) return { kind: "no_preview" };
   if (input.answer.kind === "rejected") return rejectedView(input.answer.reason);
 
   const { preview } = input.answer;

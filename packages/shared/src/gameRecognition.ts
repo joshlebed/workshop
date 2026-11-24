@@ -478,6 +478,17 @@ export interface GameRecognizer extends RecognitionCandidate {
   fingerprint: Record<string, number> | null;
   /** Hosts its shares link to besides its own, seen in at least two examples. */
   hosts: string[];
+  /**
+   * The game's stored `parse(raw)` code, for the client to run in its own
+   * QuickJS (`@workshop/shared/gameCodeSandbox`) and show the score with no
+   * request. `version` is `games.code_version`. Null when the server keeps
+   * the reading to itself: the game has no parser, or its current code has
+   * not been reviewed (see `loadGameRecognizers`). The server's reading is
+   * the one that is stored either way.
+   */
+  parser: { code: string; version: number } | null;
+  /** How the game's score is shown (`formatScoreValue`). */
+  scoreUnit: "seconds" | null;
 }
 
 /** A host must show up in this many examples before a recognizer carries it. */

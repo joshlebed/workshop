@@ -14,6 +14,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchCandidateLabels, type PreviewAnswer, previewTeachScore } from "../api/teach";
 import { useGamesRuntime } from "../runtime";
+import type { LocalScoreRead } from "./localRecognition";
 import {
   blocksPosting,
   resolveScoreCheck,
@@ -28,6 +29,7 @@ import {
   livePick,
   pickerIsOpen,
   type ScorePostExtras,
+  scoreCheckAvailable,
   serverPartPending,
   settleDelayMs,
   shouldPreselect,
@@ -120,10 +122,21 @@ export function useScoreCheck(input: {
    * reported with the preview (the server logs it); not part of the answer.
    */
   recognizedBy?: PreviewGameScoreRequest["recognizedBy"];
+  /**
+   * What this device read in the text with the game's parse code (the share
+   * flow). Shown until the server's dry run arrives, and instead of it when
+   * it does not.
+   */
+  localRead?: LocalScoreRead | null;
 }): ScoreCheck {
   const { gameId, periodKey, entry, today, recognizedBy } = input;
+  const localRead = input.localRead ?? null;
   const { token } = useGamesRuntime();
-  const available = useTeachAvailable();
+  const queryClient = useQueryClient();
+  const available = scoreCheckAvailable(
+    queryClient.getQueriesData<GamesResponse>({ queryKey: ["games", "mine"] }).map(([, d]) => d),
+    localRead !== null,
+  );
   const parserListed = useListedHasParser(gameId);
   const trimmed = input.text.trim();
   const empty = trimmed.length === 0;
@@ -198,9 +211,10 @@ export function useScoreCheck(input: {
             wrongGameDismissed,
             // No parser, so nothing to wait for: the chips show with the text.
             knownUntaught: parserListed === false,
+            localRead,
           })
         : ({ kind: "none" } as const),
-    [available, empty, answer, waitedOut, wrongGameDismissed, parserListed],
+    [available, empty, answer, waitedOut, wrongGameDismissed, parserListed, localRead],
   );
 
   // Instant chips from the same function the server runs; the server's list
