@@ -20,6 +20,7 @@
     "admin:game-direction": "tsx scripts/set-game-direction.ts",
     "admin:reread-scores": "tsx scripts/reread-scores.ts",
     "admin:handwritten-formatters": "tsx scripts/apply-handwritten-formatters.ts",
+    "admin:merge-games": "tsx scripts/merge-games.ts",
     "admin:reformat-scores": "tsx scripts/reformat-scores.ts",
     "ops:catalog-audit": "tsx scripts/catalog-audit.ts",
     "ops:import-album-library": "tsx scripts/import-album-library.ts"

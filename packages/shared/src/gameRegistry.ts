@@ -689,7 +689,7 @@ export const OFFICIAL_CATALOG_EXTRAS: OfficialCatalogEntry[] = [
   { normalizedUrl: "minutecryptic.com", title: "Minute Cryptic", category: "words" },
   { normalizedUrl: "moonshotdailygame.com", title: "moonshotdailygame.com", category: "trivia" },
   { normalizedUrl: "playdaily.org/noillirk", title: "Noillirk", category: "trivia" },
-  { normalizedUrl: "playplain.app/play", title: "Plain", category: "trivia" },
+  { normalizedUrl: "playplain.app", title: "Plain", category: "trivia" },
   {
     normalizedUrl: "magnitudle.com/size-it-up",
     title: "Size It Up",

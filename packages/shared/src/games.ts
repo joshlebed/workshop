@@ -630,13 +630,32 @@ export function unwrapLinkShim(input: string): string | null {
 }
 
 /**
+ * Addresses that are the same game as another address, mapped to the one key
+ * the game is stored under. A URL path otherwise makes a new game, so
+ * `playplain.app/play` and `playplain.app` were two games with two boards.
+ * **Every entry is a human decision** (docs/catalog-ops-runbook.md → "Duplicate
+ * games"): the daily audit lists likely duplicates, it never adds one here.
+ * Adding an entry only stops new splits. Rows already stored under the old
+ * address are combined with `admin:merge-games`.
+ */
+export const GAME_URL_ALIASES: ReadonlyArray<{ variant: RegExp; key: string }> = [
+  // wordle.com no longer hosts Wordle; people who add it mean the NYT game.
+  { variant: /^wordle\.com$/i, key: "nytimes.com/games/wordle" },
+  { variant: /^playplain\.app\/play$/i, key: "playplain.app" },
+  { variant: /^bandle\.app\/menu$/i, key: "bandle.app" },
+  // One path per weekly quiz ("/w43").
+  { variant: /^t30\.teuteuf\.fr\/w\d+$/i, key: "t30.teuteuf.fr" },
+];
+
+/**
  * Normalize a game URL into the global catalog's dedup key: lowercase host,
  * strip `www.`, drop query + fragment (the `dailytens.com/?ref=<id>` junk),
  * trim trailing slash(es), keep the path (and any non-default port). The
  * scheme is dropped so http/https variants collapse. Accepts scheme-less
  * input ("wordle.com"). Meta link shims are unwrapped to their destination
- * first (see `unwrapLinkShim`). Returns null when the input isn't a usable
- * http(s) URL with a dotted host.
+ * first (see `unwrapLinkShim`). A reviewed alias (`GAME_URL_ALIASES`) maps to
+ * its game's key. Returns null when the input isn't a usable http(s) URL with
+ * a dotted host.
  */
 export function normalizeGameUrl(input: string): string | null {
   const unwrapped = unwrapLinkShim(input);
@@ -661,7 +680,8 @@ export function normalizeGameUrl(input: string): string | null {
   // rejects pasted non-URLs ("wordle") that the URL parser happily accepts.
   if (!host.includes(".")) return null;
   const path = url.pathname.replace(/\/+$/, "");
-  return `${host}${path}`;
+  const key = `${host}${path}`;
+  return GAME_URL_ALIASES.find((alias) => alias.variant.test(key))?.key ?? key;
 }
 
 /**

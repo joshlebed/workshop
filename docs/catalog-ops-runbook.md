@@ -80,6 +80,35 @@ Review the PR like any content decision:
 Removing a game from the catalog is deleting its entry and merging. Blocking a _person_ is
 `admin:eject` (`docs/moderation-runbook.md`), which also removes their `user_games` rows.
 
+## Duplicate games
+
+A game is stored under the address it was added from, path included, so one game can end up
+under two addresses (`playplain.app` and `playplain.app/play`) with two separate boards. Players
+on one never see the other's scores. A real variant (Geozee USA, Spotle Unshuffle, Redactle's
+French edition) is a separate game and stays one.
+
+Fixing a duplicate is two steps, in one PR and then one command:
+
+1. **Stop new splits.** Add the extra address to `GAME_URL_ALIASES` in
+   `packages/shared/src/games.ts`, pointing at the main address. From then on, adding the extra
+   address lands on the main game. If the extra address is in `OFFICIAL_CATALOG_EXTRAS` or
+   `HANDWRITTEN_FORMATTERS`, move that entry to the main address in the same PR.
+2. **Combine the rows** once that PR is deployed, dry run first:
+
+   ```bash
+   pnpm --filter @workshop/backend run admin:merge-games --from=playplain.app/play --into=playplain.app
+   pnpm --filter @workshop/backend run admin:merge-games --from=playplain.app/play --into=playplain.app \
+     --apply --by=<admin email> --note="<why>"
+   ```
+
+   Scores, My Games entries, reactions, pokes, list items and reports move to the main game, and
+   the extra row is deleted. Where a player has a score for the same day on both, the main game's
+   score is kept. If only the extra row has a parser, its parse and format code move too, and
+   `admin:reread-scores --game=<main> --include-failed` (dry run first) can then read the main
+   game's unread rows.
+
+Aliases are human decisions, like catalog extras. The audit only lists likely duplicates.
+
 ## Running it by hand
 
 ```bash
