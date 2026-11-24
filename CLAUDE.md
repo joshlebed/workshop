@@ -242,7 +242,8 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   and **off** = the catalog (`GET /v1/games/catalog`: platform-wide `playerCount`, **never a name**).
   Types sort by their most-played game, rows by popularity (`lib/catalogSections.ts`). Game
   types are `category` on each `GameDefinition` in `packages/shared/src/gameRegistry.ts`
-  (`GAME_CATEGORIES` is the fallback order; `other` catches every unknown URL). "Listed" means
+  (`GAME_CATEGORIES` is the fallback order; `other` catches every unknown URL). Unlisted games
+  a friend plays get their type from `UNLISTED_GAME_CATEGORIES` (same file; categorizing never lists). "Listed" means
   `isOfficiallyListed`: a `catalog: true` registry game or an entry in `OFFICIAL_CATALOG_EXTRAS`
   (same file) — **every extra was reviewed by a human; popularity alone never lists a URL**,
   that is the content gate. **A catalog game must have a parser and a formatter** (operator

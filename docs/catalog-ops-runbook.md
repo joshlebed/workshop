@@ -61,6 +61,17 @@ starts a task that:
    catalog rule above: an **extra** with no parser or no formatter is removed from
    `OFFICIAL_CATALOG_EXTRAS` in the audit PR (it comes back through a later audit once taught).
 
+## Game types for unlisted games
+
+The "Friends only" view of Add a game shows every game a friend plays, listed or not, grouped
+by type. An unlisted game's type comes from `UNLISTED_GAME_CATEGORIES` in
+`packages/shared/src/gameRegistry.ts` (normalized URL → category, reviewed against the game's
+page); without an entry it lands in **Other**. An entry there never lists a game. The audit's
+"Suggested type" uses that reviewed entry when there is one, else the keyword guess. When an
+audit PR lists a game, move its entry to `OFFICIAL_CATALOG_EXTRAS` (a test forbids a URL in
+both). When an audit PR is opened anyway, add a reviewed entry for any new candidate the
+report shows as "Other".
+
 ## What the operator does
 
 Review the PR like any content decision:

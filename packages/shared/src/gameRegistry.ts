@@ -534,7 +534,8 @@ export const GAME_REGISTRY: GameDefinition[] = [
     catalog: true,
     scoreDirection: "asc",
     scoreUnit: "seconds",
-    category: "puzzles",
+    // A crossword: a word game, beside Minute Cryptic.
+    category: "words",
     // "I solved the 5/20/2026 New York Times Mini Crossword in 0:16!" → 16
     // seconds. The date is a fraction-shaped trap for naive number parsing —
     // the duration rule only reads `m:ss`.
@@ -696,10 +697,72 @@ export const OFFICIAL_CATALOG_EXTRAS: OfficialCatalogEntry[] = [
     category: "puzzles",
   },
   { normalizedUrl: "spotle.io", title: "Spotle", category: "music-movies" },
-  { normalizedUrl: "timeguessr.com", title: "TimeGuessr", category: "trivia" },
+  { normalizedUrl: "timeguessr.com", title: "TimeGuessr", category: "geography" },
 ];
 
+/**
+ * Game types for games that are NOT in the official catalog, keyed by
+ * `games.normalized_url`. The "Friends only" view of Add a game shows every
+ * game a friend plays, listed or not, grouped by type; without an entry here
+ * an unlisted game falls into "Other". **Categorizing is not listing**: an
+ * entry here never puts a game in the catalog (`isOfficiallyListed` ignores
+ * this map). Reviewed by a human against the game's page (2026-11-24 audit).
+ * When a game is listed, move it to `OFFICIAL_CATALOG_EXTRAS` (a URL may not
+ * be in both). Unknown and unreviewed games stay `other`. Keep sorted by URL.
+ */
+export const UNLISTED_GAME_CATEGORIES: Readonly<Record<string, GameCategory>> = {
+  "alldle.net/game/dartle": "trivia", // Dartle: name answers that sum to 100
+  "alldle.net/game/krillion-but-endless": "trivia",
+  "amountle.dev": "puzzles", // visual count estimation
+  "angledle.com": "puzzles", // Today's Angle: guess an angle
+  "anythinggrid.com": "trivia", // trivia grid
+  "bandle.app": "music-movies",
+  "bandle.app/menu": "music-movies",
+  "blamenick.com/crease": "puzzles", // Crease: origami folding
+  "chainle.org": "words", // word association
+  "cliffle.net": "trivia", // top-10 lists
+  "cosmillion.com": "trivia", // rarest-answer prompts, like Krillion
+  "dailysortie.com": "trivia", // Sortie!: rare-answer prompts
+  "dartle.net": "trivia",
+  "flagle.io": "geography",
+  "gamefinity.io/game/uncommet": "trivia", // rare-answer prompts
+  "geodle.me/daily": "geography",
+  "geoslice.net": "geography",
+  "geozee.earth/usa": "geography",
+  "goatle.io": "trivia", // name five from each list
+  "hookeddailygame.com": "trivia", // every answer is a fish
+  "kabloom.io/play/daily": "trivia",
+  "linxicon.com": "words", // link two words by meaning
+  "lnkd.in/crossclimb": "words",
+  "lnkd.in/minisudoku": "puzzles",
+  "lnkd.in/patches": "puzzles",
+  "lnkd.in/pinpoint": "words",
+  "lnkd.in/queens": "puzzles",
+  "lnkd.in/sumbreak": "puzzles",
+  "lnkd.in/tango": "puzzles",
+  "lnkd.in/wend": "words", // word search
+  "lnkd.in/zip": "puzzles",
+  "orbitdailygame.com": "geography", // rare answers, around the world
+  "originle.io": "geography", // guess a person's country
+  "peakle.net": "trivia",
+  "playplain.app": "trivia", // Plain; listed as playplain.app/play
+  "playseldom.com": "trivia", // rarest answer wins
+  "polygonle.com": "words", // word puzzle with a shape clue
+  "redactle.net": "words", // uncover a redacted Wikipedia article
+  "redactle.net/fr": "words",
+  "spotle.io/unshuffle": "music-movies",
+  "spotle.movie": "music-movies",
+  "t30.teuteuf.fr": "geography", // Thursday Thirty Geography Quiz
+  "termo.pt": "words", // Portuguese Wordle
+  "thegravityreport.com/longshot": "trivia", // Long Shot: NBA trivia
+  "whosmorefamous.com/play/daily/2026-11-06": "trivia",
+  "wordgrid.clevergoat.com": "trivia", // category grid, rarity scored
+  "wordle.com": "words",
+};
+
 const EXTRAS_BY_URL = new Map(OFFICIAL_CATALOG_EXTRAS.map((e) => [e.normalizedUrl, e]));
+// A Map, so a URL like "constructor" can't read an Object.prototype member.
+const UNLISTED_CATEGORY_BY_URL = new Map(Object.entries(UNLISTED_GAME_CATEGORIES));
 
 export interface CatalogIdentity {
   gameKey: string | null;
@@ -713,11 +776,18 @@ export function isOfficiallyListed(game: CatalogIdentity): boolean {
   return EXTRAS_BY_URL.has(game.normalizedUrl);
 }
 
-/** Catalog section for a game row: registry category, else the extra's, else `other`. */
+/**
+ * Catalog section for a game row: registry category, else the extra's, else
+ * the reviewed `UNLISTED_GAME_CATEGORIES` entry, else `other`.
+ */
 export function gameCategoryFor(game: CatalogIdentity): GameCategory {
   const def = gameDefinitionForKey(game.gameKey);
   if (def) return def.category;
-  return EXTRAS_BY_URL.get(game.normalizedUrl)?.category ?? "other";
+  return (
+    EXTRAS_BY_URL.get(game.normalizedUrl)?.category ??
+    UNLISTED_CATEGORY_BY_URL.get(game.normalizedUrl) ??
+    "other"
+  );
 }
 
 /** Display label for a category key. */

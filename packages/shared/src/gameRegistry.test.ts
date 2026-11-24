@@ -12,6 +12,8 @@ import {
   isOfficiallyListed,
   isResultlessShare,
   matchShareText,
+  OFFICIAL_CATALOG_EXTRAS,
+  UNLISTED_GAME_CATEGORIES,
 } from "./gameRegistry.js";
 import { normalizeGameUrl } from "./games.js";
 import { parseScoreWithSpec } from "./scoreParsing.js";
@@ -62,6 +64,25 @@ describe("registry shape", () => {
     expect(gameCategoryFor({ gameKey: null, normalizedUrl: "never-reviewed.example" })).toBe(
       "other",
     );
+  });
+
+  it("an unlisted game takes its reviewed type, and that never lists it", () => {
+    const keys = new Set<string>(GAME_CATEGORIES.map((c) => c.key));
+    const listedUrls = new Set([
+      ...OFFICIAL_CATALOG_EXTRAS.map((e) => e.normalizedUrl),
+      ...CATALOG_GAME_DEFINITIONS.map((d) => normalizeGameUrl(d.canonicalUrl)),
+    ]);
+    const urls = Object.keys(UNLISTED_GAME_CATEGORIES);
+    expect(urls).toEqual([...urls].sort());
+    for (const [url, category] of Object.entries(UNLISTED_GAME_CATEGORIES)) {
+      expect(keys.has(category), `${url} has an unknown category`).toBe(true);
+      expect(listedUrls.has(url), `${url} is listed; its category belongs on the extra`).toBe(
+        false,
+      );
+      expect(isOfficiallyListed({ gameKey: null, normalizedUrl: url })).toBe(false);
+      expect(gameCategoryFor({ gameKey: null, normalizedUrl: url })).toBe(category);
+    }
+    expect(gameCategoryFor({ gameKey: null, normalizedUrl: "constructor" })).toBe("other");
   });
 
   it("every catalog game has a spec (catalog implies parseable)", () => {
