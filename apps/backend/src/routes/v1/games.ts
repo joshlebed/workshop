@@ -533,9 +533,10 @@ gameRoutes.post(
  * GET /v1/games/recognizers — the recognition evidence for the caller's My
  * Games (and no other game), for the client to keep on the device and run
  * itself (`recognizeWithRecognizers` in `@workshop/shared/gameRecognition`),
- * so the share flow names the game before any request returns. It carries no
- * score text and no parser: the score is still read here, by the preview and
- * the post. Same gate as `/recognize` — 404 unless recognition is on for the
+ * so the share flow names the game — and, where a recognizer carries the
+ * game's reviewed parse code, reads its score — before any request returns.
+ * It carries no score text, and the reading that is stored is still made
+ * here, by the preview and the post. Same gate as `/recognize` — 404 unless recognition is on for the
  * caller. Registered before the `/:id` routes so the literal path isn't
  * shadowed.
  */
