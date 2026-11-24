@@ -14,6 +14,10 @@
 //      that reads scores badly gets fixed instead of quietly ranking nobody.
 //   3. Stale extras: listed URLs with no `games` row at all (a typo, or a
 //      row that was merged away) — dead entries to prune.
+//   4. Possible duplicates: played games that look like one game stored under
+//      two addresses (same site with a longer path, or the same name), and
+//      rows whose address now has an alias but were never merged. Listed for
+//      a human; never aliased or merged by the automation.
 //
 // Pure SQL reads via drizzle; the script wrapper opens the session read-only.
 
@@ -24,7 +28,9 @@ import {
   gameDefinitionForKey,
   isOfficiallyListed,
   OFFICIAL_CATALOG_EXTRAS,
+  REVIEWED_SEPARATE_GAMES,
 } from "@workshop/shared/gameRegistry";
+import { normalizeGameUrl } from "@workshop/shared/games";
 import { asc, desc, eq, gte, sql } from "drizzle-orm";
 import { getDb } from "../db/client.js";
 import { gameScores, games, userGames } from "../db/schema.js";
@@ -77,6 +83,18 @@ interface ListedGameHealth {
   issues: string[];
 }
 
+interface PlayedGame {
+  normalizedUrl: string;
+  title: string;
+  playerCount: number;
+}
+
+interface PossibleDuplicate {
+  /** `same-site`: one address is the other plus a path. `same-name`: equal titles. `alias-not-merged`: an alias points `games[0]` at `games[1]`, but the rows are still separate. */
+  reason: "same-site" | "same-name" | "alias-not-merged";
+  games: [PlayedGame, PlayedGame];
+}
+
 interface CatalogAuditReport {
   generatedAt: string;
   windowDays: number;
@@ -86,10 +104,52 @@ interface CatalogAuditReport {
     candidates: number;
     unhealthyListed: number;
     staleExtras: number;
+    possibleDuplicates: number;
   };
   candidates: CatalogCandidate[];
   unhealthy: ListedGameHealth[];
   staleExtras: { normalizedUrl: string; title: string }[];
+  possibleDuplicates: PossibleDuplicate[];
+}
+
+const nameKey = (title: string) => title.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/**
+ * Played games that may be one game under two addresses. A pair is listed
+ * when one address is the other plus a path (`bandle.app` and
+ * `bandle.app/menu`) or both have the same name (`dartle.net` and
+ * `alldle.net/game/dartle`), unless a human kept either as its own game
+ * (`REVIEWED_SEPARATE_GAMES`). A row whose address now normalizes elsewhere
+ * has an alias but was never merged.
+ */
+export function findPossibleDuplicates(played: ReadonlyArray<PlayedGame>): PossibleDuplicate[] {
+  const out: PossibleDuplicate[] = [];
+  const byUrl = new Map(played.map((g) => [g.normalizedUrl, g]));
+  const aliased = new Set<string>();
+  for (const g of played) {
+    const key = normalizeGameUrl(g.normalizedUrl);
+    if (key && key !== g.normalizedUrl) {
+      aliased.add(g.normalizedUrl);
+      const main = byUrl.get(key) ?? { normalizedUrl: key, title: "(no row yet)", playerCount: 0 };
+      out.push({ reason: "alias-not-merged", games: [g, main] });
+    }
+  }
+  const reviewed = new Set(REVIEWED_SEPARATE_GAMES);
+  const open = played.filter(
+    (g) => !reviewed.has(g.normalizedUrl) && !aliased.has(g.normalizedUrl),
+  );
+  for (const [i, a] of open.entries()) {
+    for (const b of open.slice(i + 1)) {
+      const sameSite =
+        b.normalizedUrl.startsWith(`${a.normalizedUrl}/`) ||
+        a.normalizedUrl.startsWith(`${b.normalizedUrl}/`);
+      const sameName = nameKey(a.title) !== "" && nameKey(a.title) === nameKey(b.title);
+      if (!sameSite && !sameName) continue;
+      const pair: [PlayedGame, PlayedGame] = a.playerCount >= b.playerCount ? [a, b] : [b, a];
+      out.push({ reason: sameSite ? "same-site" : "same-name", games: pair });
+    }
+  }
+  return out;
 }
 
 // Checked in order: a specific signal ("heard", "globe") beats the loose
@@ -174,13 +234,17 @@ export async function runCatalogAudit(now: Date = new Date()): Promise<CatalogAu
   let gamesWithPlayers = 0;
   let listed = 0;
   const seenUrls = new Set<string>();
+  const played: PlayedGame[] = [];
 
   for (const r of rows) {
     const g = r.game;
     seenUrls.add(g.normalizedUrl);
     const hasParser = g.parseCode !== null;
     const hasFormatter = g.formatCode !== null;
-    if (r.playerCount > 0) gamesWithPlayers += 1;
+    if (r.playerCount > 0) {
+      gamesWithPlayers += 1;
+      played.push({ normalizedUrl: g.normalizedUrl, title: g.title, playerCount: r.playerCount });
+    }
 
     if (!isOfficiallyListed(g)) {
       if (r.playerCount === 0) continue;
@@ -250,6 +314,7 @@ export async function runCatalogAudit(now: Date = new Date()): Promise<CatalogAu
   const staleExtras = OFFICIAL_CATALOG_EXTRAS.filter((e) => !seenUrls.has(e.normalizedUrl)).map(
     (e) => ({ normalizedUrl: e.normalizedUrl, title: e.title }),
   );
+  const possibleDuplicates = findPossibleDuplicates(played);
 
   return {
     generatedAt: now.toISOString(),
@@ -260,10 +325,12 @@ export async function runCatalogAudit(now: Date = new Date()): Promise<CatalogAu
       candidates: candidates.length,
       unhealthyListed: unhealthy.length,
       staleExtras: staleExtras.length,
+      possibleDuplicates: possibleDuplicates.length,
     },
     candidates,
     unhealthy,
     staleExtras,
+    possibleDuplicates,
   };
 }
 
@@ -338,6 +405,21 @@ export function renderCatalogAuditMarkdown(report: CatalogAuditReport): string {
   out.push("## Stale extras (listed, no games row)");
   if (report.staleExtras.length === 0) out.push("_None._");
   else for (const e of report.staleExtras) out.push(`- ${e.title} — \`${e.normalizedUrl}\``);
+  out.push("");
+
+  out.push("## Possible duplicates (a human decides)");
+  if (report.possibleDuplicates.length === 0) out.push("_None._");
+  else {
+    const label = (g: PlayedGame) => `${g.title} \`${g.normalizedUrl}\` (${g.playerCount} players)`;
+    for (const d of report.possibleDuplicates) {
+      const [a, b] = d.games;
+      out.push(
+        d.reason === "alias-not-merged"
+          ? `- **Alias not merged:** ${label(a)} → ${label(b)}. Run \`admin:merge-games --from=${a.normalizedUrl} --into=${b.normalizedUrl}\` (dry run first).`
+          : `- ${d.reason === "same-site" ? "Same site" : "Same name"}: ${label(a)} and ${label(b)}. Same game → \`GAME_URL_ALIASES\` + \`admin:merge-games\`; its own game → \`REVIEWED_SEPARATE_GAMES\`.`,
+      );
+    }
+  }
   out.push("");
 
   const registryGap = report.unhealthy.filter((h) => h.gameKey && !gameDefinitionForKey(h.gameKey));

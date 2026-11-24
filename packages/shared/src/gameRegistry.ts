@@ -647,6 +647,19 @@ export interface OfficialCatalogEntry {
 }
 
 /**
+ * Addresses a human reviewed and kept as their own game, though they look like
+ * a duplicate of another (same site, or same name). The daily audit stops
+ * listing them as possible duplicates. A real duplicate goes in
+ * `GAME_URL_ALIASES` instead (`@workshop/shared/games`). See
+ * docs/catalog-ops-runbook.md → "Duplicate games".
+ */
+export const REVIEWED_SEPARATE_GAMES: ReadonlyArray<string> = [
+  "geozee.earth/usa", // the US-only edition of Geozee
+  "redactle.net/fr", // the French edition, its own puzzle
+  "spotle.io/unshuffle", // a different Spotle game
+];
+
+/**
  * Operator-curated extras beyond the registry. **Every entry here was
  * reviewed by a human** — the Catalog tab is the one place a user-added game
  * reaches people outside the adder's friend graph, so this list is the
