@@ -435,4 +435,268 @@ function format(raw) {
       { raw: "https://city2city.goldfishwatercooler.com/?s", expectedSummary: null },
     ],
   },
+  {
+    ref: "costcodle.com",
+    title: "COSTCODLE",
+    // Two modes share this game. Classic folds its tall guess column into one
+    // line. Checkout keeps each item's miss but not the item names, which
+    // would spoil today's puzzle for a friend who hasn't played.
+    format: block(
+      LINES,
+      String.raw`
+function format(raw) {
+  if (!/\bCostcodle\b/i.test(raw)) return null;
+  var ls = lines(raw);
+  var total = raw.match(/walked out\s+(\$\s*[\d,]+(?:\.\d{1,2})?)\s+off the mark/i);
+  if (total) {
+    var rank = raw.match(/went full\s+([^\r\n]+?)\s+on\b/i);
+    var misses = ls
+      .map(function (l) { return (l.match(/^\d+\.\s.*\boff\s+(\$[\d,]+(?:\.\d{1,2})?)$/i) || [])[1]; })
+      .filter(Boolean);
+    var result = ["Checkout", total[1].replace(/\s+/g, "") + " off"];
+    if (rank) result.push(rank[1]);
+    return (misses.length ? misses.join(" · ") + "\n" : "") + result.join(" · ");
+  }
+  var header = raw.match(/\bCostcodle\b[^\r\n]*?\s([1-6X])\s*\/\s*6\b/i);
+  if (!header) return null;
+  var guesses = ls.filter(function (l) { return /^(?:[⬆⬇]️?[🟥🟨🟩]|✅)$/u.test(l); });
+  var line = "Classic · " + header[1].toUpperCase() + "/6";
+  return guesses.length ? guesses.join(" ") + "\n" + line : line;
+}`,
+    ),
+    examples: [
+      {
+        raw: "Costcodle Classic #1155 4/6\n⬆️🟥\n⬆️🟥\n⬆️🟨\n✅\n\nPlay now at https://www.costcodle.com",
+        expectedSummary: "⬆️🟥 ⬆️🟥 ⬆️🟨 ✅\nClassic · 4/6",
+      },
+      {
+        raw: "Costcodle #1141 3/6\n⬆️🟨\n⬇️🟥\n✅\n\nhttps://costcodle.com/",
+        expectedSummary: "⬆️🟨 ⬇️🟥 ✅\nClassic · 3/6",
+      },
+      {
+        raw: "Went full Bulk Buyer on today's Costcodle and walked out $16.50 off the mark!\n\nCostcodle Checkout #10\n1. APPL JUICE — off $1.50\n2. EGG WHITES — off $2.00\n3. PICKLES — off $9.00\n4. IZZE — off $1.00\n5. WHT BREAD — off $3.00\n\nPlay now at https://www.costcodle.com",
+        expectedSummary:
+          "$1.50 · $2.00 · $9.00 · $1.00 · $3.00\nCheckout · $16.50 off · Bulk Buyer",
+      },
+      // A hand-typed number stays as typed.
+      { raw: "$20.70", expectedSummary: null },
+    ],
+  },
+  {
+    ref: "longshots.app",
+    title: "LONGSHOTS",
+    // Shot grid, then distance, league and percentile. The streak is dropped
+    // because HighScore tracks its own.
+    format: block(
+      LINES,
+      String.raw`
+function format(raw) {
+  var ls = lines(raw);
+  var shot;
+  for (var i = 0; i < ls.length && !shot; i++) {
+    shot = ls[i].match(/⚽\s*([\d,]+)\s*yds\s*·\s*(.+)$/u);
+  }
+  if (!shot) return null;
+  var grid = ls.filter(function (l) { return /^[⬜🟦🟩🟪🟨⬛]+$/u.test(l); });
+  var beat = raw.match(/\bbeat\s+(\d+)\s*%/i);
+  var stats = [shot[1] + " yds", shot[2].trim()];
+  if (beat) stats.push("beat " + beat[1] + "%");
+  return grid.concat(stats.join(" · ")).join("\n");
+}`,
+    ),
+    examples: [
+      {
+        raw: "LONGSHOTS #21 ⚽ 412 yds · Ballon d’Or\n🟨🟪🟪🟨🟩🟦🟪\n🔥 3-day streak · 🧤 2 Keeper’s Goals · Beat 99% of players\nBeat me 👇 https://longshots.app/?beat=412&d=21",
+        expectedSummary: "🟨🟪🟪🟨🟩🟦🟪\n412 yds · Ballon d’Or · beat 99%",
+      },
+      {
+        raw: "LONGSHOTS #11 ⚽ 296 yds · Top Flight\n🟩🟪🟪🟦🟦🟪🟪\n🔥 2-day streak · Beat 87% of players\nBeat me 👇 longshots.app",
+        expectedSummary: "🟩🟪🟪🟦🟦🟪🟪\n296 yds · Top Flight · beat 87%",
+      },
+      {
+        raw: "LONGSHOTS #18 ⚽ 64 yds · Sunday League\n⬛🟩⬜⬛⬜⬜⬜\n🔥 9-day streak\nBeat me 👇 https://longshots.app/?beat=64&d=18",
+        expectedSummary: "⬛🟩⬜⬛⬜⬜⬜\n64 yds · Sunday League",
+      },
+      {
+        raw: "⚽ 201 yds · Championship\n🟦⬜🟪⬜🟪🟪⬜\nBeat 61% of players",
+        expectedSummary: "🟦⬜🟪⬜🟪🟪⬜\n201 yds · Championship · beat 61%",
+      },
+      // Another game's share posted here falls back to its own text.
+      {
+        raw: "Size It Up\n#102\n\nScore: 209/500\n\n🟥🟥🟥🟥⬜ 70\nhttps://magnitudle.com/size-it-up",
+        expectedSummary: null,
+      },
+    ],
+  },
+  {
+    ref: "headcountgame.com",
+    title: "Headcount",
+    format: block(
+      LINES,
+      String.raw`
+// "Headcount #30 🏠 · 79 points", a moon row, "beat 84% of the party"
+function format(raw) {
+  var score = raw.match(/\bHeadcount\s+#\s*[\d,]+[^\r\n]*?·\s*([\d,]+)\s+points\b/i);
+  if (!score) return null;
+  var moons = lines(raw).filter(function (l) { return /^[🌑🌒🌓🌔🌕]+$/u.test(l); });
+  var beat = raw.match(/\bbeat\s+(\d+)\s*%/i);
+  var stats = score[1] + " points" + (beat ? " · beat " + beat[1] + "%" : "");
+  return moons.concat(stats).join("\n");
+}`,
+    ),
+    examples: [
+      {
+        raw: "Headcount #30 🏠 · 79 points\n🌔🌔🌔🌓🌔\nbeat 84% of the party\nhttps://headcountgame.com/?vs=Player.79.30.abcde",
+        expectedSummary: "🌔🌔🌔🌓🌔\n79 points · beat 84%",
+      },
+      {
+        raw: "Headcount #27 🏠 · 31 points\n🌓🌓🌒🌑🌓\nhttps://headcountgame.com/?vs=Player.31.27.abcde",
+        expectedSummary: "🌓🌓🌒🌑🌓\n31 points",
+      },
+      { raw: "53/100", expectedSummary: null },
+    ],
+  },
+  {
+    ref: "playdaily.org/noillirk",
+    title: "Noillirk",
+    format: block(
+      LINES,
+      String.raw`
+// "Noillirk 🎈 The Daily Climb · No. 52 · 3,613m" + color row → row, then "3,613m"
+function format(raw) {
+  var climb = raw.match(/\bNoillirk\b[^\r\n]*?·\s*No\.\s*[\d,]+\s*·\s*([\d,]+)\s*m\b/i);
+  if (!climb) return null;
+  var grid = lines(raw).filter(function (l) { return /^[⬛🟦🟩🟧🟥🟨]+$/u.test(l); });
+  return grid.concat(climb[1] + "m").join("\n");
+}`,
+    ),
+    examples: [
+      {
+        raw: "Noillirk 🎈 The Daily Climb · No. 52 · 3,613m\n\n🟥🟥🟨🟩🟥🟦🟧\n\nClimb today's prompts: https://playdaily.org/noillirk",
+        expectedSummary: "🟥🟥🟨🟩🟥🟦🟧\n3,613m",
+      },
+      { raw: "5,713m", expectedSummary: null },
+    ],
+  },
+  {
+    ref: "moonshotdailygame.com",
+    title: "Moonshot",
+    // Result rows, then where it landed. Both missions share this game: Common
+    // vs Blue Moon (👥 rows) and The Ladder (✅🔸🔻❌ rows, plus a bullseye count).
+    // Daily player counts swing from about 2k to 20k, so a rank reads as a
+    // percentile to compare across days.
+    format: block(
+      LINES,
+      String.raw`
+function format(raw) {
+  var ls = lines(raw);
+  var stats;
+  for (var i = 0; i < ls.length && !stats; i++) {
+    stats = ls[i].match(/^([\d,]+)\s+pts\b(.*)$/i);
+  }
+  if (!stats) return null;
+  var rows = ls.filter(function (l) { return /^👥/u.test(l) || /^[✅🔸🔻❌]+$/u.test(l); });
+  var landed = raw.match(/Landed:\s*([^\r\n]+)/i);
+  var parts = [];
+  if (landed) parts.push("🚀 " + landed[1].trim());
+  else if (/Teleported/i.test(raw)) parts.push("🌀 Blue Moon");
+  parts.push(stats[1] + " pts");
+  var bullseyes = stats[2].match(/(\d+\/\d+)\s+bullseyes/i);
+  if (bullseyes) parts.push(bullseyes[1] + " bullseyes");
+  var ranked = stats[2].match(/#([\d,]+)\s+of\s+([\d,]+)/);
+  var top = stats[2].match(/\btop\s+(\d+)%/i);
+  if (ranked) {
+    var rank = Number(ranked[1].replace(/,/g, ""));
+    var field = Number(ranked[2].replace(/,/g, ""));
+    if (rank > 0 && field >= rank) parts.push("top " + Math.ceil((rank / field) * 100) + "%");
+  } else if (top) {
+    parts.push("top " + top[1] + "%");
+  }
+  return rows.concat(parts.join(" · ")).join("\n");
+}`,
+    ),
+    examples: [
+      {
+        raw: "MOONSHOT CR-060 · The Ladder\n✅🔸🔻❌\n🚀 Landed: Saturn\n240 pts · 1/4 bullseyes · top 20%\nBeat my 240: https://moonshotdailygame.com/?beat=240&m=l&d=2026-11-22",
+        expectedSummary: "✅🔸🔻❌\n🚀 Saturn · 240 pts · 1/4 bullseyes · top 20%",
+      },
+      {
+        raw: "MOONSHOT CR-061 · Common vs Blue Moon\n👥 🥇🥈🥉  🌕 💙💙💙\n🌀 Teleported to the Blue Moon\n1500 pts · top 1% · streak 9",
+        expectedSummary: "👥 🥇🥈🥉  🌕 💙💙💙\n🌀 Blue Moon · 1500 pts · top 1%",
+      },
+      {
+        raw: "MOONSHOT CR-054 · Common vs Blue Moon\n👥 🥈🥇🟫  🌕 🩷🟩🩷\n👥 🥈🥉🟫  🌕 🩷🩷🩷\n🚀 Landed: Pluto\n863 pts · #11835 of 20403 · streak 1\nBeat my 863: https://moonshotdailygame.com/?beat=863&m=g&d=2026-11-16",
+        expectedSummary: "👥 🥈🥇🟫  🌕 🩷🟩🩷\n👥 🥈🥉🟫  🌕 🩷🩷🩷\n🚀 Pluto · 863 pts · top 59%",
+      },
+      {
+        raw: "MOONSHOT CR-056 · Common vs Blue Moon\n👥 🟫🥉🥈  🌕 🟪🟩🟪\n👥 🥇🥈🟧  🌕 🟩🟩🟩\n🚀 Landed: Uranus\n639 pts · #961 of 2635 · streak 3\nBeat my 639: https://moonshotdailygame.com/?beat=639&m=g&d=2026-11-18",
+        expectedSummary:
+          "👥 🟫🥉🥈  🌕 🟪🟩🟪\n👥 🥇🥈🟧  🌕 🟩🟩🟩\n🚀 Uranus · 639 pts · top 37%",
+      },
+      { raw: "642", expectedSummary: null },
+    ],
+  },
+  {
+    ref: "canucklegame.ca",
+    title: "Canuckle",
+    format: block(
+      LINES,
+      String.raw`
+// Wordle-shaped: the guess grid is the result, the streak line is dropped.
+function format(raw) {
+  if (!/\bCanuckle\b/i.test(raw)) return null;
+  var grid = lines(raw).filter(function (l) { return /^[⬜⬛🟨🟥🟩]+$/u.test(l); });
+  return grid.length ? grid.join("\n") : null;
+}`,
+    ),
+    examples: [
+      {
+        raw: "🍁 Canuckle 1634 4/6\n\n⬜⬜🟨⬜⬜\n⬜🟨⬜⬜⬜\n⬜🟥🟨⬜🟨\n🟥🟥🟥🟥🟥\n\n🔥 Streak: 1\n\ncanucklegame.ca",
+        expectedSummary: "⬜⬜🟨⬜⬜\n⬜🟨⬜⬜⬜\n⬜🟥🟨⬜🟨\n🟥🟥🟥🟥🟥",
+      },
+    ],
+  },
+  {
+    ref: "playplain.app/play",
+    title: "Plain",
+    // The game ships in 18 languages. Thousands may be grouped with a space,
+    // dot or apostrophe ("6 651 m", "6.651 m"); all render as "6,651 m". The grid
+    // matches only the tier emoji, because a translated line in a non-Latin
+    // script has no ASCII letters and would otherwise read as a grid row.
+    format: block(
+      LINES,
+      String.raw`
+function format(raw) {
+  var ls = lines(raw);
+  var flight;
+  for (var i = 0; i < ls.length && !flight; i++) {
+    flight = ls[i].match(/^Plain\b.*?✈️?\s*(\d(?:[\d.,'\s]*\d)?)\s*m$/iu);
+  }
+  if (!flight) return null;
+  var grid = ls.filter(function (l) { return /^[🎯🟩🟨🟧🟥]+$/u.test(l); });
+  var top = raw.match(/\btop\s*(\d+)\s*%/i);
+  var meters = flight[1].replace(/[.,'\s]+/g, ",");
+  return grid.concat(meters + " m" + (top ? " · top " + top[1] + "%" : "")).join("\n");
+}`,
+    ),
+    examples: [
+      {
+        raw: "Plain #40 ✈️ 6.651 m\n🎯🟩🟧🟨🟨🎯🟨\nTop 3 % heute · 🔥 5-Tage-Serie\nhttps://playplain.app/c/ABC123",
+        expectedSummary: "🎯🟩🟧🟨🟨🎯🟨\n6,651 m · top 3%",
+      },
+      {
+        raw: "Plain #40 ✈️ 3,832 m\n🟥🟩🟩🟧🟧🟨🟥\n你能赢我吗？👇\nhttps://playplain.app/c/ABC123",
+        expectedSummary: "🟥🟩🟩🟧🟧🟨🟥\n3,832 m",
+      },
+      {
+        raw: "Plain #32 ✈️ 3,832 m\n🟥🟩🟩🟧🟧🟨🟥\n🔥 4-day streak\nCan you beat me? 👇\nhttps://playplain.app/c/ABC123",
+        expectedSummary: "🟥🟩🟩🟧🟧🟨🟥\n3,832 m",
+      },
+      {
+        raw: "Plain #30 ✈️ 6 651 m\n🎯🎯🟧🟨🟨🎯🟨\nTop 3 % aujourd’hui\nTu peux faire mieux ? 👇\nhttps://playplain.app/c/ABC123",
+        expectedSummary: "🎯🎯🟧🟨🟨🎯🟨\n6,651 m · top 3%",
+      },
+      { raw: "4695", expectedSummary: null },
+    ],
+  },
 ];

@@ -105,12 +105,19 @@ export function decideGameCodeChange(
 /**
  * Run candidate code against every stored score of a game, plus any extra
  * labelled examples. Read-only.
+ *
+ * `parseUnchanged`: the candidate keeps the game's current parse code, so no
+ * stored reading can move and rows are not held to their values. A player's
+ * picked score is often text the parser never read ("642"), which would
+ * otherwise refuse every formatter for that game. The format block still has
+ * to run on every stored row.
  */
 export async function planGameCodeChange(
   db: DbClient,
   game: Pick<DbGame, "id">,
   candidate: CandidateCode,
   extraExamples: ReadonlyArray<CodeExample> = [],
+  { parseUnchanged = false }: { parseUnchanged?: boolean } = {},
 ): Promise<GameCodePlan> {
   if (candidate.parseCode === null) {
     throw new Error("a game's parse code cannot be removed; replace it instead");
@@ -128,7 +135,10 @@ export async function planGameCodeChange(
     .where(eq(gameScores.gameId, game.id))
     .orderBy(gameScores.periodKey, gameScores.userId);
 
-  const storedExamples = stored.map((score) => ({ raw: score.scoreRaw, ...expectationFor(score) }));
+  const storedExamples = stored.map((score) => ({
+    raw: score.scoreRaw,
+    ...(parseUnchanged ? {} : expectationFor(score)),
+  }));
   const storedReport = await validateCode(code, storedExamples);
   // Don't ask a sandbox that just went away to do the second half.
   const exampleReport = storedReport.unavailable

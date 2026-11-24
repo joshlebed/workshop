@@ -315,6 +315,41 @@ describe("decideGameCodeChange", () => {
       reason: "fails_examples",
     });
   });
+
+  it("with parse unchanged, ignores picked values but still requires format to run", async () => {
+    const id = await krillion();
+    // A picked score: the text is a bare number the parser throws on.
+    await seedScores(id, [[0, "642", 642, "score"]]);
+    const keepsParse = {
+      parseCode: krillionCode,
+      formatCode: "function format() { return 'ok'; }",
+    };
+
+    const strict = await planGameCodeChange(db, { id }, keepsParse);
+    expect(decideGameCodeChange(strict)).toEqual({
+      write: false,
+      reason: "changes_stored_scores",
+    });
+
+    const formatOnly = await planGameCodeChange(db, { id }, keepsParse, [], {
+      parseUnchanged: true,
+    });
+    expect(decideGameCodeChange(formatOnly)).toEqual({ write: true, acceptedChanges: 0 });
+
+    const brokenFormat = await planGameCodeChange(
+      db,
+      { id },
+      { parseCode: krillionCode, formatCode: "function format() { throw new Error('no'); }" },
+      [],
+      { parseUnchanged: true },
+    );
+    expect(brokenFormat.storedMismatches.map((m) => m.step)).toEqual(["format"]);
+    expect(decideGameCodeChange(brokenFormat)).toEqual({
+      write: false,
+      reason: "changes_stored_scores",
+    });
+    await seedScores(id, []);
+  });
 });
 
 describe("applyGameCodeChange", () => {
