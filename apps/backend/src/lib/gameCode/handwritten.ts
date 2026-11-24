@@ -440,22 +440,32 @@ function format(raw) {
     title: "COSTCODLE",
     // Two modes share this game. Classic folds its tall guess column into one
     // line. Checkout keeps each item's miss but not the item names, which
-    // would spoil today's puzzle for a friend who hasn't played.
+    // would spoil today's puzzle for a friend who hasn't played. Checkout's
+    // opening sentence varies ("walked out $16.50 off the mark", "hunting free
+    // samples with a $35.50 total off"), so the receipt lines are what it reads.
     format: block(
       LINES,
       String.raw`
 function format(raw) {
   if (!/\bCostcodle\b/i.test(raw)) return null;
   var ls = lines(raw);
-  var total = raw.match(/walked out\s+(\$\s*[\d,]+(?:\.\d{1,2})?)\s+off the mark/i);
-  if (total) {
+  var misses = ls
+    .map(function (l) { return (l.match(/^\d+\.\s.*\boff\s+\$\s*([\d,]+(?:\.\d{1,2})?)$/i) || [])[1]; })
+    .filter(Boolean);
+  if (/\bCheckout\b/i.test(raw) && misses.length) {
+    var total;
+    for (var i = 0; i < ls.length && !total; i++) {
+      if (/^\d+\./.test(ls[i])) continue;
+      total = (ls[i].match(/\$\s*([\d,]+(?:\.\d{1,2})?)[^$\r\n]*\boff\b/i) || [])[1];
+    }
+    if (!total) {
+      var sum = misses.reduce(function (s, m) { return s + Number(m.replace(/,/g, "")); }, 0);
+      total = sum.toFixed(2);
+    }
     var rank = raw.match(/went full\s+([^\r\n]+?)\s+on\b/i);
-    var misses = ls
-      .map(function (l) { return (l.match(/^\d+\.\s.*\boff\s+(\$[\d,]+(?:\.\d{1,2})?)$/i) || [])[1]; })
-      .filter(Boolean);
-    var result = ["Checkout", total[1].replace(/\s+/g, "") + " off"];
+    var result = ["Checkout", "$" + total + " off"];
     if (rank) result.push(rank[1]);
-    return (misses.length ? misses.join(" · ") + "\n" : "") + result.join(" · ");
+    return misses.map(function (m) { return "$" + m; }).join(" · ") + "\n" + result.join(" · ");
   }
   var header = raw.match(/\bCostcodle\b[^\r\n]*?\s([1-6X])\s*\/\s*6\b/i);
   if (!header) return null;
@@ -477,6 +487,15 @@ function format(raw) {
         raw: "Went full Bulk Buyer on today's Costcodle and walked out $16.50 off the mark!\n\nCostcodle Checkout #10\n1. APPL JUICE — off $1.50\n2. EGG WHITES — off $2.00\n3. PICKLES — off $9.00\n4. IZZE — off $1.00\n5. WHT BREAD — off $3.00\n\nPlay now at https://www.costcodle.com",
         expectedSummary:
           "$1.50 · $2.00 · $9.00 · $1.00 · $3.00\nCheckout · $16.50 off · Bulk Buyer",
+      },
+      {
+        raw: "Today's Costcodle had me hunting free samples with a $35.50 total off!\n\nCostcodle Checkout #14\n1. WHT BREAD — off $0.00\n2. APPL JUICE — off $1.00\n3. HALF HAM — off $26.50\n4. CRACKERS — off $3.00\n5. GLACEAU SMA — off $5.00\n\nPlay now at https://www.costcodle.com",
+        expectedSummary: "$0.00 · $1.00 · $26.50 · $3.00 · $5.00\nCheckout · $35.50 off",
+      },
+      {
+        // No sentence at all: the total is the receipt's sum.
+        raw: "Costcodle Checkout #15\n1. WHT BREAD — off $1.25\n2. APPL JUICE — off $2.00",
+        expectedSummary: "$1.25 · $2.00\nCheckout · $3.25 off",
       },
       // A hand-typed number stays as typed.
       { raw: "$20.70", expectedSummary: null },
