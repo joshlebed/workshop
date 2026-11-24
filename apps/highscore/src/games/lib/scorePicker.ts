@@ -33,6 +33,21 @@ export function teachAvailableIn(responses: ReadonlyArray<GamesResponse | undefi
 }
 
 /**
+ * Whether the score check runs for a draft. Normally that is the teach
+ * capability. Before any games list has arrived — a share that cold-started
+ * the app — a reading made on this device stands in for it: the server only
+ * sends parse code to accounts teach is on for, so having one says the same
+ * thing. Once a games list is in, its word is final.
+ */
+export function scoreCheckAvailable(
+  responses: ReadonlyArray<GamesResponse | undefined>,
+  hasLocalRead: boolean,
+): boolean {
+  if (responses.some((data) => data !== undefined)) return teachAvailableIn(responses);
+  return hasLocalRead;
+}
+
+/**
  * Whether a game has a parser according to those same responses: true/false
  * when the game is listed, null when it is not (a share to a game outside My
  * Games) or the server predates the field.

@@ -99,6 +99,9 @@ importers:
       '@electric-sql/pglite':
         specifier: ^0.5.15
         version: 0.5.15
+      '@jitl/quickjs-asmjs-mjs-release-sync':
+        specifier: 0.32.0
+        version: 0.32.0
       '@types/node':
         specifier: 25.9.9
         version: 25.9.9
@@ -138,6 +141,9 @@ importers:
       '@expo/metro-runtime':
         specifier: ~58.0.17
         version: 58.0.17(@expo/log-box@58.0.15)(expo@58.0.23)(react-dom@19.3.0(react@19.3.0))(react-native@0.88.1(@babel/core@7.29.0)(@react-native/metro-config@0.88.1(@babel/core@7.29.0))(@types/react@19.3.0)(react@19.3.0))(react@19.3.0)
+      '@jitl/quickjs-asmjs-mjs-release-sync':
+        specifier: 0.32.0
+        version: 0.32.0
       '@tanstack/react-query':
         specifier: ^5.105.3
         version: 5.105.3(@types/react@19.3.0)(react@19.3.0)
@@ -246,6 +252,9 @@ importers:
       pixelarticons:
         specifier: ^2.4.2
         version: 2.4.2(react@19.3.0)
+      quickjs-emscripten-core:
+        specifier: 0.32.0
+        version: 0.32.0
       react:
         specifier: 19.3.0
         version: 19.3.0
@@ -507,6 +516,9 @@ importers:
 
   packages/shared:
     dependencies:
+      quickjs-emscripten-core:
+        specifier: 0.32.0
+        version: 0.32.0
       zod:
         specifier: 4.6.7
         version: 4.6.7
@@ -2255,6 +2267,9 @@ packages:
   '@jest/types@29.6.3':
     resolution: {integrity: sha512-u3UPsIilWKOM3F9CXtrG8LEJmNxwoCQC/XVj4IKYXvvpx7QIi/Kg1LI5uDmDpKlac62NUtX7eLjRh+jVZcLOzw==}
     engines: {node: ^14.15.0 || ^16.10.0 || >=18.0.0}
+
+  '@jitl/quickjs-asmjs-mjs-release-sync@0.32.0':
+    resolution: {integrity: sha512-fI2PLbEgrNbdK8cr3JkINTiVFQ0DmargzTrSnBG/k8hzN17RleDGfZd0SH2fiNdByvGS1WGM9rawr8WZ7gV4DA==}
 
   '@jitl/quickjs-ffi-types@0.32.0':
     resolution: {integrity: sha512-v9T+GQpmk43VDJ7d72sf0Nexhk+ArvtUihW27dy7lqAl0zBObFKtSBBIm5RBjwIhE8VwsPPm9PNuvPvNqLWUEg==}
@@ -8747,6 +8762,10 @@ snapshots:
       '@types/node': 25.9.9
       '@types/yargs': 17.0.35
       chalk: 4.1.2
+
+  '@jitl/quickjs-asmjs-mjs-release-sync@0.32.0':
+    dependencies:
+      '@jitl/quickjs-ffi-types': 0.32.0
 
   '@jitl/quickjs-ffi-types@0.32.0': {}
 

@@ -41,6 +41,7 @@
     "@aws-sdk/client-s3": "3.1161.0",
     "@aws-sdk/client-ssm": "3.1161.0",
     "@electric-sql/pglite": "^0.5.15",
+    "@jitl/quickjs-asmjs-mjs-release-sync": "0.32.0",
     "@types/node": "25.9.9",
     "drizzle-kit": "0.31.11",
     "esbuild": "0.28.2",

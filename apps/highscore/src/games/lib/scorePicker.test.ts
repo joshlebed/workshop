@@ -7,6 +7,7 @@ import {
   listedHasParser,
   livePick,
   pickerIsOpen,
+  scoreCheckAvailable,
   serverPartPending,
   settleDelayMs,
   shouldPreselect,
@@ -234,6 +235,16 @@ describe("the capability gate", () => {
     ).toBe(false);
     expect(teachAvailableIn([response(false)])).toBe(false);
     expect(teachAvailableIn([response(false), response(true)])).toBe(true);
+  });
+
+  it("runs the check on a device reading alone only until a games list arrives", () => {
+    // A share that cold-started the app: no list yet.
+    expect(scoreCheckAvailable([], true)).toBe(true);
+    expect(scoreCheckAvailable([undefined], true)).toBe(true);
+    expect(scoreCheckAvailable([], false)).toBe(false);
+    // Once a list is in, it decides — a reading from a stale cache does not.
+    expect(scoreCheckAvailable([response(false)], true)).toBe(false);
+    expect(scoreCheckAvailable([response(true)], false)).toBe(true);
   });
 
   it("allows no teach request without the capability, a session, a game, or text", () => {

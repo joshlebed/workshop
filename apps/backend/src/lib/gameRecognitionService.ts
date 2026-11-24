@@ -10,9 +10,9 @@
 import type { GameRecognizer } from "@workshop/shared/gameRecognition";
 import { CATALOG_GAME_DEFINITIONS } from "@workshop/shared/gameRegistry";
 import { normalizeGameUrl } from "@workshop/shared/games";
-import { eq, inArray, or, sql } from "drizzle-orm";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { getDb } from "../db/client.js";
-import { type DbGame, gameScores, games, userGames } from "../db/schema.js";
+import { type DbGame, gameCodeRevisions, gameScores, games, userGames } from "../db/schema.js";
 import { getConfig } from "./config.js";
 import {
   catalogGameNamedBy,
@@ -26,10 +26,12 @@ import {
   recognizerEvidence,
   selectExamples,
 } from "./gameRecognition.js";
+import { gameScoreUnit } from "./gameShapes.js";
 import { isGamesBetaUser } from "./gamesBeta.js";
 import { jevRecognitionJudge } from "./jev.js";
 import { logger } from "./logger.js";
 import { type DbClient, executeRows } from "./sql.js";
+import { teachModeFor } from "./teach/gate.js";
 
 /**
  * The recognition mode in force for one user: `on` for Games beta accounts,
@@ -224,14 +226,31 @@ async function boundedDbStep<T>(
 }
 
 /**
- * The recognizers a client keeps so it can name a share's game with no
- * request (`GET /v1/games/recognizers`): one per game in the caller's My
- * Games, each with the fingerprint of its stored scores.
+ * Where a game's current code must have come from for a client to be handed
+ * it. A phone runs the code in QuickJS like the server does, but in-thread:
+ * it has the instruction budget and the heap cap, not the worker kill, so a
+ * built-in that never yields (`indexOf` over two long strings) would freeze
+ * the app rather than fail at 250 ms. Code a person wrote or reviewed is sent;
+ * code the teach flow's model wrote from a pasted text is not — its game is
+ * still recognized on the device and read by the server. Re-saving a taught
+ * parser with `admin:game-code` makes it an `operator` revision.
+ */
+const CLIENT_RUNNABLE_CODE_SOURCES: readonly string[] = ["seed", "spec", "operator"];
+
+/**
+ * The recognizers a client keeps so it can name a share's game — and read
+ * its score — with no request (`GET /v1/games/recognizers`): one per game in
+ * the caller's My Games, each with the fingerprint of its stored scores.
  *
  * My Games only, on purpose: a device holds nothing about a game its player
  * has not added — not the catalog, not what friends play. A share for any
  * other game is one these can't place, the client asks the server, and the
  * server's own lookup (`loadRecognitionCandidates`) covers the catalog.
+ *
+ * Each carries the game's parse code when a client may run it
+ * (`CLIENT_RUNNABLE_CODE_SOURCES`) and the caller's scores are read by stored
+ * code at all (teach mode, which implies code parsing): the device's reading
+ * must be the one the server would make, never the legacy parser's.
  */
 export async function loadGameRecognizers(
   userId: string,
@@ -244,6 +263,32 @@ export async function loadGameRecognizers(
     .where(eq(userGames.userId, userId));
   const myGames = mine.map((row) => row.game);
   const stored = await storedScoreLoader(db)(myGames.map((game) => game.id));
+
+  // Which games' current code a client may run: one probe on the revision
+  // each game is at. Skipped entirely for an account stored code doesn't read.
+  const runnable = new Set<string>();
+  if (teachModeFor(userId) === "on" && myGames.length > 0) {
+    const current = await db
+      .select({ gameId: gameCodeRevisions.gameId, source: gameCodeRevisions.source })
+      .from(gameCodeRevisions)
+      .innerJoin(
+        games,
+        and(
+          eq(games.id, gameCodeRevisions.gameId),
+          eq(games.codeVersion, gameCodeRevisions.version),
+        ),
+      )
+      .where(
+        inArray(
+          gameCodeRevisions.gameId,
+          myGames.map((game) => game.id),
+        ),
+      );
+    for (const row of current) {
+      if (CLIENT_RUNNABLE_CODE_SOURCES.includes(row.source)) runnable.add(row.gameId);
+    }
+  }
+
   // An example that names another of these games was filed under the wrong
   // one; the matcher drops it, as it does when the server recognizes.
   const matcher = compileMatcher(myGames);
@@ -253,6 +298,11 @@ export async function loadGameRecognizers(
     url: game.url,
     normalizedUrl: game.normalizedUrl,
     ...recognizerEvidence(selectExamples(game, stored.get(game.id) ?? [], matcher)),
+    parser:
+      game.parseCode !== null && runnable.has(game.id)
+        ? { code: game.parseCode, version: game.codeVersion }
+        : null,
+    scoreUnit: gameScoreUnit(game),
   }));
 }
 

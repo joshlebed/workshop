@@ -4,13 +4,13 @@ Per-game score parsing and recap formatting is JavaScript stored in the database
 on the server inside a QuickJS sandbox. The code is **untrusted**: it is written by an LLM
 from text a user pasted, or by an operator. This directory is the runtime that executes it.
 
-| File               | Role                                                                       |
-| ------------------ | -------------------------------------------------------------------------- |
-| `runtime.ts`       | The only entry point for callers: `runParse`, `runFormat`, `validateCode`. |
-| `sandbox.ts`       | Runs one function in a fresh QuickJS context and classifies the result.    |
-| `sandboxWorker.ts` | Worker-thread entry that hosts `sandbox.ts`, so a run can be killed.       |
-| `limits.ts`        | Every cap, with the reason for its value.                                  |
-| `types.ts`         | Result types shared by both sides.                                         |
+| File               | Role                                                                                                                       |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| `runtime.ts`       | The only entry point for callers: `runParse`, `runFormat`, `validateCode`.                                                 |
+| `sandbox.ts`       | Loads the WASM QuickJS for `runJob`, which lives in `@workshop/shared/gameCodeSandbox` (the HighScore client runs it too). |
+| `sandboxWorker.ts` | Worker-thread entry that hosts `sandbox.ts`, so a run can be killed.                                                       |
+| `limits.ts`        | The worker-only caps; the caps a run enforces are beside `runJob`.                                                         |
+| `types.ts`         | Result types shared by both sides.                                                                                         |
 
 ## The contract stored code must satisfy
 

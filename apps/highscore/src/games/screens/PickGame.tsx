@@ -41,6 +41,7 @@ import {
 } from "../lib/shareScoreDetection";
 import { teachAfterPost, teachOutcomeMessage } from "../lib/teachAfterPost";
 import { useGameRecognizers } from "../lib/useGameRecognizers";
+import { useLocalScoreRead } from "../lib/useLocalScoreRead";
 import { useRecognizedGame } from "../lib/useRecognizedGame";
 import {
   type ScoreCheck,
@@ -136,6 +137,11 @@ export default function PickGame() {
   // cache under the game the server recognised, so the check only gets a
   // game — and could only ask for itself — once that answer is in. Before
   // that, the registry's guess at the game sent a second, identical request.
+  //
+  // When the recognizer carries the game's parse code, the device reads the
+  // score too (same code, same QuickJS as the server) and the check shows it
+  // until the server's dry run lands — nothing on the card waits on a request.
+  const localRead = useLocalScoreRead(recognizedHere, scoreDraft);
   const awaitingSharePreview = teachAvailable && !recognizedHere && shared === undefined;
   const check = useScoreCheck({
     gameId: awaitingSharePreview ? null : (recognized?.game.id ?? suggestion?.gameId ?? null),
@@ -144,6 +150,7 @@ export default function PickGame() {
     entry: "share",
     today,
     ...(recognizedHere ? { recognizedBy: recognizedHere.method } : {}),
+    localRead,
   });
   // The server refused the text (a link or a title with no result in it).
   const serverResultless = shared?.kind === "rejected" || check.view.kind === "no_result_text";

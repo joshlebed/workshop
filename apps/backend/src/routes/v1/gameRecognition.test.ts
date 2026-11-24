@@ -8,6 +8,7 @@ import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetConfigForTesting } from "../../lib/config.js";
+import { loadQuickJS, runJob } from "../../lib/gameCode/sandbox.js";
 import type { JudgeRequest, JudgeVerdict } from "../../lib/gameRecognition.js";
 import { SHADOW_BUDGET_MS } from "../../lib/gameRecognitionService.js";
 import { logger } from "../../lib/logger.js";
@@ -374,6 +375,81 @@ describe("GET /v1/games/recognizers", () => {
       expect(local?.method ?? null, text).toBe(server?.method ?? null);
     }
     expect(judgeMock).not.toHaveBeenCalled();
+  });
+
+  describe("parse code", () => {
+    const withTeach = (on: boolean) => {
+      process.env.GAME_TEACH = on ? "on" : "off";
+      process.env.GAME_CODE_PARSING = on ? "on" : "off";
+      resetConfigForTesting();
+    };
+    const setCode = async (gameId: string, source: string) => {
+      const code = "function parse(raw) { return 7; }";
+      await rows(
+        `UPDATE games SET parse_code = $2, code_version = code_version + 1 WHERE id = $1`,
+        [gameId, code],
+      );
+      await rows(
+        `INSERT INTO game_code_revisions (game_id, version, parse_code, source)
+         SELECT id, code_version, parse_code, $2 FROM games WHERE id = $1`,
+        [gameId, source],
+      );
+    };
+    afterEach(() => withTeach(false));
+
+    it("is sent for a game whose current code was reviewed, and runs to the server's reading", async () => {
+      setMode("on");
+      withTeach(true);
+      const list = await listOf(await recognizers());
+      // A registry game: its seed code, with the unit its score is shown in.
+      const mini = list.find((r) => r.id === miniId);
+      expect(mini?.parser?.code).toContain("function parse");
+      expect(mini?.parser?.version).toBe(1);
+      expect(mini?.scoreUnit).toBe("seconds");
+      // No parser reaches the device for a game the player has not added.
+      expect(list.some((r) => r.title === "Wordle")).toBe(false);
+      // A user-added game nobody has taught has none.
+      expect(list.find((r) => r.id === krillionId)?.parser).toBeNull();
+
+      const share = "I solved the 6/01/2026 New York Times Mini Crossword in 0:13!";
+      const device = runJob(await loadQuickJS(), {
+        fn: "parse",
+        code: mini?.parser?.code ?? "",
+        raw: share,
+      });
+      const preview = await gameRoutes.request(`/${miniId}/scores/preview`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ scoreRaw: share, periodKey: "2026-06-01", entry: "share" }),
+      });
+      const server = ((await preview.json()) as { preview: { scoreValue: number } }).preview;
+      expect(device).toEqual({ kind: "score", value: server.scoreValue });
+      expect(server.scoreValue).toBe(13);
+    });
+
+    it("is kept back when a model wrote it, until an operator re-saves it", async () => {
+      setMode("on");
+      withTeach(true);
+      const parserOf = async () =>
+        (await listOf(await recognizers())).find((r) => r.id === krillionId)?.parser ?? null;
+      await setCode(krillionId, "teach");
+      expect(await parserOf()).toBeNull();
+      await setCode(krillionId, "operator");
+      expect(await parserOf()).toMatchObject({ code: "function parse(raw) { return 7; }" });
+      // An older reviewed revision does not vouch for newer model-written code.
+      await setCode(krillionId, "teach");
+      expect(await parserOf()).toBeNull();
+      await rows(`UPDATE games SET parse_code = NULL, code_version = 0 WHERE id = $1`, [
+        krillionId,
+      ]);
+      await rows(`DELETE FROM game_code_revisions WHERE game_id = $1`, [krillionId]);
+    });
+
+    it("is sent to nobody whose scores stored code does not read", async () => {
+      setMode("on");
+      const list = await listOf(await recognizers());
+      expect(list.every((r) => r.parser === null)).toBe(true);
+    });
   });
 
   it("leaves what only the server can place to the server", async () => {

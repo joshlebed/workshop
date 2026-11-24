@@ -21,6 +21,8 @@ function recognizer(
 ): GameRecognizer {
   return {
     url: `https://${fields.normalizedUrl}`,
+    parser: null,
+    scoreUnit: null,
     ...recognizerEvidence(examples),
     ...fields,
   };

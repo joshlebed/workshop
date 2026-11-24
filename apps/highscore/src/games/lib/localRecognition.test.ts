@@ -2,6 +2,7 @@ import { type GameRecognizer, recognizerEvidence } from "@workshop/shared/gameRe
 import type { GamesResponse } from "@workshop/shared/games";
 import { describe, expect, it } from "vitest";
 import {
+  localScoreRead,
   parseStoredRecognizers,
   recognitionCapability,
   recognizeLocally,
@@ -24,6 +25,8 @@ function recognizer(
     title,
     url: `https://${normalizedUrl}`,
     normalizedUrl,
+    parser: null,
+    scoreUnit: null,
     ...recognizerEvidence(examples),
     ...extra,
   };
@@ -47,6 +50,8 @@ describe("recognizeLocally", () => {
       inMyGames: true,
       confidence: 0.97,
       method: "label",
+      parser: null,
+      scoreUnit: null,
     });
     expect(recognizeLocally(mini("6/01/2026", "0:13"), all, null)).toMatchObject({
       game: { id: "m" },
@@ -79,6 +84,33 @@ describe("recognizeLocally", () => {
 
   it("knows nothing about a game the player has not added", () => {
     expect(recognizeLocally("Wordle 1,127 3/6\n⬜🟨⬜⬜⬜", all, null)).toBeNull();
+  });
+});
+
+describe("reading the score on the device", () => {
+  it("hands the match the game's parse code and unit when the recognizer has them", () => {
+    const parser = { code: "function parse(raw) { return 1; }", version: 3 };
+    const timed = recognizer("t", "Timed Game", "timed.example", { parser, scoreUnit: "seconds" });
+    expect(recognizeLocally("Timed Game #4 0:42", [timed], null)).toMatchObject({
+      game: { id: "t" },
+      parser,
+      scoreUnit: "seconds",
+    });
+  });
+
+  it("shows a score or a loss, and nothing for a text the code could not read", () => {
+    expect(localScoreRead({ kind: "score", value: 402 }, null)).toEqual({
+      kind: "score",
+      value: 402,
+      unit: null,
+    });
+    expect(localScoreRead({ kind: "score", value: 42 }, "seconds")).toMatchObject({
+      unit: "seconds",
+    });
+    expect(localScoreRead({ kind: "noResult" }, null)).toEqual({ kind: "no_result" });
+    // A failure is not "no score": the server decides, and may open the picker.
+    expect(localScoreRead({ kind: "failed", reason: "threw" }, null)).toBeNull();
+    expect(localScoreRead({ kind: "failed", reason: "timeout" }, null)).toBeNull();
   });
 });
 

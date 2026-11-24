@@ -169,6 +169,11 @@ stored code must satisfy, every limit, and the measured latency are in
   (`parse` returned `null` — a legitimate loss), `failed` (threw, timed out, returned
   anything else). Never collapse `noResult` and `failed` into one null, and never add a
   "first number in the text" fallback.
+- **`runJob` itself lives in `@workshop/shared/gameCodeSandbox`** (limits, language surface,
+  prelude, result classification) because the HighScore client runs it too, on the plain-JS
+  QuickJS build; `sandbox.ts` here only loads the WASM build and re-exports it. Keep
+  `quickjs-emscripten-core` and both `@jitl/quickjs-*` variants on one version, and treat a
+  change to that file as a change to what every installed client reads until its next OTA.
 - **Two timers.** An instruction budget inside QuickJS (deterministic; stops loops and regex
   backtracking in 10–70 ms) and a 250 ms wall clock enforced by **killing the worker
   thread**, because QuickJS built-ins (`indexOf`, `repeat`) never yield to the interrupt
@@ -667,19 +672,23 @@ text names; examples = the 20 most recent distinct usable scores, any player's).
   `GameRecognizer` per game in the caller's My Games: id, title, URL, the fingerprint
   (token → support) and linked hosts derived from stored scores. The
   client caches them on the device and names a share's game with `recognizeWithRecognizers`
-  before any request returns (`apps/highscore/CLAUDE.md` → "Share flow"). **Recognition only,
-  for now: the score is read here, by the preview and the post, and `parse_code` is not sent
-  to clients.** That is a decision, not a limit. Measured 2026-11-16: the plain-JS build of
-  the same engine (`@jitl/quickjs-asmjs-mjs-release-sync` 0.32.0; Hermes has no
-  `WebAssembly`) runs `runJob`'s logic under Hermes at ~6 ms a parse (11 ms to start, 201 ms
-  for all 31 stored parsers) and gave the WASM sandbox's exact result on 244 of 244 stored
-  parses in Node. What a phone cannot have is the worker kill: the instruction budget still
-  stops a loop (176 ms) and regex backtracking (1.2 s), but a built-in that never ticks ran
-  15 s for `indexOf` over 40k/20k characters and would run minutes at the 2 MB heap cap,
-  freezing the app. So client-side parsing needs a rule for which code ships (`seed` /
-  `spec` / `operator` revisions are reviewed; `teach` is model-written from a paste) or a
-  much smaller heap. As _recognizers_ the parsers are poor either way: on prod text 79% of
-  shares were read by more than one game's parser. Three rules
+  before any request returns (`apps/highscore/CLAUDE.md` → "Share flow"). **The device also reads
+  the score, with the game's own parse code** — each recognizer carries `parser`
+  (`{ code, version }`) when the caller's scores are read by stored code (`teachModeFor`) and
+  the game's current revision is one a person wrote or reviewed
+  (`CLIENT_RUNNABLE_CODE_SOURCES`: `seed` / `spec` / `operator`). The client runs it through
+  the same `runJob` as the server (`@workshop/shared/gameCodeSandbox`), on the plain-JS build
+  of the same QuickJS version (`@jitl/quickjs-asmjs-mjs-release-sync`; Hermes has no
+  `WebAssembly`): ~11 ms to start and ~6 ms a parse under Hermes, and
+  `clientEngine.parity.test.ts` holds the two builds to identical results. **Model-written
+  (`teach`) code is never sent**: a phone runs the code in-thread, with the instruction budget
+  and the heap cap but no worker kill, and a built-in that never ticks (`indexOf` over 40k/20k
+  characters ran 15 s under Hermes, 2026-11-16) would freeze the app instead of failing at
+  250 ms. Those games are still recognized on the device and read by the server; re-saving a
+  taught parser as an operator revision (`admin:game-code --revert=<its version>`, after
+  reading the code) starts sending it. The server's reading is always the one stored. As
+  _recognizers_ the parsers are poor — on prod text 79% of shares were read by more than one
+  game's parser — so recognition stays link / name / fingerprint. Three rules
   for that payload: it carries **no score text** (a fingerprint needs ≥3 examples and a host
   ≥2, so nothing in it is one player's wording); it covers **My Games only — a
   device holds nothing about a game its player has not added, not the catalog and not what

@@ -12,6 +12,7 @@ import {
   recognizersOutOfDate,
   serializeRecognizers,
 } from "./localRecognition";
+import { loadScoreEngine } from "./scoreEngine";
 
 // Refreshed in the background on app open and focus once this old. A game's
 // share layout and a player's list change far more slowly.
@@ -84,5 +85,13 @@ export function useGameRecognizers(myGameIds: ReadonlySet<string> | null): GameR
     void refetch();
   }, [capability, data, myGameIds, isFetching, refetch]);
 
-  return capability === false ? null : (data ?? null);
+  // Start QuickJS ahead of the share that will need it (~11 ms, once), so a
+  // share into a running app reads its score in the first render.
+  const usable = capability === false ? null : (data ?? null);
+  const hasParsers = usable?.some((r) => r.parser !== null) === true;
+  useEffect(() => {
+    if (hasParsers) void loadScoreEngine();
+  }, [hasParsers]);
+
+  return usable;
 }

@@ -1,21 +1,28 @@
-// Recognizing a share's game on the device, minus React: the recognizers the
-// server derived for this account are kept in the device cache, and steps
-// 1–3 of recognition (`@workshop/shared/gameRecognition` — the same code the
-// server runs) are applied to them the moment a text arrives. That answers
-// ~99% of real shares with no request (eval: apps/backend/scripts/
-// eval-game-recognition.ts --no-jev). Whatever this cannot place, the server
-// still is asked about, and only the server reads the score.
+// Recognizing a share's game — and reading its score — on the device, minus
+// React. The server derives one recognizer per game for this account; they are
+// kept in the device cache, and the moment a text arrives:
 //
-// The hook (`useGameRecognizers`) adds the query and the storage calls;
-// everything that decides behaviour is here and tested without a renderer.
+//   1. steps 1–3 of recognition (`@workshop/shared/gameRecognition`, the same
+//      code the server runs) name the game — ~99% of real shares, no request;
+//   2. the game's own parse code, when the recognizer carries it, is run in
+//      QuickJS by `scoreEngine.ts` (`@workshop/shared/gameCodeSandbox`, the
+//      same `runJob` the server runs) and the score is on screen.
+//
+// Whatever this cannot place or read, the server is asked about as before, and
+// the server's reading always replaces the device's and is the one stored.
+//
+// The hooks (`useGameRecognizers`, `useLocalScoreRead`) add the query, the
+// storage calls and the engine; everything that decides behaviour is here and
+// tested without a renderer.
 
+import type { ParseResult } from "@workshop/shared/gameCodeSandbox";
 import {
   type GameRecognizer,
   RECOGNITION_SURFACE_THRESHOLD,
   recognizeWithRecognizers,
 } from "@workshop/shared/gameRecognition";
 import { isResultlessShare } from "@workshop/shared/gameRegistry";
-import type { GameRecognitionMethod, GamesResponse } from "@workshop/shared/games";
+import type { GameRecognitionMethod, GameScoreUnit, GamesResponse } from "@workshop/shared/games";
 import { z } from "zod";
 import type { RecognizedGameMatch } from "../api/recognition";
 
@@ -28,6 +35,8 @@ export const gameRecognizerSchema = z.object({
   examples: z.number(),
   fingerprint: z.record(z.string(), z.number()).nullable(),
   hosts: z.array(z.string()),
+  parser: z.object({ code: z.string(), version: z.number() }).nullable(),
+  scoreUnit: z.enum(["seconds"]).nullable(),
 }) satisfies z.ZodType<GameRecognizer>;
 
 /** The one device-cache entry: the signed-in account's recognizers. */
@@ -101,10 +110,38 @@ export function recognitionCapability(
   return loaded.some((r) => r.capabilities?.recognition === true);
 }
 
-/** A match made on this device: same shape as the server's, minus the classifier. */
+/**
+ * A match made on this device: same shape as the server's, minus the
+ * classifier, plus what reading the score here needs — the game's parse code
+ * when the server sent it, and its unit.
+ */
 export type LocalGameMatch = RecognizedGameMatch & {
   method: Exclude<GameRecognitionMethod, "jev">;
+  parser: GameRecognizer["parser"];
+  scoreUnit: GameScoreUnit | null;
 };
+
+/**
+ * What this device read in a share with the game's own parse code: a score,
+ * or a real result with no score (a loss). The server's reading replaces it
+ * the moment it arrives, and is the only one ever stored.
+ */
+export type LocalScoreRead =
+  | { kind: "score"; value: number; unit: GameScoreUnit | null }
+  | { kind: "no_result" };
+
+/**
+ * A sandbox result as a reading to show, or null when the code could not
+ * read the text — then nothing is shown from here and the server decides
+ * (its answer may be the picker).
+ */
+export function localScoreRead(
+  result: ParseResult,
+  unit: GameScoreUnit | null,
+): LocalScoreRead | null {
+  if (result.kind === "score") return { kind: "score", value: result.value, unit };
+  return result.kind === "noResult" ? { kind: "no_result" } : null;
+}
 
 /**
  * The game this device recognizes `text` as a score for, or null — when it
@@ -135,6 +172,8 @@ export function recognizeLocally(
     inMyGames: myGameIds ? myGameIds.has(game.id) : true,
     confidence: result.confidence,
     method: result.method,
+    parser: game.parser,
+    scoreUnit: game.scoreUnit,
   };
 }
 

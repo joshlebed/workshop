@@ -5,7 +5,8 @@ client behavior should be implemented locally so they cannot change Workshop use
 presentation code back into a shared package.
 
 Shared boundaries are contracts and primitives only: `@workshop/api-client`, `@workshop/shared`
-(`games`, `gameRegistry`, `gameRecognition`, `scoreParsing`, `summarySpec`), and `@workshop/ui`.
+(`games`, `gameRegistry`, `gameRecognition`, `gameCodeSandbox`, `scoreParsing`, `summarySpec`), and
+`@workshop/ui`.
 Workshop has had no Games UI since 2026-11-06 (it only forwards old `/g/:token` links here).
 
 ## Theme (`src/theme/`) — the only source of visual tokens
@@ -75,25 +76,33 @@ matters. `PickGame` re-runs `detectSharedScore` over the live paste-box draft ra
 route params, so a share the iOS sheet stripped to a bare referral URL (`isResultlessShare`) shows a
 "paste your result" prompt that turns into a Post button as soon as the result is typed in.
 
-**The game is recognized on the device; the score is read by the server.** The server hands
-each account its recognizers (`GET /v1/games/recognizers`: per game its URL, names and the
-fingerprint of its stored scores — no score text, no parser) and `useGameRecognizers` keeps
-them in the device cache (`src/lib/deviceCache`), read synchronously at first render and
-refreshed in the background (30 min stale, and at once when My Games differs from the list
-they were built for). The Games home mounts the hook to keep the cache warm; `PickGame` runs
-`recognizeLocally` (`src/games/lib/localRecognition.ts`, pure + tested — the same steps 1–3
-the server runs, from `@workshop/shared/gameRecognition`) over the live draft, so the
-detected-score card is up with the text even on a share that cold-started the app. A game
-recognized here goes straight to that game's `scores/preview` (the server's reading, plus its
-own wrong-game check); `POST /v1/games/score-preview` is asked only for a text the device
-could not place (no recognizers yet, a share with no name and no fingerprint match, any
-game not in My Games — the device is never given anything about those). No parser runs on the device today: the caption and the stored value are the
-server's. Running the stored parse code here is possible (QuickJS's plain-JS build works under
-Hermes; numbers and the open risk are in `apps/backend/CLAUDE.md` → "Game-score recognition"),
-but it has to be the same engine and code version as the server, not a second implementation —
-a local guess that differs is exactly the flicker `useScorePreview` avoids. The cache holds one account's set (`userId` inside the
-entry), is dropped on sign-out, and is ignored once `capabilities.recognition` is known to be
-off.
+**A share is recognized and read on the device; the server confirms and stores.** The server
+hands each account its recognizers (`GET /v1/games/recognizers`: per My Games game its URL, names, the
+fingerprint of its stored scores, and — when the game's code has been reviewed — its parse
+code; no score text) and `useGameRecognizers` keeps them in the device cache
+(`src/lib/deviceCache`), read synchronously at first render and refreshed in the background
+(30 min stale, and at once when My Games differs from the list they were built for). The Games
+home mounts the hook to keep the cache warm. On `PickGame`, with no request:
+
+1. `recognizeLocally` (`src/games/lib/localRecognition.ts`, pure + tested) names the game with
+   the same steps 1–3 the server runs (`@workshop/shared/gameRecognition`).
+2. `useLocalScoreRead` runs that game's parse code in QuickJS (`src/games/lib/scoreEngine.ts`:
+   the server's `runJob` from `@workshop/shared/gameCodeSandbox` on the plain-JS QuickJS build,
+   required lazily) and `useScoreCheck` shows the reading until the server's dry run arrives —
+   and instead of it when it is late or fails (`resolveScoreCheck`'s `localRead`).
+
+Fallbacks, each the behaviour from before: no recognizers yet, a text the device cannot place,
+or any game not in My Games (the device is never given anything about those) →
+`POST /v1/games/score-preview` (server recognition + reading); a game with no parse
+code on the device (untaught, or model-written and not yet reviewed) or a text its code cannot
+read → the card is up at once and the score comes from that game's `scores/preview`. The
+preview still goes out in every case (wrong-game check, same-text warning, picker chips) and
+its reading replaces the device's; a post is parsed by the server whatever was on screen. On a
+cold start the check runs on the device reading alone until a games list says whether teach is
+on (`scoreCheckAvailable`). **Never add a second parser implementation here** — the device's
+reading is trustworthy only because it is the server's code on the server's engine version.
+The cache holds one account's set (`userId` inside the entry), is dropped on sign-out, and is
+ignored once `capabilities.recognition` is known to be off.
 
 Share-panel adoption observability: the `_layout.tsx` redirect appends `via=share-extension`, and
 `PickGame` maps that to `entrySource: "share_extension"` on the score upsert (all other paste surfaces
