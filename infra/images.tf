@@ -6,6 +6,10 @@
 # ~$0.023/GB-month to keep. Migration plan and runbook:
 # the image storage migration (Nov 2026).
 #
+# The bucket also holds one small non-image object, `state/play-reminder-slots.json`
+# (apps/backend/src/lib/reminderSlots.ts): state the hourly reminder job reads
+# so it can skip waking the database.
+#
 # The bucket is private. Images are served by the API (`GET /v1/images/*`,
 # apps/backend/src/lib/images.ts), so there is no public URL and no CDN.
 resource "aws_s3_bucket" "images" {

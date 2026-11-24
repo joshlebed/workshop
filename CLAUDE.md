@@ -310,10 +310,10 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   server job, shown as "Other / unknown"). Series carry an optional per-platform `stack`
   (`stackMode: sum` for counts, `overlap` for distinct users) and the response a `breakdowns`
   list (request versions and top routes, last 7 days). **Request traffic is a separate, backend-wide source:**
-  `request_rollups` is materialized hourly from the CloudWatch request log by the
+  `request_rollups` is materialized every six hours from the CloudWatch request log by the
   `{ "job": "request-rollups" }` Lambda invocation (`jobs/requestRollups.ts`, EventBridge
-  Scheduler in `infra/request_rollups.tf`, Logs Insights `StartQuery` over the last 3 complete
-  hours, delete+insert so re-runs are idempotent). The request log line now carries `client`
+  Scheduler in `infra/request_rollups.tf`, every six hours, Logs Insights `StartQuery` over the
+  last 8 complete hours, delete+insert so re-runs are idempotent). The request log line now carries `client`
   (`X-Workshop-Client`); rows before that show as `(no header)`. Backfill by hand with
   `runRequestRollupJob({ hours: 24 * 14 })` from a `tsx` script (needs AWS creds + logs read).
   Charts are `BarChart` / `HorizontalBars` from
@@ -545,7 +545,7 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   the address Cloudflare saw in `X-Workshop-Client-Ip`; the backend believes that header only
   on a connection from Cloudflare's published ranges (hard-coded in that file; refresh them if
   Cloudflare changes its list). `rate_limits` rows older than two days are deleted by the
-  hourly `request-rollups` invocation (`pruneExpiredRateLimits`).
+  `request-rollups` invocation, every six hours (`pruneExpiredRateLimits`).
 - **Logger**: use `logger` from `apps/backend/src/lib/logger.ts`. Pass full errors:
   `logger.error("failed to x", { error })`, not `{ error: error.message }` (loses stack).
 - **Managed sessions are version-negotiated.** Updated clients send
@@ -556,6 +556,18 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   Transient bootstrap errors preserve credentials and show retry UI; only an explicit auth rejection
   may clear them. See `docs/decisions.md` and the app/backend CLAUDE files before changing auth.
 - **Postgres pool**: `postgres({ max: 1 })` — correct for Lambda. Each container has its own.
+- **Waking the database costs compute hours, so scheduled jobs avoid it.** Neon's free plan
+  allows 100 compute-hours a month (400 awake hours at the smallest size) and keeps the
+  database awake ~5 minutes after any query; the app sits around 85 a month, so one hourly job
+  that queries is a tenth of the allowance. The hourly `play-reminders` invocation first reads
+  `state/play-reminder-slots.json` from object storage (`lib/reminderSlots.ts`: the distinct
+  timezone + local-hour pairs with a reminder on) and returns without a query when none is due;
+  it skips **only when sure** (a missing, malformed or day-old object means "ask the
+  database"). Anything that changes who is due (`PUT /v1/me/notification-prefs`, push-token
+  register / delete) calls `refreshReminderSlotsQuietly`; **a new write path for those tables
+  must too**. `request-rollups` runs every six hours, a minute after a reminders tick. Before
+  adding a scheduled job that queries, ask whether it can ride an existing wake. The compute is
+  pinned at 0.25 CU (no autoscaling) in the Neon console for the same reason.
 - **What a query reads out of Neon is metered, so select the columns a response needs.** Neon's
   free plan allows 5 GB of network transfer and 100 compute-hours a month, and exceeding either
   suspends the database. A response that shapes a game for a client selects

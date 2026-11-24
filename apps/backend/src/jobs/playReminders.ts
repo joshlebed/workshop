@@ -5,6 +5,7 @@ import { gameScores, notificationPrefs, pushTokens } from "../db/schema.js";
 import { getConfig } from "../lib/config.js";
 import { sendExpoPushMessages } from "../lib/expoPush.js";
 import { logger } from "../lib/logger.js";
+import { noReminderCanBeDue, refreshReminderSlotsQuietly } from "../lib/reminderSlots.js";
 import { type DbClient, executeRows } from "../lib/sql.js";
 
 const FALLBACK_REMINDER_TIMEZONE = "America/New_York";
@@ -122,7 +123,24 @@ async function selectCandidateTokens(db: DbClient, now: Date): Promise<Candidate
   );
 }
 
-/** Hourly scheduled job invoked by the Lambda's `{ "job": "play-reminders" }` branch. */
+/**
+ * The Lambda's `{ "job": "play-reminders" }` branch, every hour. Skips the
+ * database entirely when the stored reminder slots say nobody can be due this
+ * hour (`lib/reminderSlots.ts`); otherwise runs the job and refreshes them.
+ */
+export async function runScheduledPlayReminders(
+  now: Date = new Date(),
+): Promise<PlayReminderJobResult | { skipped: "no reminder due this hour" }> {
+  if (await noReminderCanBeDue(now)) {
+    logger.info("play reminder job skipped: no reminder due this hour");
+    return { skipped: "no reminder due this hour" };
+  }
+  const result = await runPlayReminderJob({ now });
+  await refreshReminderSlotsQuietly();
+  return result;
+}
+
+/** The reminder job itself: who is due this hour, and send. */
 export async function runPlayReminderJob(
   args: { db?: DbClient; now?: Date; fetchFn?: typeof fetch } = {},
 ): Promise<PlayReminderJobResult> {

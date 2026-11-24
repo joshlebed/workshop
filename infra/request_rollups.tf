@@ -56,13 +56,14 @@ resource "aws_iam_role_policy" "scheduler_invoke_api" {
 
 resource "aws_scheduler_schedule" "request_rollups" {
   name        = "${local.prefix}-request-rollups"
-  description = "Materialize hourly request rollups from the request log"
+  description = "Materialize hourly request rollups from the request log (every 6 hours)"
 
-  # One minute after play-reminders (on the hour), so the two hourly jobs share
-  # one wake of the database instead of keeping it up twice: Neon bills compute
-  # by the hour it is awake and stays awake ~5 minutes after each use. A late
-  # log line is picked up by the next run, which re-computes the last 3 hours.
-  schedule_expression          = "cron(1 * * * ? *)"
+  # Four times a day, a minute after the play-reminders tick so the two share
+  # one wake of the database: Neon bills compute by the hour it is awake and
+  # keeps it up ~5 minutes after each use, so an hourly job cost ~2 awake
+  # hours a day by itself. Each run re-computes the last 8 hours, and the
+  # dashboards this feeds are admin-only.
+  schedule_expression          = "cron(1 0/6 * * ? *)"
   schedule_expression_timezone = "UTC"
 
   flexible_time_window {

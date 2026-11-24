@@ -54,7 +54,7 @@ const PRUNE_AFTER_DAYS = 2;
 /**
  * Deletes counters whose window is long over. Nothing reads them again, and
  * without this the table kept every (rule, caller, minute) since launch. Run
- * from the hourly job, when the database is awake anyway.
+ * from the request-rollups job, when the database is awake anyway.
  */
 export async function pruneExpiredRateLimits(db: SqlExecutor = getDb()): Promise<number> {
   const rows = await executeRows<{ n: number }>(
