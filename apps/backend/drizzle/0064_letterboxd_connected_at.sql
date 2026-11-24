@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "letterboxd_connected_at" timestamp with time zone;

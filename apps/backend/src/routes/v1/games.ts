@@ -77,13 +77,7 @@ import {
   visibleUserIds,
 } from "../../lib/gameStandings.js";
 import { isNudgeablePeriod, loadNudgeState, sendGameNudge } from "../../lib/nudges.js";
-import {
-  notifyFirstScore,
-  notifyGameAdded,
-  notifyScoreSpecTaught,
-  opsNotificationsEnabled,
-  userHasAnyScore,
-} from "../../lib/opsNotifications.js";
+import { notifyScoreSpecTaught } from "../../lib/opsNotifications.js";
 import { rankEntries } from "../../lib/ranking.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { requestOriginColumns } from "../../lib/requestContext.js";
@@ -481,7 +475,6 @@ gameRoutes.post(
       previewHintsFor(inputUrl, normalized),
     );
     const membership = await addToMyGames(userId, game.id);
-    if (membership.created) await notifyGameAdded(userId, game.title);
 
     const response: AddGameResponse = {
       game: toGameShape(game),
@@ -631,11 +624,6 @@ gameRoutes.put(
       ...requestOriginColumns(),
     };
 
-    // Capture activation state BEFORE the upsert — false means this is the
-    // user's first score ever (see userHasAnyScore for the tables it spans).
-    // The `&&` skips the existence query when no operator webhook is set, so
-    // the steady-state hot path pays nothing extra.
-    const isFirstScore = opsNotificationsEnabled() && !(await userHasAnyScore(userId, db));
     const now = new Date();
     const [row] = await db
       .insert(gameScores)
@@ -666,7 +654,6 @@ gameRoutes.put(
     // Posting a score auto-adds the game to My Games (spec §3.5) — no
     // membership prerequisite, idempotent if it's already there.
     await addToMyGames(userId, game.id);
-    if (isFirstScore) await notifyFirstScore(userId, game.title);
     // Shadow-mode recognition: logs what it would have detected for this
     // paste. No-op unless the flag is `shadow` (with it `on`, the preview the
     // client showed already logged the real decision, and a post should not

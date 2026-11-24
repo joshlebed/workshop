@@ -42,8 +42,7 @@ rotation committed but the client was backgrounded/killed before the reply arriv
 with the old token gets the current credential re-issued (`reissued: true`, logged at info as
 `refresh credential re-issued after lost rotation response`). Only when the newer credential has
 actually been used does an older one count as replay: the row is revoked and `#workshop-admin` gets
-a 🚩 `refresh_replay_revoked` ping naming the user, which is what a following "signed in" ping
-means. Before this, every lost refresh response (one lone `POST /v1/auth/refresh 200` with no
+a 🚩 `refresh_replay_revoked` ping naming the user, and that user has to sign in again. Before this, every lost refresh response (one lone `POST /v1/auth/refresh 200` with no
 follow-up requests, then a 401 minutes later) forced a re-login. Never store a raw refresh token. Browser callers
 are identified by `Origin` (with the platform header as a compatibility fallback), receive the token
 only as an HttpOnly cookie, and reach the API through the Pages `/api/*` proxy. Preserve the
@@ -629,7 +628,7 @@ signed-in request also gets `{ viewer: { isSelf, isFriend } }`, which the in-app
 resolver uses to route (already-connected → Games home, else → the sharer's profile via the
 `?via=` vouch above). Opening a play link never forms an edge by itself, but the same token
 vouches a friend request: `POST /v1/friends/requests { userId, via }` with a play link the
-target minted forms the friendship immediately (`accepted`, Discord `play_link`) instead of
+target minted forms the friendship immediately (`accepted`) instead of
 leaving a `pending` row — holding someone's play link is the same social proof as holding
 their invite link. A `via` for anyone else is ignored and the request stays `pending`. Helpers: `lib/gameShareLinks.ts`
 (`findOrCreateGameShareLink` / `resolveGameShareLink`); same games flag gate; OG card +
@@ -849,52 +848,43 @@ Lambda env refresh — not a code or Terraform change.
   (`apt-get install -y zip`). `--out-dir=<dir> --no-zip` builds without it.
 - Cold start ~300–500ms for a bundled Node.js 20 Hono handler.
 
-## Discord operator notifications are observable — grep the logs first
+## Discord operator notifications: instant for action, a digest for everything else
 
-`notifyDiscord` (`src/lib/discord.ts`) logs **every** outcome, so "a `#workshop-admin`
-message is missing" is triageable from CloudWatch without guessing. An event emits its
-call-site line — `new signup` / `sign-in` (`routes/v1/auth.ts`), or nothing extra for a
-new list — then one of: `discord notify sent` (delivered), `discord notify non-2xx` /
-`discord notify threw` (Discord rejected — retried once only when the first attempt provably didn't post: 429/500/502/503 or a connect failure; a timeout is never retried, since Discord may have accepted it and webhooks have no idempotency key), or
-`discord notify skipped: webhook not configured` (the `DISCORD_NOTIFY_WEBHOOK_URL` Lambda
-env is empty). **Every sign-in pings** (`notifySignIn`): a genuinely new user
-(`createdUser: true`) emits `new signup` + the `👋` / `kind: "signup"` message, a
-returning user (incl. a known email linking a second provider, `createdUser: false`) emits
-`sign-in` + the `👤` / `kind: "signin"` message. The dev auth route
-(`/v1/auth/dev`) is deliberately silent — it's the sandbox/E2E auto-sign-in. **Every admin
-impersonation start pings** (`kind: "impersonation"`); the signed session stores
-`impersonatorUserId`, `/v1/auth/me` reflects it, and `/v1/auth/impersonation/stop` mints a
-normal original-account session again. **Every list made pings** (`notifyNewList`): the create path
-(`kind: "new_list"`) and the duplicate path (`kind: "new_list_duplicate"`). So "no message"
-means the event didn't happen (or the webhook is unset) — cross-check the `users` / `lists`
-tables before assuming a delivery bug.
+`#workshop-admin` is for things a human may need to act on. **Instant pings:** `content_report`,
+`user_blocked`, `vendor-alarm`, `refresh_replay_revoked`, `account_deleted`, `impersonation`,
+`sessions_revoked`, `ownership_transferred`, `signup`, `parser_taught`, `score_spec_taught`,
+`direction_changed`, `source_webhook`, `discord_bot_health`. **Everything routine is counted once
+a day instead:** `{ "job": "daily-digest" }` (`jobs/dailyDigest.ts`, 12:02 UTC, riding the 12:01 rollup wake,
+`infra/daily_digest.tf`) reads game adds, friendships, first scores, first friends after signup
+and list activity from their own tables, plus the signup funnel (signups, how many scored, and
+30-day signups that never scored) and HighScore active users. Its active-user query repeats the
+action set of `actionRows` in `lib/adminAnalytics.ts`, on the Eastern day: **a new user action
+goes in both.** It returns one row of counts and sends the message last, because a thrown async
+invocation is retried by Lambda and a retry after a delivered digest would post it twice. Don't add
+a ping for a routine event: add a count to the digest. Returning sign-ins and friend requests
+don't ping at all; they are the `sign-in` and `friend request sent` log lines.
 
-**The broader ops-observability pings live in `src/lib/opsNotifications.ts`** — one catalog
-of pure `build*Notification()` builders (unit-tested in `opsNotifications.test.ts`, no DB /
-Discord) plus thin async `notify*` wrappers that resolve human labels and call
-`notifyDiscord`. Every wrapper routes through `safeNotify`, which swallows + logs failures so
-a missing/failed ping can never break the user action that triggered it (the action has
-already committed by the time we ping). **Delivery is awaited, not fire-and-forget** — the
-Lambda freezes its container the moment the (buffered) response resolves, so an unawaited POST
-would be paused mid-flight and dropped when the container is reaped (see `discord.ts` header).
-`safeNotify` short-circuits the moment it sees no webhook (`opsNotificationsEnabled()`),
-**before** resolving any labels, so an unconfigured env (local dev) pays nothing. Callers that
-do notification-only DB work gate it on the same check — see the `opsNotificationsEnabled() &&
-userHasAnyScore(...)` guard on the hot score paths, which skips the existence query entirely
-when no webhook is set. Tiers + kinds:
+`notifyDiscord` (`src/lib/discord.ts`) logs **every** outcome and resolves `true` only when Discord
+accepted the message, so "a `#workshop-admin` message is missing" is triageable from CloudWatch
+without guessing: `discord notify sent` (delivered), `discord notify non-2xx` / `discord notify
+threw` (Discord rejected — retried once only when the first attempt provably didn't post:
+429/500/502/503 or a connect failure; a timeout is never retried, since Discord may have accepted
+it and webhooks have no idempotency key), or `discord notify skipped: webhook not configured` (the
+`DISCORD_NOTIFY_WEBHOOK_URL` Lambda env is empty). `new signup` / `sign-in` are logged in
+`routes/v1/auth.ts` before the notify. The dev auth route (`/v1/auth/dev`) is deliberately silent:
+it's the sandbox/E2E auto-sign-in. **Every admin impersonation start pings** (`kind:
+"impersonation"`); the signed session stores `impersonatorUserId`, `/v1/auth/me` reflects it, and
+`/v1/auth/impersonation/stop` mints a normal original-account session again.
 
-- **Social graph**: `friend_request` (directed request sent — only on a _fresh_ pending row),
-  `friend_added` (any new edge — directed accept, invite-link accept, or mutual auto-accept;
-  gated on `addFriendship` returning `true` so re-accepts don't spam), `list_joined`
-  (share-link or legacy-invite join — gated on `newlyJoined` so re-hits don't re-ping).
-- **Activation**: `first_score` (first-ever score, item or game path — `userHasAnyScore` is
-  checked **before** the upsert, spanning both `game_scores` and the legacy `item_scores`, and
-  only when a webhook is configured), `letterboxd_connected`, `game_added` (gated on
-  `addToMyGames` returning `created: true`).
-- **Ops/safety**: `sessions_revoked` (sign-out-all), `list_archived`, `ownership_transferred`,
-  `source_webhook` (verified inbound webhook — scaffolding surface, no traffic yet).
-  When you add a new gated-by-newness ping, return a created/newly-X boolean from the writer
-  (see `addFriendship` / `addToMyGames`) rather than re-querying — and add a builder + test here.
+**Instant pings live in `src/lib/opsNotifications.ts`** — pure `build*Notification()` builders
+(unit-tested in `opsNotifications.test.ts`, no DB / Discord) plus thin async `notify*` wrappers
+that resolve human labels and call `notifyDiscord`. Every wrapper routes through `safeNotify`,
+which swallows + logs failures so a missing/failed ping can never break the user action that
+triggered it (the action has already committed by the time we ping). **Delivery is awaited, not
+fire-and-forget** — the Lambda freezes its container the moment the (buffered) response resolves,
+so an unawaited POST would be paused mid-flight and dropped when the container is reaped (see
+`discord.ts` header). `safeNotify` short-circuits when no webhook is set, **before** resolving any
+labels, so an unconfigured env (local dev) pays nothing.
 
 **A 👋 signup ping says how they found the app** (`lib/signupAttribution.ts`). Apple/Google
 sign-in bodies carry an optional `acquisition` (`SignupAcquisition` in `@workshop/shared`;
@@ -911,9 +901,8 @@ source with a NULL referrer (`…no longer resolves — inviter unknown`). The z
 fields one by one and the whole step is try/caught — attribution can never fail a sign-in. iOS has
 no deferred deep linking: someone who taps an invite, installs from the App Store, then opens the
 app arrives with no token, so their signup honestly reads `none`. For those, the **first
-friendship within 24h of a signup with no recorded inviter** sends a 🧭 `signup_first_friend`
-follow-up after the 🤝 ping (`notifyFirstFriendAfterSignup`, called at every `addFriendship`
-site in `routes/v1/friends.ts` — add it to any new one). The HighScore admin users tab shows the
+friendship within 24h of a signup with no recorded inviter** is the best remaining lead on who
+brought them in; the daily digest counts it as "first friend after signup". The HighScore admin users tab shows the
 recorded source in the user panel (`signupSourceLabel`), separate from the inferred invite tree.
 `new signup` log lines carry `signupSource` / `referredByUserId` / `signupContext`.
 

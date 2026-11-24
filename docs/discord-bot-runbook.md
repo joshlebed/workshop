@@ -40,6 +40,18 @@ commands are also limited to server admins and to the configured channel.
    which doesn't depend on the bot. Run it by hand:
    `aws lambda invoke --function-name workshop-prod-api --payload '{"job":"discord-health"}' --cli-binary-format raw-in-base64-out /dev/stdout`.
 
+## What posts to the channel
+
+Instant: safety and abuse reports, blocks, vendor alarms, refresh-token replay, account
+deletions, impersonation, sign-outs of every device, ownership transfers, signups, parser and
+direction changes. Routine activity is one message a day, `{ "job": "daily-digest" }`, at 12:02
+UTC (07:02 Eastern in winter) for the previous Eastern day: the signup funnel, HighScore active users, game adds,
+friendships, first scores and list activity. Re-post it by hand with
+`aws lambda invoke --function-name workshop-prod-api --payload '{"job":"daily-digest"}' --cli-binary-format raw-in-base64-out /dev/stdout`.
+
+A TestFlight workflow pings on the first failure of a run of failures. A later failure stays
+quiet until a run succeeds, except the monthly canary, which always pings.
+
 ## Untrusted text (prompt injection)
 
 Tasks run with repo push access and the sandbox's AWS admin role, and `#workshop-admin` is full

@@ -43,11 +43,6 @@ import { recognitionModeFor, recognizeGameForUser } from "../../lib/gameRecognit
 import { todayPeriodKey, toGameShape } from "../../lib/gameShapes.js";
 import { loadGameStandings } from "../../lib/gameStandings.js";
 import { logger } from "../../lib/logger.js";
-import {
-  notifyFirstScore,
-  opsNotificationsEnabled,
-  userHasAnyScore,
-} from "../../lib/opsNotifications.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
 import { claimTeachLlmCall } from "../../lib/teach/budget.js";
@@ -184,7 +179,6 @@ export async function handleScoreUpsertV2(c: Context, gameId: string): Promise<R
     return err(c, "VALIDATION", OBJECTIONABLE_CONTENT_MESSAGE, { code: "OBJECTIONABLE_CONTENT" });
   }
 
-  const isFirstScore = opsNotificationsEnabled() && !(await userHasAnyScore(userId, db));
   let saved: Awaited<ReturnType<typeof saveScore>>;
   try {
     saved = await saveScore({
@@ -208,7 +202,6 @@ export async function handleScoreUpsertV2(c: Context, gameId: string): Promise<R
   }
 
   await addToMyGames(userId, game.id);
-  if (isFirstScore) await notifyFirstScore(userId, game.title);
   if (parsed.data.wrongGame) {
     logTeachEvent("game_recognition", context, {
       warned_game_id: parsed.data.wrongGame.gameId,

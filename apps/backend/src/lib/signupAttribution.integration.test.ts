@@ -27,7 +27,6 @@ vi.mock("./oauth/google.js", () => ({
 
 import { authRoutes } from "../routes/v1/auth.js";
 import { resetConfigForTesting } from "./config.js";
-import { notifyFirstFriendAfterSignup } from "./opsNotifications.js";
 import { runWithRequestClientContext } from "./requestContext.js";
 
 const philipId = "00000000-0000-4000-8000-000000000001";
@@ -105,7 +104,8 @@ describe("signup attribution through POST /v1/auth/google", () => {
   it("does not touch a returning user's attribution", async () => {
     const id = await googleSignIn("vienna", { gameShareToken: "philplay" });
     expect((await signupRow(id))?.signup_source).toBe("friend_invite");
-    expect(pings[0]?.content).toBe("👤 signed in — Vienna Rinaldi via google");
+    // A returning sign-in is a log line, not a ping.
+    expect(pings).toEqual([]);
   });
 
   it("records a play link", async () => {
@@ -160,49 +160,5 @@ describe("signup attribution through POST /v1/auth/google", () => {
   it("a malformed acquisition never fails the sign-in", async () => {
     const id = await googleSignIn("weird", { friendInviteToken: 12, utm: [1, 2] });
     expect((await signupRow(id))?.signup_source).toBe("none");
-  });
-});
-
-describe("notifyFirstFriendAfterSignup", () => {
-  async function befriend(a: string, b: string) {
-    const [low, high] = a < b ? [a, b] : [b, a];
-    await rows(`INSERT INTO friendships (user_low, user_high) VALUES ($1, $2)`, [low, high]);
-  }
-
-  it("pings the first friend of a referral-less recent signup, once", async () => {
-    const id = await googleSignIn("loner", {});
-    await rows(`UPDATE users SET created_at = now() - interval '12 minutes' WHERE id = $1`, [id]);
-    pings.length = 0;
-
-    await befriend(id, philipId);
-    await notifyFirstFriendAfterSignup(id, philipId);
-    expect(pings).toEqual([
-      {
-        content:
-          "🧭 first friend since signing up 12m ago — User loner ↔ Philip (no inviter recorded at signup)",
-        kind: "signup_first_friend",
-      },
-    ]);
-
-    // Second friend: not the first any more.
-    pings.length = 0;
-    const other = await googleSignIn("other", { gameShareToken: "philplay" });
-    pings.length = 0;
-    await befriend(id, other);
-    await notifyFirstFriendAfterSignup(id, other);
-    expect(pings).toEqual([]);
-  });
-
-  it("stays quiet for an invited signup or an old account", async () => {
-    const invited = await googleSignIn("invited", { friendInviteToken: "philinvite" });
-    const veteran = "00000000-0000-4000-8000-000000000099";
-    await rows(
-      `INSERT INTO users (id, email, display_name, created_at) VALUES ($1, 'v@example.com', 'Vet', now() - interval '3 days')`,
-      [veteran],
-    );
-    pings.length = 0;
-    await befriend(invited, veteran);
-    await notifyFirstFriendAfterSignup(invited, veteran);
-    expect(pings).toEqual([]);
   });
 });

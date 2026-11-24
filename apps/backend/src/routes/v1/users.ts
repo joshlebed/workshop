@@ -15,7 +15,7 @@ import {
   resolveImageWrite,
 } from "../../lib/images.js";
 import { logger } from "../../lib/logger.js";
-import { notifyLetterboxdConnected, notifySessionsRevoked } from "../../lib/opsNotifications.js";
+import { notifySessionsRevoked } from "../../lib/opsNotifications.js";
 import {
   loadRevocableIdentities,
   type ProviderRevocationResult,
@@ -309,11 +309,14 @@ userRoutes.put(
 
     const [updated] = await db
       .update(users)
-      .set({ letterboxdUsername: username, updatedAt: new Date() })
+      .set({
+        letterboxdUsername: username,
+        letterboxdConnectedAt: new Date(),
+        updatedAt: new Date(),
+      })
       .where(eq(users.id, userId))
       .returning();
     if (!updated) return err(c, "NOT_FOUND", "user not found");
-    await notifyLetterboxdConnected(userId, username, filmCount);
     return ok(c, { user: toUserShape(c, updated), filmCount });
   },
 );

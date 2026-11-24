@@ -1,4 +1,4 @@
-// Discord webhook notifier for operator-facing events (sign-ins, new lists).
+// Discord webhook notifier for operator-facing events (signups, safety, jobs).
 // Posts to a single channel webhook configured via DISCORD_NOTIFY_WEBHOOK_URL.
 // The webhook URL is itself the secret — there's no separate auth header — so
 // we keep it in SSM SecureString and read it from the Lambda env at runtime.
@@ -79,13 +79,14 @@ function isNotSentError(error: unknown): boolean {
   return typeof code === "string" && NOT_SENT_CODES.has(code);
 }
 
-export async function notifyDiscord(content: string, opts: NotifyOptions = {}): Promise<void> {
+/** Resolves true when Discord accepted the message. Never throws. */
+export async function notifyDiscord(content: string, opts: NotifyOptions = {}): Promise<boolean> {
   const { kind = "generic", fetcher = fetch, withClient = true } = opts;
   const url = getConfig().discordNotifyWebhookUrl;
   if (!url) {
     // Expected in local dev; a real clue in prod (webhook env unset/cleared).
     logger.info("discord notify skipped: webhook not configured", { kind });
-    return;
+    return false;
   }
   const message = withClient ? withClientSuffix(content) : content;
 
@@ -99,7 +100,7 @@ export async function notifyDiscord(content: string, opts: NotifyOptions = {}): 
       });
       if (res.ok) {
         logger.info("discord notify sent", { kind, status: res.status, attempt });
-        return;
+        return true;
       }
       const body = await res.text().catch(() => "");
       const retryable = isRetryableStatus(res.status) && attempt < MAX_ATTEMPTS;
@@ -110,12 +111,13 @@ export async function notifyDiscord(content: string, opts: NotifyOptions = {}): 
         attempt,
         willRetry: retryable,
       });
-      if (!retryable) return;
+      if (!retryable) return false;
     } catch (error) {
       const willRetry = isNotSentError(error) && attempt < MAX_ATTEMPTS;
       logger.warn("discord notify threw", { kind, error, attempt, willRetry });
-      if (!willRetry) return;
+      if (!willRetry) return false;
     }
     await sleep(RETRY_BACKOFF_MS);
   }
+  return false;
 }

@@ -1,27 +1,25 @@
-// Operator-channel (#workshop-admin) notifications for ops observability.
+// Instant operator-channel (#workshop-admin) notifications.
 //
-// This module is the single catalog of the *new* operator pings beyond the
-// original sign-in / new-list / impersonation set (those still live next to
-// their handlers in routes/v1/auth.ts and routes/v1/lists.ts). Three tiers:
+// This channel is for things a human may need to act on: safety and abuse
+// signals, global catalog writes (teach), and account-level security events.
+// Routine growth and activity (game adds, friendships, first scores, list
+// activity) are NOT pinged one by one: `jobs/dailyDigest.ts` counts them from
+// their tables once a day. Before adding a ping here, ask whether it belongs in
+// the digest instead.
 //
-//   Tier 1 — social graph / growth: friend requests + friendships, list joins.
-//   Tier 2 — activation / first-use: first score, Letterboxd connect, game add.
-//   Tier 3 — ops / safety hygiene: all-sessions sign-out, list archive,
-//            ownership transfer, inbound source webhook.
-//
-// Shape mirrors the existing `buildSignInNotification` pattern: a pure
+// Shape mirrors `buildSignInNotification`: a pure
 // `build*Notification(...) => { content, kind }` (exported, unit-tested in
 // opsNotifications.test.ts with no DB or Discord), plus a thin async `notify*`
 // wrapper that resolves human labels and hands off to `notifyDiscord`.
 //
 // Every wrapper routes through `safeNotify`, which swallows + logs any failure
 // (a label lookup that throws, Discord down, …). An operator notification must
-// never break the user action that triggered it — the friend request, score,
-// or archive has already committed by the time we ping.
+// never break the user action that triggered it: the action has already
+// committed by the time we ping.
 
-import { and, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { getDb } from "../db/client.js";
-import { friendships, gameScores, lists, users } from "../db/schema.js";
+import { lists, users } from "../db/schema.js";
 import { userLabel } from "./admin.js";
 import { getConfig } from "./config.js";
 import { notifyDiscord } from "./discord.js";
@@ -31,80 +29,6 @@ import type { DbClient } from "./sql.js";
 type Notification = { content: string; kind: string };
 
 // --- Pure builders (exported for tests) -------------------------------------
-
-/** Tier 1: a directed friend request was sent (no edge formed yet). */
-export function buildFriendRequestSentNotification(sender: string, target: string): Notification {
-  return {
-    content: `📨 friend request — ${sender} → ${target}`,
-    kind: "friend_request",
-  };
-}
-
-/** How a friendship edge was formed, from the acceptor's side. */
-export type FriendshipVia = "request" | "invite_link" | "mutual_request" | "play_link";
-
-/**
- * Tier 1: a friendship edge was formed. Directional on purpose — the operator
- * asked "who is accepting whose request?" of the old `A ↔ B (accepted request)`
- * shape. `acceptor` is the user whose action formed the edge; `other` is the
- * one who sent the request / owns the invite link.
- */
-export function buildFriendshipFormedNotification(
-  acceptor: string,
-  other: string,
-  via: FriendshipVia,
-): Notification {
-  const what =
-    via === "request"
-      ? `${acceptor} accepted ${other}'s friend request`
-      : via === "invite_link"
-        ? `${acceptor} accepted ${other}'s invite link`
-        : via === "play_link"
-          ? `${acceptor} added ${other} from ${other}'s play link`
-          : `${acceptor} sent ${other} a friend request while ${other}'s request was pending, so it auto-accepted`;
-  return { content: `🤝 new friendship — ${what}`, kind: "friend_added" };
-}
-
-/** Tier 1: someone joined a shared list. `via` = "share link" or "invite link". */
-export function buildListJoinedNotification(
-  user: string,
-  listName: string,
-  via: string,
-): Notification {
-  return {
-    content: `📥 list joined — ${user} joined "${listName}" (${via})`,
-    kind: "list_joined",
-  };
-}
-
-/** Tier 2: a user posted their first-ever score (activation signal). */
-export function buildFirstScoreNotification(user: string, gameTitle: string): Notification {
-  return {
-    content: `🎯 first score — ${user} posted their first score (${gameTitle})`,
-    kind: "first_score",
-  };
-}
-
-/** Tier 2: a user connected (or changed) their Letterboxd account. */
-export function buildLetterboxdConnectedNotification(
-  user: string,
-  username: string,
-  filmCount: number,
-): Notification {
-  const films = filmCount === 1 ? "film" : "films";
-  return {
-    content: `🎬 Letterboxd connected — ${user} linked @${username} (${filmCount} ${films})`,
-    kind: "letterboxd_connected",
-  };
-}
-
-/** Tier 2: a user added a game to My Games. */
-export function buildGameAddedNotification(user: string, gameTitle: string): Notification {
-  return {
-    content: `🎮 game added — ${user} added "${gameTitle}" to My Games`,
-    kind: "game_added",
-  };
-}
 
 /**
  * Tier 3: someone (re-)taught a game's scoring config — the one write surface
@@ -175,7 +99,7 @@ export function buildDirectionChangedNotification(
  * session was revoked and the user will be asked to sign in. After the
  * lost-response re-issue path (`rotateDeviceSession`), this only fires when
  * two parties really hold the same credential, so it reads as a theft signal
- * and explains the "signed in" ping that follows it.
+ * and the user's next sign-in is expected.
  */
 export function buildRefreshReplayRevokedNotification(
   user: string,
@@ -193,14 +117,6 @@ export function buildSessionsRevokedNotification(user: string): Notification {
   return {
     content: `🔒 all sessions signed out — ${user} signed out of every device`,
     kind: "sessions_revoked",
-  };
-}
-
-/** Tier 3: a list was archived (owner-only soft-delete). */
-export function buildListArchivedNotification(user: string, listName: string): Notification {
-  return {
-    content: `🗑️ list archived — ${user} archived "${listName}"`,
-    kind: "list_archived",
   };
 }
 
@@ -283,40 +199,13 @@ async function loadListName(listId: string, db: DbClient = getDb()): Promise<str
   return row?.name ?? listId;
 }
 
-/**
- * True if the user already has at least one score in the canonical
- * `game_scores` table. Call this BEFORE the upsert so the row being written
- * doesn't count — a `false` result means the post in flight is the user's
- * first ever. (Daily-game scores are now Games-only; the retired leaderboard
- * `item_scores` fallback was dropped after the migration.)
- */
-export async function userHasAnyScore(userId: string, db: DbClient = getDb()): Promise<boolean> {
-  const [game] = await db
-    .select({ userId: gameScores.userId })
-    .from(gameScores)
-    .where(eq(gameScores.userId, userId))
-    .limit(1);
-  return Boolean(game);
-}
-
 // --- Async wrappers (best-effort; never throw to the caller) ----------------
-
-/**
- * Whether operator notifications are wired up (the `#workshop-admin` webhook is
- * set). False in local dev by default and any env that leaves the webhook env
- * empty. Callers gate notification-only DB work (e.g. the first-score
- * existence check on the hot score path) on this so an unconfigured deploy
- * pays nothing — `getConfig()` is memoized, so the check itself is free.
- */
-export function opsNotificationsEnabled(): boolean {
-  return Boolean(getConfig().discordNotifyWebhookUrl);
-}
 
 async function safeNotify(build: () => Promise<Notification>): Promise<void> {
   // Short-circuit before resolving any labels: with no webhook there's nothing
   // to deliver, so we skip the per-ping DB lookups entirely (notifyDiscord
   // would no-op anyway, but only after we'd paid for the labels).
-  if (!opsNotificationsEnabled()) return;
+  if (!getConfig().discordNotifyWebhookUrl) return;
   try {
     const { content, kind } = await build();
     await notifyDiscord(content, { kind });
@@ -325,57 +214,6 @@ async function safeNotify(build: () => Promise<Notification>): Promise<void> {
     // action already committed. Log so it's still traceable from CloudWatch.
     logger.warn("ops notification failed", { error });
   }
-}
-
-export async function notifyFriendRequestSent(senderId: string, targetId: string): Promise<void> {
-  await safeNotify(async () =>
-    buildFriendRequestSentNotification(
-      await loadUserLabel(senderId),
-      await loadUserLabel(targetId),
-    ),
-  );
-}
-
-export async function notifyFriendshipFormed(
-  acceptorId: string,
-  otherId: string,
-  via: FriendshipVia,
-): Promise<void> {
-  await safeNotify(async () =>
-    buildFriendshipFormedNotification(
-      await loadUserLabel(acceptorId),
-      await loadUserLabel(otherId),
-      via,
-    ),
-  );
-}
-
-export async function notifyListJoined(
-  userId: string,
-  listName: string,
-  via: string,
-): Promise<void> {
-  await safeNotify(async () =>
-    buildListJoinedNotification(await loadUserLabel(userId), listName, via),
-  );
-}
-
-export async function notifyFirstScore(userId: string, gameTitle: string): Promise<void> {
-  await safeNotify(async () => buildFirstScoreNotification(await loadUserLabel(userId), gameTitle));
-}
-
-export async function notifyLetterboxdConnected(
-  userId: string,
-  username: string,
-  filmCount: number,
-): Promise<void> {
-  await safeNotify(async () =>
-    buildLetterboxdConnectedNotification(await loadUserLabel(userId), username, filmCount),
-  );
-}
-
-export async function notifyGameAdded(userId: string, gameTitle: string): Promise<void> {
-  await safeNotify(async () => buildGameAddedNotification(await loadUserLabel(userId), gameTitle));
 }
 
 export async function notifyScoreSpecTaught(
@@ -415,12 +253,6 @@ export async function notifyRefreshReplayRevoked(
 
 export async function notifySessionsRevoked(userId: string): Promise<void> {
   await safeNotify(async () => buildSessionsRevokedNotification(await loadUserLabel(userId)));
-}
-
-export async function notifyListArchived(userId: string, listName: string): Promise<void> {
-  await safeNotify(async () =>
-    buildListArchivedNotification(await loadUserLabel(userId), listName),
-  );
 }
 
 export async function notifyOwnershipTransferred(
@@ -472,84 +304,4 @@ export async function notifyUserBlocked(blockerId: string, blockedId: string): P
       blockedId,
     ),
   );
-}
-
-// --- Signup follow-up: first friend of a referral-less signup ---------------
-//
-// Kept at the end of the file (not beside the 🤝 friendship builder) so it
-// composes with that ping rather than rewriting it: when a friendship forms,
-// each side that signed up within FIRST_FRIEND_WINDOW_MS with no recorded
-// inviter, and for whom this is the only friendship, gets one extra line.
-// That first friend is the best remaining lead on "who brought them in".
-
-const FIRST_FRIEND_WINDOW_MS = 24 * 60 * 60 * 1000;
-
-/** "under a minute" / "12m" / "3h" / "3h 5m". */
-export function formatSinceSignup(ms: number): string {
-  const minutes = Math.floor(Math.max(0, ms) / 60_000);
-  if (minutes < 1) return "under a minute";
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-  return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
-}
-
-/** Follow-up to 🤝: the new user's first friend, when signup recorded no inviter. */
-export function buildFirstFriendAfterSignupNotification(
-  newUser: string,
-  friend: string,
-  sinceSignup: string,
-): Notification {
-  return {
-    content: `🧭 first friend since signing up ${sinceSignup} ago — ${newUser} ↔ ${friend} (no inviter recorded at signup)`,
-    kind: "signup_first_friend",
-  };
-}
-
-/**
- * Call right after a NEW friendship edge between `aId` and `bId` (i.e. when
- * `addFriendship` returned true). Two indexed reads at most, and only with a
- * webhook configured. Never throws.
- */
-export async function notifyFirstFriendAfterSignup(
-  aId: string,
-  bId: string,
-  now: Date = new Date(),
-): Promise<void> {
-  if (!opsNotificationsEnabled()) return;
-  try {
-    const db = getDb();
-    const recent = await db
-      .select({
-        id: users.id,
-        email: users.email,
-        displayName: users.displayName,
-        createdAt: users.createdAt,
-      })
-      .from(users)
-      .where(
-        and(
-          inArray(users.id, [aId, bId]),
-          isNull(users.referredByUserId),
-          gt(users.createdAt, new Date(now.getTime() - FIRST_FRIEND_WINDOW_MS)),
-        ),
-      );
-    for (const newUser of recent) {
-      const [count] = await db
-        .select({ n: sql<number>`count(*)::int` })
-        .from(friendships)
-        .where(or(eq(friendships.userLow, newUser.id), eq(friendships.userHigh, newUser.id)));
-      if (Number(count?.n ?? 0) !== 1) continue;
-      const friendId = newUser.id === aId ? bId : aId;
-      const { content, kind } = buildFirstFriendAfterSignupNotification(
-        userLabel(newUser),
-        await loadUserLabel(friendId, db),
-        formatSinceSignup(now.getTime() - new Date(newUser.createdAt).getTime()),
-      );
-      logger.info("first friend after signup", { userId: newUser.id, friendId });
-      await notifyDiscord(content, { kind });
-    }
-  } catch (error) {
-    logger.warn("ops notification failed", { error, kind: "signup_first_friend" });
-  }
 }

@@ -13,7 +13,6 @@ import { getDb } from "../../db/client.js";
 import { type DbList, listInvites, listMembers, lists, users } from "../../db/schema.js";
 import { recordEvent } from "../../lib/events.js";
 import { imageUrlForClient } from "../../lib/images.js";
-import { notifyListJoined } from "../../lib/opsNotifications.js";
 import { err, ok } from "../../lib/response.js";
 import { executeRows } from "../../lib/sql.js";
 import { requireAuth } from "../../middleware/auth.js";
@@ -127,7 +126,6 @@ inviteRoutes.post("/invites/:token/accept", async (c) => {
 
   // Ping ops only on a genuine first join — re-accepting an old link when
   // already a member is a no-op and shouldn't re-notify.
-  if (result.newlyJoined) await notifyListJoined(userId, result.list.name, "invite link");
 
   const [userRow] = await db
     .select({ displayName: users.displayName })

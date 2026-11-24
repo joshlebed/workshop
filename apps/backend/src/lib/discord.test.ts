@@ -44,7 +44,7 @@ describe("notifyDiscord", () => {
       .mockResolvedValueOnce(new Response("rate limited", { status: 429 }));
     await expect(
       notifyDiscord("hello", { fetcher: fetcher as unknown as typeof fetch }),
-    ).resolves.toBeUndefined();
+    ).resolves.toBe(false);
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
@@ -89,7 +89,7 @@ describe("notifyDiscord", () => {
     const fetcher = vi.fn().mockResolvedValueOnce(new Response("gone", { status: 404 }));
     await expect(
       notifyDiscord("hello", { fetcher: fetcher as unknown as typeof fetch }),
-    ).resolves.toBeUndefined();
+    ).resolves.toBe(false);
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
@@ -98,7 +98,7 @@ describe("notifyDiscord", () => {
     const fetcher = vi.fn().mockRejectedValue(new Error("ECONNRESET"));
     await expect(
       notifyDiscord("hello", { fetcher: fetcher as unknown as typeof fetch }),
-    ).resolves.toBeUndefined();
+    ).resolves.toBe(false);
   });
 
   it("appends the requesting client when a request context is active", async () => {

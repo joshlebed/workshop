@@ -1,16 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { resetConfigForTesting } from "./config.js";
+import { describe, expect, it } from "vitest";
 import {
   buildContentReportNotification,
   buildDirectionChangedNotification,
-  buildFirstFriendAfterSignupNotification,
-  buildFirstScoreNotification,
-  buildFriendRequestSentNotification,
-  buildFriendshipFormedNotification,
-  buildGameAddedNotification,
-  buildLetterboxdConnectedNotification,
-  buildListArchivedNotification,
-  buildListJoinedNotification,
   buildOwnershipTransferredNotification,
   buildParserTaughtNotification,
   buildRefreshReplayRevokedNotification,
@@ -18,8 +9,6 @@ import {
   buildSessionsRevokedNotification,
   buildSourceWebhookNotification,
   buildUserBlockedNotification,
-  formatSinceSignup,
-  opsNotificationsEnabled,
 } from "./opsNotifications.js";
 
 describe("ops notification builders", () => {
@@ -39,59 +28,6 @@ describe("ops notification builders", () => {
     expect(buildUserBlockedNotification("Josh", "Troll", "t-id")).toEqual({
       content: "⛔ user blocked — Josh blocked Troll · blocked id t-id",
       kind: "user_blocked",
-    });
-  });
-
-  it("friend request sent", () => {
-    expect(buildFriendRequestSentNotification("Josh", "Alex")).toEqual({
-      content: "📨 friend request — Josh → Alex",
-      kind: "friend_request",
-    });
-  });
-
-  it("friendship formed names the path taken", () => {
-    expect(buildFriendshipFormedNotification("Renata", "Rachel", "request")).toEqual({
-      content: "🤝 new friendship — Renata accepted Rachel's friend request",
-      kind: "friend_added",
-    });
-    expect(buildFriendshipFormedNotification("Finley", "Philip", "invite_link").content).toBe(
-      "🤝 new friendship — Finley accepted Philip's invite link",
-    );
-    expect(buildFriendshipFormedNotification("Josh", "Alex", "mutual_request").content).toBe(
-      "🤝 new friendship — Josh sent Alex a friend request while Alex's request was pending, so it auto-accepted",
-    );
-    expect(buildFriendshipFormedNotification("Sam", "Josh", "play_link").content).toBe(
-      "🤝 new friendship — Sam added Josh from Josh's play link",
-    );
-  });
-
-  it("list joined", () => {
-    expect(buildListJoinedNotification("Josh", "Geo games", "share link")).toEqual({
-      content: '📥 list joined — Josh joined "Geo games" (share link)',
-      kind: "list_joined",
-    });
-  });
-
-  it("first score", () => {
-    expect(buildFirstScoreNotification("Josh", "Wordle")).toEqual({
-      content: "🎯 first score — Josh posted their first score (Wordle)",
-      kind: "first_score",
-    });
-  });
-
-  it("letterboxd connected pluralizes the film count", () => {
-    expect(buildLetterboxdConnectedNotification("Josh", "joshl", 42).content).toBe(
-      "🎬 Letterboxd connected — Josh linked @joshl (42 films)",
-    );
-    expect(buildLetterboxdConnectedNotification("Josh", "joshl", 1).content).toBe(
-      "🎬 Letterboxd connected — Josh linked @joshl (1 film)",
-    );
-  });
-
-  it("game added", () => {
-    expect(buildGameAddedNotification("Josh", "Connections")).toEqual({
-      content: '🎮 game added — Josh added "Connections" to My Games',
-      kind: "game_added",
     });
   });
 
@@ -139,13 +75,6 @@ describe("ops notification builders", () => {
     });
   });
 
-  it("list archived", () => {
-    expect(buildListArchivedNotification("Josh", "Geo games")).toEqual({
-      content: '🗑️ list archived — Josh archived "Geo games"',
-      kind: "list_archived",
-    });
-  });
-
   it("ownership transferred", () => {
     expect(buildOwnershipTransferredNotification("Geo games", "Josh", "Alex")).toEqual({
       content: '👑 ownership transferred — "Geo games" Josh → Alex',
@@ -158,32 +87,6 @@ describe("ops notification builders", () => {
       content: '📡 source webhook — "rss" fired (slug abc12345, +3 items)',
       kind: "source_webhook",
     });
-  });
-});
-
-describe("opsNotificationsEnabled", () => {
-  const ORIGINAL_ENV = { ...process.env };
-
-  beforeEach(() => {
-    resetConfigForTesting();
-    process.env.STAGE = "local";
-    process.env.DATABASE_URL = "postgres://test";
-    process.env.SESSION_SECRET = "x".repeat(48);
-  });
-
-  afterEach(() => {
-    process.env = { ...ORIGINAL_ENV };
-    resetConfigForTesting();
-  });
-
-  it("is false when the webhook is unset (skips notify-only DB work)", () => {
-    process.env.DISCORD_NOTIFY_WEBHOOK_URL = "";
-    expect(opsNotificationsEnabled()).toBe(false);
-  });
-
-  it("is true when the webhook is configured", () => {
-    process.env.DISCORD_NOTIFY_WEBHOOK_URL = "https://discord.example/webhooks/1/abc";
-    expect(opsNotificationsEnabled()).toBe(true);
   });
 });
 
@@ -233,23 +136,6 @@ describe("teach v2 notifications", () => {
       kind: "direction_changed",
       content:
         '↕️ score direction changed — Josh set "Krillion" to lower is better (was higher is better)',
-    });
-  });
-});
-
-describe("first friend after signup", () => {
-  it("formats the time since signup", () => {
-    expect(formatSinceSignup(20_000)).toBe("under a minute");
-    expect(formatSinceSignup(12 * 60_000)).toBe("12m");
-    expect(formatSinceSignup(3 * 3_600_000)).toBe("3h");
-    expect(formatSinceSignup(3 * 3_600_000 + 5 * 60_000)).toBe("3h 5m");
-  });
-
-  it("builds the follow-up ping", () => {
-    expect(buildFirstFriendAfterSignupNotification("Vienna", "Philip", "12m")).toEqual({
-      content:
-        "🧭 first friend since signing up 12m ago — Vienna ↔ Philip (no inviter recorded at signup)",
-      kind: "signup_first_friend",
     });
   });
 });
