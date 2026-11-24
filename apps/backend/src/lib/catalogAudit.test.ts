@@ -10,7 +10,50 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 let testDb: ReturnType<typeof drizzle>;
 vi.mock("../db/client.js", () => ({ getDb: () => testDb }));
 
-import { renderCatalogAuditMarkdown, runCatalogAudit, suggestCategory } from "./catalogAudit.js";
+import {
+  findPossibleDuplicates,
+  renderCatalogAuditMarkdown,
+  runCatalogAudit,
+  suggestCategory,
+} from "./catalogAudit.js";
+
+describe("findPossibleDuplicates", () => {
+  const g = (normalizedUrl: string, title: string, playerCount = 1) => ({
+    normalizedUrl,
+    title,
+    playerCount,
+  });
+
+  it("lists same-site and same-name pairs, biggest first, and skips reviewed variants", () => {
+    const found = findPossibleDuplicates([
+      g("examplegame.com/daily", "Example", 5),
+      g("examplegame.com", "Example Game", 1),
+      g("dartle.net", "Dartle"),
+      g("alldle.net/game/dartle", "Dartle"),
+      g("geozee.earth", "Geozee", 15),
+      g("geozee.earth/usa", "Geozee USA"),
+      g("nytimes.com/games/connections", "Connections"),
+      g("nytimes.com/games/strands", "Strands"),
+    ]);
+    expect(found.map((d) => [d.reason, d.games.map((x) => x.normalizedUrl)])).toEqual([
+      ["same-site", ["examplegame.com/daily", "examplegame.com"]],
+      ["same-name", ["dartle.net", "alldle.net/game/dartle"]],
+    ]);
+  });
+
+  it("reports a row whose address has an alias but was never merged", () => {
+    const found = findPossibleDuplicates([
+      g("playplain.app", "Plain", 4),
+      g("playplain.app/play", "Plain", 2),
+    ]);
+    expect(found).toEqual([
+      {
+        reason: "alias-not-merged",
+        games: [g("playplain.app/play", "Plain", 2), g("playplain.app", "Plain", 4)],
+      },
+    ]);
+  });
+});
 
 const u1 = "00000000-0000-4000-8000-0000000000f1";
 const u2 = "00000000-0000-4000-8000-0000000000f2";

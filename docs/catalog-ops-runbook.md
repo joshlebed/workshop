@@ -32,7 +32,7 @@ starts a task that:
    `default_transaction_read_only`, so it cannot write. The sandbox role already has
    `ssm:GetParameter` on `/workshop-prod/*`.)
 
-2. Reads the three sections:
+2. Reads the four sections:
    - **Candidates** — games with ≥1 player that aren't listed, each with a suggested game type
      (keyword guess), player + 30-day score counts, parser status, and flags
      (`objectionable-title`, `tagline-title`, `no-parser`, `no-formatter`, `single-player`).
@@ -43,6 +43,10 @@ starts a task that:
    - **Listed games needing attention** — no parser, no formatter, open parse conflict, or
      > 20% of the last 30 days' scores unread.
    - **Stale extras** — listed URLs with no `games` row (prune).
+   - **Possible duplicates** — played games that may be one game under two addresses (same site
+     with a longer path, or the same name), and rows whose address has an alias but were never
+     merged. The PR lists them for the operator; it never adds an alias, a
+     `REVIEWED_SEPARATE_GAMES` entry or a merge. See "Duplicate games" below.
 
 3. Opens **one PR** (branch `ops/catalog-audit-YYYY-MM-DD`, never auto-merged) that adds the
    proposed (catalog-ready, non-flagged) candidates to `OFFICIAL_CATALOG_EXTRAS`, removes any
