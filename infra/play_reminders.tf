@@ -1,7 +1,10 @@
 # Hourly daily-game play reminders (push via Expo Push Service).
 #
 # EventBridge Scheduler invokes the API Lambda with `{ "job": "play-reminders" }`
-# at the top of every hour; the job picks users whose local hour matches their
+# at the top of every hour. Most hours it returns without touching the
+# database: it first reads the stored reminder slots from object storage
+# (apps/backend/src/lib/reminderSlots.ts) and only goes on when someone could
+# be due. When it does run, the job picks users whose local hour matches their
 # reminder hour, skips anyone who already played today, sends one Expo push
 # per registered token and prunes dead tokens. See
 # apps/backend/src/jobs/playReminders.ts. The job dedups on `last_reminded_at`

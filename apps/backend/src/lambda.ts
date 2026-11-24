@@ -2,7 +2,7 @@ import { handle, type LambdaEvent } from "hono/aws-lambda";
 import { buildApp } from "./app.js";
 import { runDiscordHealthJob } from "./jobs/discordHealth.js";
 import { runDiscordMergedJob } from "./jobs/discordMerged.js";
-import { runPlayReminderJob } from "./jobs/playReminders.js";
+import { runScheduledPlayReminders } from "./jobs/playReminders.js";
 import { runRequestRollupJob } from "./jobs/requestRollups.js";
 import { isSnsEvent, runVendorAlarmJob } from "./jobs/vendorAlarm.js";
 import { warmGameCodeSandboxIfEnabled } from "./lib/gameCodeService.js";
@@ -35,9 +35,9 @@ export async function handler(
   if (isSnsEvent(event)) return runVendorAlarmJob(event);
   switch (jobOf(event)) {
     case "play-reminders":
-      return runPlayReminderJob();
+      return runScheduledPlayReminders();
     case "request-rollups":
-      // Housekeeping rides along with the hourly job; it must not stop it.
+      // Housekeeping rides along with this job; it must not stop it.
       await pruneExpiredRateLimits()
         .then((removed) => {
           if (removed > 0) logger.info("pruned expired rate limits", { removed });

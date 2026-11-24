@@ -1,6 +1,8 @@
 // Materializes hourly request-traffic rollups from the CloudWatch request log
 // into `request_rollups`, for the admin analytics dashboards. Invoked by the
-// EventBridge Scheduler with `{ "job": "request-rollups" }` once an hour.
+// EventBridge Scheduler with `{ "job": "request-rollups" }` every six hours
+// (each run wakes the database, which Neon bills for; the dashboards it feeds
+// are admin-only and can be a few hours behind).
 //
 // Each run re-computes the last LOOKBACK_HOURS complete hours (delete +
 // insert in one transaction), so a missed or slow run self-heals on the next
@@ -19,7 +21,7 @@ import { logger } from "../lib/logger.js";
 import type { DbClient } from "../lib/sql.js";
 
 const LOG_GROUP = process.env.REQUEST_LOG_GROUP ?? "/aws/lambda/workshop-prod-api";
-const LOOKBACK_HOURS = 3;
+const LOOKBACK_HOURS = 8;
 const HOUR_MS = 3_600_000;
 const POLL_MS = 400;
 const QUERY_TIMEOUT_MS = 11_000;

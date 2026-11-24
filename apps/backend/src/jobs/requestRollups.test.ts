@@ -87,7 +87,7 @@ describe("request rollups job", () => {
         avg_ms: "40",
       },
       {
-        // Outside [15:00, 18:00) — a partial-hour straggler the query may return.
+        // Outside [10:00, 18:00) — a partial-hour straggler the query may return.
         hour: "2026-10-29 18:00:00.000",
         client_app: "workshop",
         plat: "web",
@@ -103,12 +103,12 @@ describe("request rollups job", () => {
 
     const first = await runRequestRollupJob({ now, query });
     expect(first).toEqual({
-      windowStart: "2026-10-29T15:00:00.000Z",
+      windowStart: "2026-10-29T10:00:00.000Z",
       windowEnd: "2026-10-29T18:00:00.000Z",
       rows: 1,
     });
     expect(query).toHaveBeenCalledWith({
-      start: new Date("2026-10-29T15:00:00Z"),
+      start: new Date("2026-10-29T10:00:00Z"),
       end: new Date("2026-10-29T18:00:00Z"),
     });
 

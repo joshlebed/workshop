@@ -13,6 +13,7 @@ import { getDb } from "../../db/client.js";
 import { notificationPrefs, pushTokens } from "../../db/schema.js";
 import { reminderTimezoneForUser, suggestPlayReminderHour } from "../../jobs/playReminders.js";
 import { getConfig } from "../../lib/config.js";
+import { refreshReminderSlotsQuietly } from "../../lib/reminderSlots.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
 import { requireAuth } from "../../middleware/auth.js";
@@ -95,6 +96,9 @@ meRoutes.post("/push-token", async (c) => {
         lastSeenAt: now,
       },
     });
+  // A new device can change the account's timezone, and so which hour its
+  // reminder falls in.
+  await refreshReminderSlotsQuietly(db);
 
   const response: PushTokenMutationResponse = { ok: true };
   return ok(c, response);
@@ -110,6 +114,7 @@ meRoutes.delete("/push-token", async (c) => {
   await db
     .delete(pushTokens)
     .where(and(eq(pushTokens.userId, userId), eq(pushTokens.expoPushToken, request.expoPushToken)));
+  await refreshReminderSlotsQuietly(db);
   const response: PushTokenMutationResponse = { ok: true };
   return ok(c, response);
 });
@@ -155,6 +160,7 @@ meRoutes.put("/notification-prefs", async (c) => {
       playReminderHour: notificationPrefs.playReminderHour,
     });
   if (!prefs) return err(c, "NOT_FOUND", "user not found");
+  await refreshReminderSlotsQuietly(db);
 
   const response: UpdateNotificationPrefsResponse = prefs;
   return ok(c, response);

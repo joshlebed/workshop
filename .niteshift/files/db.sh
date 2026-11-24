@@ -62,7 +62,8 @@ workshop_sync_prod_images() {
     return 0
   }
   mkdir -p "$WORKSHOP_LOCAL_IMAGE_DIR"
-  if aws s3 sync "s3://$bucket" "$WORKSHOP_LOCAL_IMAGE_DIR" --only-show-errors 2>/dev/null; then
+  if aws s3 sync "s3://$bucket" "$WORKSHOP_LOCAL_IMAGE_DIR" --exclude "state/*" \
+    --only-show-errors 2>/dev/null; then
     echo "local image directory mirrors s3://$bucket"
   else
     echo "image sync from s3://$bucket failed; prod rows will show initials" >&2
