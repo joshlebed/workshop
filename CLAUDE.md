@@ -359,6 +359,15 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
     `@types/cytoscape`. The screen is deliberately not wrapped in `Screen` (a graph wants the
     whole viewport).
 
+- **HighScore's admin "Play time" tab (`/admin?tab=playtime&player=<id>&day=<YYYY-MM-DD>`) is an
+  estimate from score-post timestamps only** — `GET /v1/admin/play-time?range=7|30|90` and
+  `GET /v1/admin/play-time/:userId?day=` (real-admin gate), model in
+  `apps/backend/src/lib/adminPlayTime.ts`: posts <20 min apart are one sitting, each post counts
+  the gap since the previous one, a sitting's first post counts the game's own timer (time games
+  under an hour) or the game's median in-sitting gap, and an old day pasted late is shown but not
+  counted. Days are local to the newest push token's timezone (no token → America/New_York,
+  flagged). A batch paste moves time between games but keeps the sitting's total.
+
 - **The HighScore "update from the App Store" nudge is operator-only state, not code.**
   `client_releases` (one row per client × platform: `latest_version`, `minimum_version`,
   `store_url`, `message`) is read by the public `GET /v1/client/release` and written only by

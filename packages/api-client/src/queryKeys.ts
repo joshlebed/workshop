@@ -44,6 +44,10 @@ export const queryKeys = {
     /** `GET /v1/admin/client-release` — nudge values + who last set them. */
     clientRelease: (client: string, platform: string) =>
       ["admin", "clientRelease", client, platform] as const,
+    /** `GET /v1/admin/play-time?range=…` — estimated play time per player. */
+    playTime: (rangeDays: number) => ["admin", "playTime", rangeDays] as const,
+    /** `GET /v1/admin/play-time/:userId?day=…` — one player's posts on one day. */
+    playTimeDay: (userId: string, day: string) => ["admin", "playTimeDay", userId, day] as const,
     /** `GET /v1/admin/push/recipients` — users with a push token (operator push panel). */
     pushRecipients: (q: string, remindersOnly: boolean) =>
       ["admin", "pushRecipients", q, remindersOnly] as const,
