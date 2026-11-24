@@ -24,8 +24,6 @@ function recognizer(
     title,
     url: `https://${normalizedUrl}`,
     normalizedUrl,
-    inMyGames: true,
-    curated: false,
     ...recognizerEvidence(examples),
     ...extra,
   };
@@ -37,10 +35,7 @@ const nytMini = recognizer("m", "NYT Mini", "nytimes.com/crosswords/game/mini", 
   mini("5/21/2026", "1:02"),
   mini("5/22/2026", "0:48"),
 ]);
-const dailyTens = recognizer("d", "Daily Tens", "dailytens.com", {
-  inMyGames: false,
-  curated: true,
-});
+const dailyTens = recognizer("d", "Daily Tens", "dailytens.com");
 const all = [krillion, nytMini, dailyTens];
 const NOW = Date.UTC(2026, 10, 15);
 const DAY = 24 * 60 * 60_000;
@@ -70,18 +65,20 @@ describe("recognizeLocally", () => {
     expect(recognizeLocally("https://dailytens.com/?ref=abc123", all, null)).toBeNull();
   });
 
-  it("takes inMyGames from the live list once it has loaded", () => {
+  it("says the game is in My Games until the live list says otherwise", () => {
     const share = "Daily Tens #40 7/10 🏆";
-    expect(recognizeLocally(share, all, null)).toMatchObject({ inMyGames: false });
-    // Added since the recognizers were built: post straight to its row.
+    // Recognizers are My Games as of when they were built.
+    expect(recognizeLocally(share, all, null)).toMatchObject({ inMyGames: true });
     expect(recognizeLocally(share, all, new Set(["k", "m", "d"]))).toMatchObject({
       game: { id: "d" },
       inMyGames: true,
     });
     // Removed since: posting adds it back.
-    expect(recognizeLocally("Krillion #77 🦐\n305", all, new Set(["m"]))).toMatchObject({
-      inMyGames: false,
-    });
+    expect(recognizeLocally(share, all, new Set(["k", "m"]))).toMatchObject({ inMyGames: false });
+  });
+
+  it("knows nothing about a game the player has not added", () => {
+    expect(recognizeLocally("Wordle 1,127 3/6\n⬜🟨⬜⬜⬜", all, null)).toBeNull();
   });
 });
 
@@ -133,9 +130,10 @@ describe("recognitionCapability", () => {
 
 describe("recognizersOutOfDate", () => {
   it("is true only when My Games differs from what they were built for", () => {
-    expect(recognizersOutOfDate(all, new Set(["k", "m"]))).toBe(false);
-    expect(recognizersOutOfDate(all, new Set(["k", "m", "d"]))).toBe(true);
-    expect(recognizersOutOfDate(all, new Set(["k"]))).toBe(true);
-    expect(recognizersOutOfDate(all, new Set(["k", "x"]))).toBe(true);
+    expect(recognizersOutOfDate(all, new Set(["k", "m", "d"]))).toBe(false);
+    // A game added since, one removed since, one swapped.
+    expect(recognizersOutOfDate(all, new Set(["k", "m", "d", "x"]))).toBe(true);
+    expect(recognizersOutOfDate(all, new Set(["k", "m"]))).toBe(true);
+    expect(recognizersOutOfDate(all, new Set(["k", "m", "x"]))).toBe(true);
   });
 });

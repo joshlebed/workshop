@@ -21,8 +21,6 @@ function recognizer(
 ): GameRecognizer {
   return {
     url: `https://${fields.normalizedUrl}`,
-    inMyGames: true,
-    curated: false,
     ...recognizerEvidence(examples),
     ...fields,
   };
@@ -91,30 +89,9 @@ describe("recognizeWithRecognizers", () => {
     expect(recognizeWithRecognizers("Krillion #77 🦐\n305", [])).toBeNull();
   });
 
-  it("recognizes a listed game outside My Games by link, and by name only when curated", () => {
-    const wordle = recognizer({
-      id: "wordle",
-      title: "Wordle",
-      normalizedUrl: "nytimes.com/games/wordle",
-      inMyGames: false,
-      curated: true,
-    });
-    const farflung = recognizer({
-      id: "farflung",
-      title: "Farflung",
-      normalizedUrl: "farflung.game",
-      inMyGames: false,
-    });
-    const all = [...mine, wordle, farflung];
-    expect(recognizeWithRecognizers("Wordle 1,127 3/6\n⬜🟨⬜⬜⬜", all)).toMatchObject({
-      gameId: "wordle",
-      method: "label",
-    });
-    expect(recognizeWithRecognizers("Farflung #12 4/6", all)).toBeNull();
-    expect(recognizeWithRecognizers("Farflung #12 4/6 https://farflung.game", all)).toMatchObject({
-      gameId: "farflung",
-      method: "url",
-    });
+  it("knows only the games it was given: a share for any other is the server's to place", () => {
+    expect(recognizeWithRecognizers("Wordle 1,127 3/6\n⬜🟨⬜⬜⬜", mine)).toBeNull();
+    expect(recognizeWithRecognizers("Farflung #12 4/6 https://farflung.game", mine)).toBeNull();
   });
 
   it("does not let a shape decide when the text links a site that game never does", () => {

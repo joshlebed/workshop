@@ -664,8 +664,8 @@ text names; examples = the 20 most recent distinct usable scores, any player's).
   too.** `lib/gameRecognition.ts` re-exports that module and adds what only the server has
   (stored examples, `selectExamples`, the Jev step). `GET /v1/games/recognizers`
   (`loadGameRecognizers`; 404 unless recognition is on for the caller) hands a client one
-  `GameRecognizer` per My Games game and per officially listed game: id, title, URL, and for
-  My Games the fingerprint (token → support) and linked hosts derived from stored scores. The
+  `GameRecognizer` per game in the caller's My Games: id, title, URL, the fingerprint
+  (token → support) and linked hosts derived from stored scores. The
   client caches them on the device and names a share's game with `recognizeWithRecognizers`
   before any request returns (`apps/highscore/CLAUDE.md` → "Share flow"). **Recognition only,
   for now: the score is read here, by the preview and the post, and `parse_code` is not sent
@@ -681,9 +681,10 @@ text names; examples = the 20 most recent distinct usable scores, any player's).
   much smaller heap. As _recognizers_ the parsers are poor either way: on prod text 79% of
   shares were read by more than one game's parser. Three rules
   for that payload: it carries **no score text** (a fingerprint needs ≥3 examples and a host
-  ≥2, so nothing in it is one player's wording); it lists **no unlisted game the caller has
-  not added** (the official catalog is the content gate — the server's own lookup still finds
-  those by link); and a change to steps 1–3 or to `GameRecognizer` reaches old clients'
+  ≥2, so nothing in it is one player's wording); it covers **My Games only — a
+  device holds nothing about a game its player has not added, not the catalog and not what
+  friends play** (operator rule, 2026-11-24; a share for any other game falls through to the
+  server, whose own lookup knows the catalog); and a change to steps 1–3 or to `GameRecognizer` reaches old clients'
   caches, so bump `CACHE_VERSION` in the client's `localRecognition.ts` when the shape
   changes. A preview for a game the device recognized carries `recognizedBy`, logged as
   `game_recognition` with `source: "device"`. Measure the device-only path with the eval's

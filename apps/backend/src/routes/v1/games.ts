@@ -530,8 +530,8 @@ gameRoutes.post(
 );
 
 /**
- * GET /v1/games/recognizers — the recognition evidence for the caller's games
- * and the listed catalog, for the client to keep on the device and run
+ * GET /v1/games/recognizers — the recognition evidence for the caller's My
+ * Games (and no other game), for the client to keep on the device and run
  * itself (`recognizeWithRecognizers` in `@workshop/shared/gameRecognition`),
  * so the share flow names the game before any request returns. It carries no
  * score text and no parser: the score is still read here, by the preview and

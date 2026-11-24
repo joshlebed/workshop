@@ -25,8 +25,6 @@ export const gameRecognizerSchema = z.object({
   title: z.string(),
   url: z.string(),
   normalizedUrl: z.string(),
-  inMyGames: z.boolean(),
-  curated: z.boolean(),
   examples: z.number(),
   fingerprint: z.record(z.string(), z.number()).nullable(),
   hosts: z.array(z.string()),
@@ -133,7 +131,8 @@ export function recognizeLocally(
   if (!game) return null;
   return {
     game: { id: game.id, title: game.title, url: game.url },
-    inMyGames: myGameIds ? myGameIds.has(game.id) : game.inMyGames,
+    // Recognizers are My Games as of when they were built.
+    inMyGames: myGameIds ? myGameIds.has(game.id) : true,
     confidence: result.confidence,
     method: result.method,
   };
@@ -148,7 +147,7 @@ export function recognizersOutOfDate(
   recognizers: readonly GameRecognizer[],
   myGameIds: ReadonlySet<string>,
 ): boolean {
-  const known = new Set(recognizers.filter((r) => r.inMyGames).map((r) => r.id));
+  const known = new Set(recognizers.map((r) => r.id));
   if (known.size !== myGameIds.size) return true;
   for (const id of myGameIds) if (!known.has(id)) return true;
   return false;

@@ -460,21 +460,14 @@ function fingerprintConfidence(score: number): number {
 
 /**
  * Everything steps 1–3 need to recognize one game's shares, without the
- * stored scores it was derived from. The server builds these per player
- * (`GET /v1/games/recognizers`) and the client keeps them, so the share flow
- * can name the game with no request. Holds no score text: a fingerprint is
- * only the tokens most of a game's examples share.
+ * stored scores it was derived from. The server builds one per game in the
+ * player's My Games (`GET /v1/games/recognizers`) and the client keeps them,
+ * so the share flow can name the game with no request. A device holds nothing
+ * about a game its player has not added. Holds no score text: a fingerprint
+ * is only the tokens most of a game's examples share.
  */
 export interface GameRecognizer extends RecognitionCandidate {
   url: string;
-  /** In the player's My Games when this was built. */
-  inMyGames: boolean;
-  /**
-   * A registry game, which may be recognized by its name even when it is not
-   * in My Games. Anything else outside My Games is recognized by link only
-   * (see `catalogGameNamedBy`).
-   */
-  curated: boolean;
   /** How many usable examples the game had. */
   examples: number;
   /**
@@ -515,21 +508,17 @@ export function recognizerEvidence(
 }
 
 /**
- * Steps 1–3 over prepared recognizers: which game `raw` is a score for, or
- * null when these steps cannot say (the caller then asks the server, whose
- * classifier can). Same candidate rule as the server: My Games, plus any
- * other game the text itself names. Synchronous and network-free.
+ * Steps 1–3 over prepared recognizers — the player's My Games: which game
+ * `raw` is a score for, or null when these steps cannot say (the caller then
+ * asks the server, which also knows the catalog and has a classifier).
+ * Synchronous and network-free.
  */
 export function recognizeWithRecognizers(
   raw: string,
-  recognizers: readonly GameRecognizer[],
+  candidates: readonly GameRecognizer[],
 ): RecognitionResult | null {
   const text = raw.trim();
-  if (!text) return null;
-  const candidates = recognizers.filter(
-    (game) => game.inMyGames || catalogGameNamedBy(text, game, game.curated),
-  );
-  if (candidates.length === 0) return null;
+  if (!text || candidates.length === 0) return null;
 
   const cheap = compileMatcher(candidates)(text);
   if (cheap.result) return cheap.result;

@@ -504,7 +504,7 @@ export interface RecognizeGameResponse {
 /**
  * `GET /v1/games/recognizers` — what the client needs to recognize a share
  * on its own, before any request returns: one `GameRecognizer` per game in
- * the caller's My Games and per officially listed game. Clients keep the
+ * the caller's My Games, and nothing about any other game. Clients keep the
  * response on the device and refresh it in the background. Only the game is
  * recognized locally; the score is always read by the server.
  */

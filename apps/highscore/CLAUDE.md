@@ -86,8 +86,8 @@ the server runs, from `@workshop/shared/gameRecognition`) over the live draft, s
 detected-score card is up with the text even on a share that cold-started the app. A game
 recognized here goes straight to that game's `scores/preview` (the server's reading, plus its
 own wrong-game check); `POST /v1/games/score-preview` is asked only for a text the device
-could not place (no recognizers yet, a share with no name and no fingerprint match, an
-unlisted game not in My Games). No parser runs on the device today: the caption and the stored value are the
+could not place (no recognizers yet, a share with no name and no fingerprint match, any
+game not in My Games — the device is never given anything about those). No parser runs on the device today: the caption and the stored value are the
 server's. Running the stored parse code here is possible (QuickJS's plain-JS build works under
 Hermes; numbers and the open risk are in `apps/backend/CLAUDE.md` → "Game-score recognition"),
 but it has to be the same engine and code version as the server, not a second implementation —
