@@ -1,0 +1,30 @@
+name: Detect a repeat failure
+description: >
+  Says whether the previous decided run of this workflow on this branch also
+  failed, so a notify job can ping once per run of failures. Fails open: if
+  GitHub can't answer, repeat is false and the ping goes out.
+
+inputs:
+  workflow:
+    description: Workflow file name, e.g. testflight.yml
+    required: true
+  token:
+    description: "Token with `actions: read`"
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  repeat:
+    description: "`true` when this failure continues an already-reported run of failures"
+    value: ${{ steps.check.outputs.repeat }}
+
+runs:
+  using: composite
+  steps:
+    - id: check
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        WORKFLOW: ${{ inputs.workflow }}
+      run: |
+        bash "$GITHUB_ACTION_PATH/repeat-failure.sh" | tee -a "$GITHUB_OUTPUT"

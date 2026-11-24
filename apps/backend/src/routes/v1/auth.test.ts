@@ -1,40 +1,29 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { resetConfigForTesting } from "../../lib/config.js";
-import { authRoutes, buildSignInNotification } from "./auth.js";
+import { authRoutes, buildSignupNotification } from "./auth.js";
 
-describe("buildSignInNotification", () => {
+describe("buildSignupNotification", () => {
   const user = { id: "u_1", email: "a@b.test", displayName: "Ada" };
 
-  it("uses the celebratory signup copy for a genuinely new user", () => {
-    expect(buildSignInNotification(user, "apple", true)).toEqual({
+  it("names the new user and provider", () => {
+    expect(buildSignupNotification(user, "apple")).toEqual({
       content: "👋 new signup — Ada via apple",
       kind: "signup",
     });
   });
 
-  it("uses the quieter signed-in copy for a returning user", () => {
-    expect(buildSignInNotification(user, "google", false)).toEqual({
-      content: "👤 signed in — Ada via google",
-      kind: "signin",
-    });
-  });
-
-  it("appends how a new user found the app, never on a returning sign-in", () => {
+  it("appends how they found the app", () => {
     expect(
-      buildSignInNotification(user, "google", true, "invited by Philip (friend invite link)")
-        .content,
+      buildSignupNotification(user, "google", "invited by Philip (friend invite link)").content,
     ).toBe("👋 new signup — Ada via google — invited by Philip (friend invite link)");
-    expect(buildSignInNotification(user, "google", false, "ignored").content).toBe(
-      "👤 signed in — Ada via google",
-    );
   });
 
   it("falls back display name → email → id for the label", () => {
-    expect(buildSignInNotification({ ...user, displayName: null }, "apple", false).content).toBe(
-      "👤 signed in — a@b.test via apple",
+    expect(buildSignupNotification({ ...user, displayName: null }, "apple").content).toBe(
+      "👋 new signup — a@b.test via apple",
     );
     expect(
-      buildSignInNotification({ id: "u_2", email: null, displayName: null }, "apple", true).content,
+      buildSignupNotification({ id: "u_2", email: null, displayName: null }, "apple").content,
     ).toBe("👋 new signup — u_2 via apple");
   });
 });

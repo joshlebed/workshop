@@ -422,8 +422,25 @@ jobs:
     needs: [fingerprint, build]
     if: always() && (needs.fingerprint.result == 'failure' || needs.build.result == 'failure')
     runs-on: ubuntu-latest
+    permissions:
+      actions: read # look up the previous run's conclusion
+      contents: read
+      issues: write # canary-failure issue
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .github/actions/repeat-failure
+
+      # One ping per run of failures: HighScore failed 14 times on 2026-11-03
+      # and each pinged. The monthly canary always pings.
+      - name: Check for a repeat failure
+        id: repeat
+        uses: ./.github/actions/repeat-failure
+        with:
+          workflow: testflight-highscore.yml
+
       - name: Post to Discord
+        if: steps.repeat.outputs.repeat != 'true' || needs.fingerprint.outputs.is_canary == 'true'
         env:
           WEBHOOK: ${{ secrets.DISCORD_NOTIFY_WEBHOOK_URL }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

@@ -46,11 +46,7 @@ import { scoreCodeFields } from "../../lib/gameCodeService.js";
 import { gameShapeColumns, todayPeriodKey, toGameShape } from "../../lib/gameShapes.js";
 import { resolveGameShareLink } from "../../lib/gameShareLinks.js";
 import { loadHeadToHead } from "../../lib/headToHead.js";
-import {
-  notifyFirstFriendAfterSignup,
-  notifyFriendRequestSent,
-  notifyFriendshipFormed,
-} from "../../lib/opsNotifications.js";
+import { logger } from "../../lib/logger.js";
 import { isUniqueViolation } from "../../lib/pgErrors.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
@@ -403,10 +399,8 @@ friendRoutes.post(
     // `responded_at` columns are left untouched (see schema comment), but any
     // pending *directed* request between the pair is consumed — the link
     // accept satisfied it.
-    const formed = await addFriendship(request.inviterId, userId);
+    await addFriendship(request.inviterId, userId);
     await deleteDirectedPending(request.inviterId, userId);
-    if (formed) await notifyFriendshipFormed(userId, request.inviterId, "invite_link");
-    if (formed) await notifyFirstFriendAfterSignup(userId, request.inviterId);
 
     const pair = canonicalPair(request.inviterId, userId);
     const [edge] = await db
@@ -531,13 +525,11 @@ friendRoutes.post(
       isValidShareSlug(via) &&
       (await resolveGameShareLink(via))?.userId === targetId;
     if (vouched) {
-      const formed = await addFriendship(userId, targetId);
+      await addFriendship(userId, targetId);
       await deleteDirectedPending(userId, targetId);
       await deleteDirectedPending(targetId, userId);
       const edge = await friendshipEdge(userId, targetId);
       if (!edge) return err(c, "INTERNAL", "friendship lookup failed");
-      if (formed) await notifyFriendshipFormed(userId, targetId, "play_link");
-      if (formed) await notifyFirstFriendAfterSignup(userId, targetId);
       const response: SendFriendRequestResponse = {
         status: "accepted",
         friend: friendShape(edge.createdAt),
@@ -557,12 +549,10 @@ friendRoutes.post(
       )
       .limit(1);
     if (inbound) {
-      const formed = await addFriendship(userId, targetId);
+      await addFriendship(userId, targetId);
       await deleteDirectedPending(userId, targetId);
       const edge = await friendshipEdge(userId, targetId);
       if (!edge) return err(c, "INTERNAL", "friendship lookup failed");
-      if (formed) await notifyFriendshipFormed(userId, targetId, "mutual_request");
-      if (formed) await notifyFirstFriendAfterSignup(userId, targetId);
       const response: SendFriendRequestResponse = {
         status: "accepted",
         friend: friendShape(edge.createdAt),
@@ -575,14 +565,12 @@ friendRoutes.post(
       .values({ inviterId: userId, inviteeId: targetId })
       .onConflictDoNothing()
       .returning({ id: friendRequests.id });
-    // Only ping when a fresh pending row was actually created — a duplicate
-    // send no-ops on the partial unique index and shouldn't re-notify. The
-    // recipient's push runs beside the Discord ping; both swallow failures.
+    // Only push when a fresh pending row was actually created: a duplicate send
+    // no-ops on the partial unique index and shouldn't re-notify. The push
+    // swallows its own failures.
     if (insertedRequest.length > 0) {
-      await Promise.all([
-        notifyFriendRequestSent(userId, targetId),
-        sendFriendRequestPush(userId, targetId),
-      ]);
+      logger.info("friend request sent", { userId, targetId });
+      await sendFriendRequestPush(userId, targetId);
     }
     const response: SendFriendRequestResponse = { status: "pending", friend: null };
     return ok(c, response, 201);
@@ -623,10 +611,8 @@ friendRoutes.post(
     if (!pending) return err(c, "NOT_FOUND", "request not found");
     if (await blockedEitherWay(userId, senderId)) return err(c, "NOT_FOUND", "request not found");
 
-    const formed = await addFriendship(senderId, userId);
+    await addFriendship(senderId, userId);
     await deleteDirectedPending(userId, senderId);
-    if (formed) await notifyFriendshipFormed(userId, senderId, "request");
-    if (formed) await notifyFirstFriendAfterSignup(userId, senderId);
 
     const [edge, [sender]] = await Promise.all([
       friendshipEdge(userId, senderId),

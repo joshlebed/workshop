@@ -248,23 +248,17 @@ async function upsertIdentity({
   return { user: created, createdUser: true };
 }
 
-// Build the operator-channel message for a sign-in. A genuinely new user gets
-// the high-signal "👋 new signup" copy; a returning user — including one
-// linking a second provider to a known email (`createdUser: false`) — gets a
-// quieter "signed in" line. Label falls back display name → email → id. A
-// signup also says how they found the app (`attribution`, from
-// describeSignupAttribution). Pure so it's unit-tested without a DB or Discord
-// (see auth.test.ts).
-export function buildSignInNotification(
+// Build the operator-channel message for a new signup, saying how they found
+// the app (`attribution`, from describeSignupAttribution). Label falls back
+// display name → email → id. Returning sign-ins don't ping. Pure so it's
+// unit-tested without a DB or Discord (see auth.test.ts).
+export function buildSignupNotification(
   user: Pick<DbUser, "id" | "email" | "displayName">,
   provider: AuthProvider,
-  createdUser: boolean,
   attribution?: string,
 ): { content: string; kind: string } {
-  const label = userLabel(user);
-  if (!createdUser) return { content: `👤 signed in — ${label} via ${provider}`, kind: "signin" };
   const how = attribution ? ` — ${attribution}` : "";
-  return { content: `👋 new signup — ${label} via ${provider}${how}`, kind: "signup" };
+  return { content: `👋 new signup — ${userLabel(user)} via ${provider}${how}`, kind: "signup" };
 }
 
 export function buildImpersonationNotification(
@@ -306,9 +300,9 @@ async function targetUserByInput(
   return { ok: true, user: user ?? null };
 }
 
-// Ping the operator channel on every sign-in (new or returning). The auth event
-// is logged independently of Discord so a missing admin message stays
-// traceable: the log line proves the sign-in happened and the notify was
+// Log every sign-in and ping the operator channel for a new signup only. The
+// auth event is logged independently of Discord so a missing admin message
+// stays traceable: the log line proves the signup happened and the notify was
 // attempted even if the Discord POST later fails (grep `discord notify` for the
 // delivery outcome). Discord failures swallow inside notifyDiscord, so this can
 // never break the sign-in.
@@ -319,12 +313,6 @@ async function notifySignIn(
   acquisition: SignupAcquisitionInput | undefined,
 ): Promise<void> {
   const signup = createdUser ? await attributeSignup(user.id, acquisition) : null;
-  const { content, kind } = buildSignInNotification(
-    user,
-    provider,
-    createdUser,
-    signup?.description,
-  );
   logger.info(createdUser ? "new signup" : "sign-in", {
     userId: user.id,
     provider,
@@ -337,6 +325,8 @@ async function notifySignIn(
         }
       : {}),
   });
+  if (!createdUser) return;
+  const { content, kind } = buildSignupNotification(user, provider, signup?.description);
   await notifyDiscord(content, { kind });
 }
 

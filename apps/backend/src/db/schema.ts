@@ -51,6 +51,8 @@ export const users = pgTable(
      * NULL = not connected.
      */
     letterboxdUsername: text("letterboxd_username"),
+    /** Last time the user connected or changed Letterboxd. Counted by the daily digest. */
+    letterboxdConnectedAt: timestamp("letterboxd_connected_at", { withTimezone: true }),
     /** When the user's cached watchlist (`letterboxd_watchlist_films`) was last refreshed. */
     letterboxdSyncedAt: timestamp("letterboxd_synced_at", { withTimezone: true }),
     /**
