@@ -8,6 +8,12 @@ import { isAdminUser } from "../../lib/admin.js";
 import { buildAdminAnalytics } from "../../lib/adminAnalytics.js";
 import { buildAdminGraph } from "../../lib/adminGraph.js";
 import {
+  buildAdminPlayTime,
+  buildAdminPlayTimeDay,
+  isValidTimeZone,
+  PLAY_TIME_RANGES,
+} from "../../lib/adminPlayTime.js";
+import {
   adminPushRecipientsQuerySchema,
   adminPushSendSchema,
   listAdminPushRecipients,
@@ -115,6 +121,43 @@ adminRoutes.get("/graph", async (c) => {
   const denied = await requireRealAdmin(c);
   if (denied) return denied;
   return ok(c, await buildAdminGraph());
+});
+
+const playTimeQuerySchema = z.object({
+  range: z.coerce
+    .number()
+    .refine((n) => (PLAY_TIME_RANGES as readonly number[]).includes(n))
+    .optional(),
+});
+
+const playTimeDayQuerySchema = z.object({
+  day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  tz: z.string().max(64).refine(isValidTimeZone).optional(),
+});
+
+/**
+ * Estimated daily play time per HighScore player, inferred from score-post
+ * timestamps (`lib/adminPlayTime.ts` explains the model). Admin-only.
+ */
+adminRoutes.get("/play-time", async (c) => {
+  const denied = await requireRealAdmin(c);
+  if (denied) return denied;
+  const parsed = playTimeQuerySchema.safeParse(c.req.query());
+  if (!parsed.success) return err(c, "VALIDATION", "invalid query", parsed.error.flatten());
+  return ok(c, await buildAdminPlayTime(parsed.data.range ?? 30));
+});
+
+/** One player's posts and sessions on one local day, with each post's estimate. */
+adminRoutes.get("/play-time/:userId", async (c) => {
+  const denied = await requireRealAdmin(c);
+  if (denied) return denied;
+  const userId = c.req.param("userId");
+  if (!z.string().uuid().safeParse(userId).success) return err(c, "VALIDATION", "invalid user id");
+  const parsed = playTimeDayQuerySchema.safeParse(c.req.query());
+  if (!parsed.success) return err(c, "VALIDATION", "invalid query", parsed.error.flatten());
+  const day = await buildAdminPlayTimeDay(userId, parsed.data.day, parsed.data.tz);
+  if (!day) return err(c, "NOT_FOUND", "user not found");
+  return ok(c, day);
 });
 
 /**

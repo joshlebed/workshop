@@ -2,6 +2,8 @@ import { apiRequest } from "@workshop/api-client/api";
 import type {
   AdminAnalyticsResponse,
   AdminGraphResponse,
+  AdminPlayTimeDayResponse,
+  AdminPlayTimeResponse,
   AdminPushRecipientsResponse,
   AdminPushSendRequest,
   AdminPushSendResponse,
@@ -57,5 +59,30 @@ export function sendAdminPush(
     path: "/v1/admin/push/send",
     token,
     body,
+  });
+}
+
+/** Estimated play time per player over the last `rangeDays` (403 for non-admins). */
+export function fetchAdminPlayTime(
+  token: string | null,
+  rangeDays: number,
+): Promise<AdminPlayTimeResponse> {
+  return apiRequest<AdminPlayTimeResponse>({
+    method: "GET",
+    path: `/v1/admin/play-time?range=${rangeDays}`,
+    token,
+  });
+}
+
+/** One player's score posts, sessions and estimates on one local day. */
+export function fetchAdminPlayTimeDay(
+  token: string | null,
+  userId: string,
+  day: string,
+): Promise<AdminPlayTimeDayResponse> {
+  return apiRequest<AdminPlayTimeDayResponse>({
+    method: "GET",
+    path: `/v1/admin/play-time/${encodeURIComponent(userId)}?day=${day}`,
+    token,
   });
 }

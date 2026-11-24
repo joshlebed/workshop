@@ -1162,3 +1162,86 @@ export interface CreateAlbumListResponse {
   /** How many of the ids were in the library and became rows. */
   added: number;
 }
+
+/**
+ * How a play's duration was estimated (`GET /v1/admin/play-time`):
+ * `gap` = time since the previous score in the same session, `timer` = the
+ * game's own time score (a first-of-session time game), `typical` = the
+ * game's median in-session gap across all players, `backfill` = an old day's
+ * share pasted late (shown, never counted).
+ */
+export type AdminPlayEstimateSource = "gap" | "timer" | "typical" | "backfill";
+
+export interface AdminPlayTimeDay {
+  /** Local date (the user's timezone), `YYYY-MM-DD`. */
+  day: string;
+  seconds: number;
+  scores: number;
+  sessions: number;
+}
+
+/** One player in the play-time leaderboard, over the window. */
+export interface AdminPlayTimeUser {
+  id: string;
+  displayName: string | null;
+  email: string | null;
+  /** IANA zone from the newest push token; `timezoneAssumed` when there is none. */
+  timezone: string;
+  timezoneAssumed: boolean;
+  activeDays: number;
+  scores: number;
+  totalSeconds: number;
+  /** `totalSeconds / activeDays`. */
+  avgSecondsPerActiveDay: number;
+  /** Every active day, oldest first. */
+  days: AdminPlayTimeDay[];
+}
+
+export interface AdminPlayTimeResponse {
+  generatedAt: string;
+  rangeDays: number;
+  /** Two posts further apart than this start a new session. */
+  sessionGapMinutes: number;
+  /** Fallback first-of-session estimate when a game has too few samples. */
+  defaultTypicalSeconds: number;
+  /** Sorted by `totalSeconds`, most first. */
+  users: AdminPlayTimeUser[];
+}
+
+export interface AdminPlayEvent {
+  /** ISO timestamp the score was first posted (`game_scores.created_at`). */
+  at: string;
+  /** Minutes since local midnight, 0–1439.99. */
+  localMinute: number;
+  gameId: string;
+  gameTitle: string;
+  periodKey: string;
+  summary: string | null;
+  entrySource: string | null;
+  /** Index into `sessions`; -1 for a backfill. */
+  session: number;
+  /** Estimated play before this post, seconds (0 for a backfill). */
+  estimatedSeconds: number;
+  source: AdminPlayEstimateSource;
+}
+
+export interface AdminPlaySession {
+  /** Estimated start (first post minus its estimate) and last post, ISO. */
+  start: string;
+  end: string;
+  startMinute: number;
+  endMinute: number;
+  seconds: number;
+  scores: number;
+}
+
+export interface AdminPlayTimeDayResponse {
+  userId: string;
+  displayName: string | null;
+  timezone: string;
+  timezoneAssumed: boolean;
+  day: string;
+  seconds: number;
+  events: AdminPlayEvent[];
+  sessions: AdminPlaySession[];
+}

@@ -3,6 +3,7 @@
 //   Users     → the friend graph in three designs + a sortable list, with a
 //               shared find-a-user box and detail panel
 //   Tools     → impersonation + the App Store update nudge (operator only)
+//   Play time → estimated time per player per day, from score timestamps
 //   Push      → hand-written push to selected users (operator only, by hand;
 //               docs/push-runbook.md)
 // Tabs live in the URL (`/admin?tab=users`) so links and back/forward work.
@@ -37,18 +38,20 @@ import { UserDetailPanel } from "../admin/graph/UserDetailPanel";
 import { UserSearch } from "../admin/graph/UserSearch";
 import { UsersTable } from "../admin/graph/UsersTable";
 import { ImpersonationPanel } from "../admin/ImpersonationPanel";
+import { PlayTimePanel } from "../admin/PlayTimePanel";
 import { PushPanel } from "../admin/PushPanel";
 import { ReleaseNudgePanel } from "../admin/ReleaseNudgePanel";
 import { fetchAdminGraph } from "../api/admin";
 import { useAuth } from "../hooks/useAuth";
 import { Button, Card, IconButton, PixelIcon, Sheet, Text, tokens } from "../theme";
 
-type Tab = "overview" | "users" | "tools" | "push";
+type Tab = "overview" | "users" | "playtime" | "tools" | "push";
 type UsersView = "force" | "clusters" | "tree" | "list";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "overview", label: "Overview" },
   { key: "users", label: "Users" },
+  { key: "playtime", label: "Play time" },
   { key: "tools", label: "Tools" },
   { key: "push", label: "Push" },
 ];
@@ -104,7 +107,7 @@ const PANEL_WIDTH = 340;
 const MAX_WIDTH = 1440;
 
 function isTab(v: unknown): v is Tab {
-  return v === "overview" || v === "users" || v === "tools" || v === "push";
+  return v === "overview" || v === "users" || v === "playtime" || v === "tools" || v === "push";
 }
 function isUsersView(v: unknown): v is UsersView {
   return v === "force" || v === "clusters" || v === "tree" || v === "list";
@@ -315,6 +318,8 @@ export default function Admin() {
               </>
             ) : null}
 
+            {tab === "playtime" ? <PlayTimePanel /> : null}
+
             {tab === "push" ? <PushPanel /> : null}
 
             {tab === "users" ? (
@@ -436,7 +441,7 @@ const styles = StyleSheet.create({
     borderBottomColor: tokens.border.default,
     alignSelf: "center",
     width: "100%",
-    maxWidth: 440,
+    maxWidth: 540,
   },
   tab: {
     flex: 1,
