@@ -232,8 +232,9 @@ async function boundedDbStep<T>(
  * built-in that never yields (`indexOf` over two long strings) would freeze
  * the app rather than fail at 250 ms. Code a person wrote or reviewed is sent;
  * code the teach flow's model wrote from a pasted text is not — its game is
- * still recognized on the device and read by the server. Re-saving a taught
- * parser with `admin:game-code` makes it an `operator` revision.
+ * still recognized on the device and read by the server. `admin:game-code
+ * --review` re-saves a taught parser as an `operator` revision once someone
+ * has read it.
  */
 const CLIENT_RUNNABLE_CODE_SOURCES: readonly string[] = ["seed", "spec", "operator"];
 

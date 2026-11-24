@@ -20,6 +20,10 @@
  *   --format=<file.js>      new format code (omit to keep the current one)
  *   --no-format             remove the format code (rows show the cleaned raw text)
  *   --revert=<version>      use the code that version held, as a new version
+ *   --review                re-save the current code unchanged as an operator revision.
+ *                           That is how a parser the teach flow's model wrote starts being
+ *                           sent to clients (they only run code a person has read — see
+ *                           CLIENT_RUNNABLE_CODE_SOURCES): read it with --show first.
  *   --examples=<file.json>  extra labelled shares: [{ "raw", "expected", "expectedSummary"? }]
  *   --dry                   validate and report; write nothing
  *   --accept-changes=<id>   write even though some stored scores read differently — for a
@@ -141,6 +145,20 @@ async function show(game: DbGame): Promise<void> {
   }
 }
 
+/** The `--by` account and `--note` every write needs; only an admin may author a revision. */
+async function adminAuthor(): Promise<{ id: string; note: string }> {
+  const email = arg("--by");
+  const note = arg("--note");
+  if (!email || !note) fail('writing needs --by=<your account email> and --note="<why>"');
+  const [author] = await getDb()
+    .select({ id: users.id, email: users.email })
+    .from(users)
+    .where(eq(users.email, email));
+  if (!author) fail(`no user with email ${email}`);
+  if (!isAdminUser(author)) fail(`${email} is not an admin account`);
+  return { id: author.id, note };
+}
+
 async function main() {
   const ref = arg("--game");
   if (!ref)
@@ -162,8 +180,28 @@ async function main() {
   if (parseFile) candidate = { ...candidate, parseCode: readFileSync(parseFile, "utf8") };
   if (formatFile) candidate = { ...candidate, formatCode: readFileSync(formatFile, "utf8") };
   if (flag("--no-format")) candidate = { ...candidate, formatCode: null };
-  if (candidate.parseCode === game.parseCode && candidate.formatCode === game.formatCode) {
-    fail("nothing to change: pass --parse, --format, --no-format or --revert");
+  const unchanged =
+    candidate.parseCode === game.parseCode && candidate.formatCode === game.formatCode;
+  if (flag("--review")) {
+    if (!unchanged) fail("--review re-saves the current code: don't combine it with a change");
+    if (game.parseCode === null) fail(`${game.title} has no parse code to review`);
+    // The code is already what reads every post, so there is nothing to
+    // validate against stored scores: only the revision's source changes.
+    console.log(`${game.title}: re-saving version ${game.codeVersion} unchanged as reviewed`);
+    if (flag("--dry")) return console.log("--dry: nothing written");
+    const author = await adminAuthor();
+    const { version } = await applyGameCodeChange(getDb(), {
+      gameId: game.id,
+      candidate,
+      source: "operator",
+      authoredBy: author.id,
+      note: author.note,
+      examples: [],
+    });
+    return console.log(`wrote ${game.title} code version ${version} (same code, source operator)`);
+  }
+  if (unchanged) {
+    fail("nothing to change: pass --parse, --format, --no-format, --revert or --review");
   }
 
   const examples = readExamples(arg("--examples"));
@@ -202,17 +240,7 @@ async function main() {
   );
   if (flag("--dry")) return console.log("--dry: nothing written");
 
-  const email = arg("--by");
-  const note = arg("--note");
-  if (!email || !note) fail('writing needs --by=<your account email> and --note="<why>"');
-  const [author] = await getDb()
-    .select({ id: users.id, email: users.email })
-    .from(users)
-    .where(eq(users.email, email));
-  if (!author) fail(`no user with email ${email}`);
-  // The revision names its author; only an admin account may be one.
-  if (!isAdminUser(author)) fail(`${email} is not an admin account`);
-
+  const author = await adminAuthor();
   const { version } = await applyGameCodeChange(getDb(), {
     gameId: game.id,
     candidate,
@@ -220,8 +248,8 @@ async function main() {
     authoredBy: author.id,
     note:
       plan.storedMismatches.length > 0
-        ? `${note} (${plan.storedMismatches.length} stored scores read differently; accepted)`
-        : note,
+        ? `${author.note} (${plan.storedMismatches.length} stored scores read differently; accepted)`
+        : author.note,
     examples,
   });
   console.log(`wrote ${game.title} code version ${version}`);

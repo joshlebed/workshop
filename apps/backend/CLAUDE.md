@@ -685,7 +685,7 @@ text names; examples = the 20 most recent distinct usable scores, any player's).
   and the heap cap but no worker kill, and a built-in that never ticks (`indexOf` over 40k/20k
   characters ran 15 s under Hermes, 2026-11-16) would freeze the app instead of failing at
   250 ms. Those games are still recognized on the device and read by the server; re-saving a
-  taught parser as an operator revision (`admin:game-code --revert=<its version>`, after
+  taught parser as an operator revision (`admin:game-code --game=<…> --review`, after
   reading the code) starts sending it. The server's reading is always the one stored. As
   _recognizers_ the parsers are poor — on prod text 79% of shares were read by more than one
   game's parser — so recognition stays link / name / fingerprint. Three rules
