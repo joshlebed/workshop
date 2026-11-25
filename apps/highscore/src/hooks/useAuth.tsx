@@ -48,7 +48,13 @@ const PENDING_LINK_KEYS: PendingLinkKeys = {
 };
 
 const AUTO_DEV_OPT_OUT_KEY = "highscore.disable-auto-dev";
-const DEV_USER = { email: "joshlebed@gmail.com", displayName: "Josh" } as const;
+// The dev sign-in identity. A sandbox build can point it at a throwaway account
+// (`EXPO_PUBLIC_DEV_AUTH_EMAIL` / `_NAME`, inlined at build time) so device
+// verification never acts as a real user of the prod-copy database.
+export const DEV_USER = {
+  email: process.env.EXPO_PUBLIC_DEV_AUTH_EMAIL || "joshlebed@gmail.com",
+  displayName: process.env.EXPO_PUBLIC_DEV_AUTH_NAME || "Josh",
+} as const;
 
 export type AuthStatus =
   | "loading"

@@ -6,7 +6,7 @@ import { Platform, StyleSheet, View } from "react-native";
 import { AppleSignInButton } from "../src/components/AppleSignInButton";
 import { AppStoreBadge } from "../src/components/AppStoreBadge";
 import { Wordmark } from "../src/components/Wordmark";
-import { useAuth } from "../src/hooks/useAuth";
+import { DEV_USER, useAuth } from "../src/hooks/useAuth";
 import { PRIVACY_ROUTE, TERMS_ROUTE } from "../src/lib/publicRoutes";
 import { Button, Text, tokens, uiType } from "../src/theme";
 
@@ -56,7 +56,7 @@ export default function SignIn() {
     try {
       setBusy("dev");
       setError(null);
-      await signInDev({ email: "joshlebed@gmail.com", displayName: "Josh" });
+      await signInDev(DEV_USER);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Sign in failed");
     } finally {
