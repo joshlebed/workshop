@@ -645,6 +645,8 @@ export const GAME_URL_ALIASES: ReadonlyArray<{ variant: RegExp; key: string }> =
   { variant: /^bandle\.app\/menu$/i, key: "bandle.app" },
   // One path per weekly quiz ("/w43").
   { variant: /^t30\.teuteuf\.fr\/w\d+$/i, key: "t30.teuteuf.fr" },
+  // Alldle's Dartle page loads dartle.net inside it: same daily puzzle.
+  { variant: /^alldle\.net\/game\/dartle$/i, key: "dartle.net" },
 ];
 
 /**

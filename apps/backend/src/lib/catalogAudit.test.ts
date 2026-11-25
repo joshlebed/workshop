@@ -28,8 +28,8 @@ describe("findPossibleDuplicates", () => {
     const found = findPossibleDuplicates([
       g("examplegame.com/daily", "Example", 5),
       g("examplegame.com", "Example Game", 1),
-      g("dartle.net", "Dartle"),
-      g("alldle.net/game/dartle", "Dartle"),
+      g("fooble.net", "Fooble"),
+      g("gameportal.example/game/fooble", "Fooble"),
       g("geozee.earth", "Geozee", 15),
       g("geozee.earth/usa", "Geozee USA"),
       g("nytimes.com/games/connections", "Connections"),
@@ -37,7 +37,7 @@ describe("findPossibleDuplicates", () => {
     ]);
     expect(found.map((d) => [d.reason, d.games.map((x) => x.normalizedUrl)])).toEqual([
       ["same-site", ["examplegame.com/daily", "examplegame.com"]],
-      ["same-name", ["dartle.net", "alldle.net/game/dartle"]],
+      ["same-name", ["fooble.net", "gameportal.example/game/fooble"]],
     ]);
   });
 
