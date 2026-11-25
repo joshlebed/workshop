@@ -57,6 +57,10 @@ PORT=8787
 DEV_AUTH_ENABLED=${DEV_AUTH_ENABLED:-1}
 TYPESAFE_API_KEY=${TYPESAFE_API_KEY:-}
 OPENAI_API_KEY=${OPENAI_API_KEY:-}
+# The local DB is a prod copy with real Expo push tokens. Point push at a dead
+# port so no sandbox can ever deliver to a real device; the backend also
+# refuses Expo in STAGE=local without an explicit EXPO_PUSH_URL.
+EXPO_PUSH_URL=${EXPO_PUSH_URL:-http://127.0.0.1:9/push-stub}
 ENV
 umask 022
 

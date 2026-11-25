@@ -743,7 +743,11 @@ is intentionally skipped in v1. Delivery (chunking, ticket parsing, pruning) liv
 friend request (`lib/friendRequestPush.ts`: best-effort, 3s fetch cap, never fails the route,
 `data: { kind: "friend_request", userId }`) and the nudge push (`lib/nudges.ts`, same best-effort
 shape, `data: { kind: "nudge", userId, gameId, url }` where `url` opens the board); its endpoint is `EXPO_PUSH_URL` (config,
-default Expo's). Never send to Expo with production tokens from a sandbox — point it at a stub.
+default Expo's). Never send to Expo with production tokens from a sandbox — point it at a stub. Two
+guards make that the default: `.niteshift/setup` writes `EXPO_PUSH_URL=http://127.0.0.1:9/push-stub`
+into `apps/backend/.env`, and `sendExpoPushMessages` **refuses to send in `STAGE=local` when
+`EXPO_PUSH_URL` is still the Expo default** (a hot-reloaded dev server without the stub delivered
+six real pushes on 2026-11-25). Tests keep the default URL with a mocked fetch (`VITEST` is set).
 
 ## Lists and items are soft-deleted via `archived_at`
 
