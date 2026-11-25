@@ -230,10 +230,13 @@ its own nested deps; the hoisted SDK 58 copies are unchanged.
 - **Data path**: app → App Group → widget. `useHomeWidget` (root `AuthGate`) watches the query
   cache for today's `GET /v1/games` list (every fetch, refetch, and the `writePostedScore` write
   after a post), builds a `WidgetSnapshot` (`src/lib/widgetSnapshot.ts`: up to 4 games, your
-  posted/not, friends who posted, `friendCount` from the server), and writes it as one JSON
-  string under `widget.snapshot` with `ExtensionStorage`, then reloads the timeline **twice**
-  (now and 1.5s later): the write reaches the widget's process through cfprefsd asynchronously
-  and the immediate reload rendered the old snapshot on the simulator. Sign-out writes a
+  posted/not, friends who posted, `friendCount` from the server), writes it to
+  `widget-snapshot.json` in the App Group container (`expo-file-system`
+  `Paths.appleSharedContainers`; it ships in every binary as an `expo` dependency) plus a
+  UserDefaults copy (`widget.snapshot`, via `ExtensionStorage`), and reloads the timeline twice
+  (now and 1.5s later). **Keep the file as the primary channel**: on the simulator the widget's
+  process kept reading the previous UserDefaults value after the app's write + reload (even with
+  `CFPreferencesAppSynchronize`); the file has no per-process cache. Sign-out writes a
   signed-out snapshot. Never while impersonating.
 - **Refresh policy**: the widget never touches the network. Its timeline is the snapshot now
   plus a rolled-over copy (every dot empty) at the next local midnight, with
@@ -256,8 +259,8 @@ its own nested deps; the hoisted SDK 58 copies are unchanged.
   `WIDGET_ENTRY_ENABLED` is the kill switch.
 - **Instrumentation** (the spike's question: do widget installers score more on days 2–7?):
   `games.widget-installed` `{ firstSeenAt, via: "timeline" | "tap", family }` is the durable
-  cohort marker — the widget writes `widget.timelineAt` / `widget.families` into the App Group
-  whenever it builds a timeline (placed widgets only, never gallery previews) and the app turns
+  cohort marker — the widget writes `widget-marker.json` (and `widget.timelineAt` /
+  `widget.families` in UserDefaults) into the App Group whenever it builds a timeline (placed widgets only, never gallery previews) and the app turns
   that, or a `?src=widget` tap, into the flag. Log-only `POST /v1/telemetry/widget` (CloudWatch
   filter `client_widget`): `card_shown`, `card_dismissed`, `howto_opened`, `snapshot_write`
   (throttled to one line per 30 min with a `writes` count), `widget_tap` (family, gameId),
