@@ -6,6 +6,7 @@ import { usePlayReminderOffer } from "../../components/PlayReminderPrompt";
 import { useToast } from "../../theme";
 import { clearGameScore, upsertGameScore } from "../api/games";
 import { postedCheckNotice } from "../lib/postedCheck";
+import { noteScorePosted } from "../lib/suggestionSession";
 import { useGamesRuntime } from "../runtime";
 
 /** How long a toast with something to do on it stays up. */
@@ -41,6 +42,8 @@ export function usePostedScoreNotice(): (input: PostedScoreInput) => void {
   return useCallback(
     ({ result, gameId, periodKey, scoreRaw, today, posted }: PostedScoreInput) => {
       offerReminder();
+      // Arms the board's "What to play next" rail for the rest of the session.
+      noteScorePosted();
       const notice = postedCheckNotice(result.check, today);
       if (!notice) {
         showToast({ message: posted, tone: "success" });

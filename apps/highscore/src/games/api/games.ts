@@ -4,6 +4,11 @@
 
 import { apiRequest } from "@workshop/api-client/api";
 import type {
+  GameSuggestionEvent,
+  GameSuggestionReasonKind,
+  GameSuggestionSurface,
+} from "@workshop/shared/constants";
+import type {
   AddGameResponse,
   GameCatalogResponse,
   GameDiscoveryResponse,
@@ -12,6 +17,7 @@ import type {
   GameScorePreview,
   GameShareLinkPreview,
   GameShareLinkResponse,
+  GameSuggestionsResponse,
   GamesResponse,
   SendGameNudgeResponse,
   SetGameScoreSpecResponse,
@@ -226,6 +232,40 @@ export function fetchGameDiscovery(
   return apiRequest<GameDiscoveryResponse>({
     method: "GET",
     path: `/v1/games/discovery${qs ? `?${qs}` : ""}`,
+    token,
+  });
+}
+
+/**
+ * `GET /v1/games/suggestions` — "What to play next": co-play, then
+ * friends-of-friends, then the catalog's most played, each with its reason.
+ */
+export function fetchGameSuggestions(
+  token: string | null,
+  limit: number,
+): Promise<GameSuggestionsResponse> {
+  return apiRequest<GameSuggestionsResponse>({
+    method: "GET",
+    path: `/v1/games/suggestions?limit=${limit}`,
+    token,
+  });
+}
+
+/** `POST /v1/games/suggestions/events` — rail impressions / adds / dismissals. */
+export function postGameSuggestionEvents(
+  surface: GameSuggestionSurface,
+  events: {
+    event: GameSuggestionEvent;
+    gameId: string;
+    reasonKind: GameSuggestionReasonKind;
+    rank?: number;
+  }[],
+  token: string | null,
+): Promise<{ recorded: number }> {
+  return apiRequest<{ recorded: number }>({
+    method: "POST",
+    path: "/v1/games/suggestions/events",
+    body: { surface, events },
     token,
   });
 }

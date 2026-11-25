@@ -573,6 +573,33 @@ export interface GameCatalogResponse {
 }
 
 /**
+ * Why a game is in "What to play next" (`GET /v1/games/suggestions`):
+ * - `coplay` — players of `withGameTitle` (one of the viewer's games) also
+ *   play it; `players` = how many distinct players of the viewer's games do.
+ * - `friends_of_friends` — `players` friends-of-friends posted a score for it
+ *   in the last 7 days (only for a viewer with 0–1 games).
+ * - `popular` — the official catalog's most played, the last fallback.
+ */
+export type GameSuggestionReason =
+  | { kind: "coplay"; withGameTitle: string; players: number }
+  | { kind: "friends_of_friends"; players: number }
+  | { kind: "popular" };
+
+export interface GameSuggestion {
+  game: Game;
+  reason: GameSuggestionReason;
+}
+
+/**
+ * `GET /v1/games/suggestions?limit=8` — never a game already in My Games, and
+ * only games that are officially listed or that a friend plays (the catalog's
+ * content gate). Names nobody: every count is aggregate.
+ */
+export interface GameSuggestionsResponse {
+  suggestions: GameSuggestion[];
+}
+
+/**
  * `POST /v1/game-share` — my per-(user, day) "play with me" link. Surfaced by
  * the Games-tab copy-scores recap; `url` is the short `/g/:token` form.
  */

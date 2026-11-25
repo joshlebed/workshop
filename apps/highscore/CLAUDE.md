@@ -59,12 +59,12 @@ Both link kinds converge after the friendship forms. `/friends/accept/:token`
 (`GameShareLanding.tsx`) resolves the sharer and, for a non-friend, shows the same shape of
 accept card whose "Add" sends `POST /v1/friends/requests` with `via: <play token>` — the backend
 forms the edge at once (see apps/backend/CLAUDE.md). Both then render the shared
-`friendAccept/PostAcceptPicker.tsx`, two steps: **People you both know** (the new friend's
+`friendAccept/PostAcceptPicker.tsx`, three steps: **People you both know** (the new friend's
 friends from `GET /v1/friends/mutuals`, filtered by `mutualsVia`; Add = directed request,
 skipped when empty) then **games** ranked across the new friend plus everyone just requested
 (`GET /v1/games/discovery?users=…`; the single-friend `?friend=` form when nobody was
 requested, which is the only form that reports `friendGameCount`), one-tap add / Add all, then
-hand off to home. A play-link recipient never lands on a pending request anymore; the profile route keeps
+**What to play next** (the suggestions rail below, skipped when empty), then hand off to home. A play-link recipient never lands on a pending request anymore; the profile route keeps
 its `?via=` vouch for the avatar tap and also passes `via` on its Add button.
 
 HighScore has no Workshop-style `/share` chooser — there is nothing to choose between, so
@@ -277,6 +277,29 @@ A "Friends only" checkbox (`FriendsOnlyToggle`, default on; off = the official c
 from `friendsFeedRows` / `catalogRows`. One-tap Add stays on the screen and flips the row; the
 footer URL add returns home. With "Friends only" off the list shows only what the backend lists
 (`docs/catalog-ops-runbook.md`); do not add a client-side "all games" fallback.
+
+## What to play next (spike 5)
+
+Co-play suggestions from `GET /v1/games/suggestions` (ranking, reasons and the content gate are the
+server's — apps/backend/CLAUDE.md; the client never re-ranks). One hook + rail,
+`src/games/components/GameSuggestionsRail.tsx` (`useGameSuggestions(surface)` owns the query, the
+one-tap add and the instrumentation; rows are `FriendGameSuggestions` with `captionFor` = the reason
+line from `lib/gameSuggestions.ts`). Three surfaces, rules pure and unit-tested in
+`lib/gameSuggestions.ts`, session state (module memory, gone on relaunch / tab reload) in
+`lib/suggestionSession.ts`:
+
+- **Board** (`GameBoard`, below the standings, ≤3 rows): after any score posted this session
+  (`usePostedScoreNotice` calls `noteScorePosted`, so a share-sheet post arms it too) on a board
+  where the viewer has today's score. Hidden on past days.
+- **Home** (`GamesHome`, `GameCardList`'s `footer`, ≤5 rows): while the home has 1–2 games; once
+  shown it latches for the session so adding the third game from it doesn't yank it mid-tap.
+  The 0-game home keeps `GamesOnboarding`. Spike 6 (day-1 checklist) adds a home card on a
+  sibling branch — mind the order if both land.
+- **Post-accept** (≤8 rows): the picker's third page after the friend's games; skipped when empty.
+
+The board and home rails have an X that hides that surface for the session. Impressions are
+reported once per surface + game per session, plus adds and dismissals
+(`POST /v1/games/suggestions/events`); an added row flips to "✓ Added" and stays until remount.
 
 ## Keyboard avoidance under the root SafeAreaView
 

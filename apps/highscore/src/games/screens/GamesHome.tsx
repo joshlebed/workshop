@@ -59,12 +59,14 @@ import {
 } from "../api/games";
 import { DayPicker } from "../components/DayPicker";
 import { FixScoreSheet, type FixScoreTarget } from "../components/FixScoreSheet";
+import { GameSuggestionsRail } from "../components/GameSuggestionsRail";
 import { HomeActionBar, homeActionBarListInset } from "../components/HomeActionBar";
 import { ShareAnnouncementCard } from "../components/ShareAnnouncementCard";
 import { StandingsCard, type StandingsRow } from "../components/StandingsCard";
 import { usePostedScoreNotice } from "../hooks/usePostedScoreNotice";
 import { useReturnToPaste } from "../hooks/useReturnToPaste";
 import { askScoreDirection } from "../lib/askScoreDirection";
+import { homeRailVisible } from "../lib/gameSuggestions";
 import { writePostedScore } from "../lib/postedScore";
 import { prewarmGameShareCard } from "../lib/prewarmShareCard";
 import { neighborsForOrderedReorder } from "../lib/reorder";
@@ -72,6 +74,7 @@ import { scoreLineLabel } from "../lib/scoreCheck";
 import { isGameReteachable, specForGame } from "../lib/scoreSpecs";
 import { buildTodaysGameScoresSummary, summarizeGameScoreBody } from "../lib/scoresSummary";
 import { copyToClipboard, shareOrCopyLink } from "../lib/share";
+import { latchHomeSuggestions, useSuggestionSession } from "../lib/suggestionSession";
 import { teachAfterPost, teachOutcomeMessage } from "../lib/teachAfterPost";
 import { type ScorePostExtras, useTeachAvailable } from "../lib/useScoreCheck";
 import { useGamesRuntime } from "../runtime";
@@ -141,6 +144,20 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
     if (!barVisible) return;
     return registerBottomInset(listInset);
   }, [barVisible, listInset, registerBottomInset]);
+
+  // "What to play next" below the cards while the home has 1–2 games
+  // (latched for the session once shown, so the third add doesn't yank it).
+  const suggestionSession = useSuggestionSession();
+  const showSuggestions =
+    !gamesQuery.isPending &&
+    homeRailVisible({
+      gameCount: myGames.length,
+      latched: suggestionSession.homeLatched,
+      dismissed: suggestionSession.dismissed.has("home"),
+    });
+  useEffect(() => {
+    if (showSuggestions) latchHomeSuggestions();
+  }, [showSuggestions]);
 
   // Standings for the selected day. When viewing today this shares the
   // today-pinned query's key, so it costs nothing extra; it only does work
@@ -553,6 +570,11 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
             refreshing={gamesQuery.isRefetching && !gamesQuery.isPending}
             onRefresh={() => gamesQuery.refetch()}
             bottomInset={listInset}
+            footer={
+              showSuggestions ? (
+                <GameSuggestionsRail surface="home" style={styles.suggestions} />
+              ) : null
+            }
           />
         )}
       </View>
@@ -621,6 +643,7 @@ const styles = StyleSheet.create({
     paddingTop: tokens.space.lg,
   },
   body: { flex: 1 },
+  suggestions: { marginTop: tokens.space.lg },
   headerIconBtn: { ...homeHeaderIcon, borderRadius: tokens.radius.sm },
   headerIconBtnHover: { backgroundColor: tokens.bg.elevated },
   headerIconBtnDisabled: { opacity: 0.6 },

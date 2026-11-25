@@ -98,6 +98,8 @@ export const queryKeys = {
         : (["games", "discovery"] as const),
     /** `GET /v1/games/catalog` — every listed game with platform-wide player counts. */
     catalog: ["games", "catalog"] as const,
+    /** `GET /v1/games/suggestions?limit=` — "What to play next". */
+    suggestions: (limit: number) => ["games", "suggestions", limit] as const,
     /** `GET /v1/game-share/:token` — resolve a play link to its sharer + viewer state. */
     shareLink: (token: string) => ["games", "shareLink", token] as const,
   },
