@@ -96,7 +96,13 @@ export function FriendsTogetherPanel() {
       ) : null}
 
       {lines.length > 0 ? (
-        <View style={styles.streakCard} testID="friends-keep-alive">
+        <View
+          style={[
+            styles.streakCard,
+            !lines.some((l) => l.waitingOn !== "friend") && styles.streakCardQuiet,
+          ]}
+          testID="friends-keep-alive"
+        >
           {lines.slice(0, KEEP_ALIVE_SHOWN).map((line, i) => (
             <Pressable
               key={line.friendId}
@@ -216,6 +222,8 @@ const styles = StyleSheet.create({
     backgroundColor: tokens.bg.surface,
     overflow: "hidden",
   },
+  // Every line is waiting on a friend: nothing for the viewer to do.
+  streakCardQuiet: { borderColor: tokens.border.default },
   line: {
     flexDirection: "row",
     alignItems: "center",

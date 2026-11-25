@@ -37,6 +37,11 @@ const base: DailyDigest = {
   listsArchived: 0,
   listsJoined: 0,
   letterboxdConnected: 0,
+  friendStreakPairs: 0,
+  friendStreakPlayers: 0,
+  questsGenerated: 0,
+  questsCompleted: 0,
+  keepalivePosts: 0,
 };
 
 describe("buildDailyDigestMessage", () => {
@@ -73,6 +78,21 @@ describe("buildDailyDigestMessage", () => {
     expect(quiet).not.toContain("NaN");
     expect(quiet).not.toContain("**Activity:**");
     expect(quiet).not.toContain("**Lists:**");
+    expect(quiet).not.toContain("**Together:**");
+  });
+
+  it("adds the friend streak and quest line when there is one", () => {
+    const message = buildDailyDigestMessage({
+      ...base,
+      friendStreakPairs: 4,
+      friendStreakPlayers: 6,
+      questsGenerated: 10,
+      questsCompleted: 1,
+      keepalivePosts: 2,
+    });
+    expect(message).toContain(
+      "**Together:** 4 friend streaks ≥2 days (6 players) · 2 streak-saving posts · 10 quests started · 1 quest completed",
+    );
   });
 });
 
@@ -133,6 +153,36 @@ describe("daily digest job", () => {
       `INSERT INTO friendships (user_low, user_high, created_at) VALUES ($1, $2, $3)`,
       [id(1), id(4), IN_WINDOW],
     );
+    // Spike #10: users 7 and 8 posted on 11-21 … 11-23 together (a 3-day pair
+    // streak reaching the digest day); 9 posted only on 11-23 with 7 (1 day).
+    // Rows are created long before the window so no other count moves.
+    for (const n of [7, 8, 9]) await user(n, "2026-01-01T12:00:00Z");
+    for (const day of ["2026-11-21", "2026-11-22", "2026-11-23"]) {
+      await score(7, gameId, day, "2026-10-01T12:00:00Z");
+      await score(8, gameId, day, "2026-10-01T12:00:00Z");
+    }
+    await score(9, gameId, "2026-11-23", "2026-10-01T12:00:00Z");
+    await client.query(
+      `INSERT INTO friendships (user_low, user_high, created_at) VALUES
+       ($1, $2, '2026-01-01T00:00:00Z'), ($1, $3, '2026-01-01T00:00:00Z')`,
+      [id(7), id(8), id(9)],
+    );
+    await client.query(
+      `INSERT INTO friend_quests (week_start, user_low, user_high, target, created_at) VALUES
+       ('2026-11-23', $1, $2, 6, $3), ('2026-11-16', $1, $2, 6, $4)`,
+      [id(7), id(8), IN_WINDOW, BEFORE_WINDOW],
+    );
+    await client.query(
+      `INSERT INTO friend_quest_completions (week_start, user_low, user_high, target, score_count, completed_at)
+       VALUES ('2026-11-23', $1, $2, 6, 6, $3)`,
+      [id(7), id(8), IN_WINDOW],
+    );
+    await client.query(
+      `INSERT INTO friend_streak_keepalive_posts (user_id, friend_id, period_key, streak_days, created_at)
+       VALUES ($1, $2, '2026-11-23', 2, $3)`,
+      [id(7), id(8), IN_WINDOW],
+    );
+
     const list = await client.query<{ id: string }>(
       `INSERT INTO lists (owner_id, name, emoji, color, share_slug, created_at, archived_at)
        VALUES ($1, 'L', '📋', 'blue', 'digest-test', $2, $2) RETURNING id`,
@@ -164,6 +214,11 @@ describe("daily digest job", () => {
       listsArchived: 1,
       listsJoined: 1, // the owner row is not a join
       letterboxdConnected: 1,
+      friendStreakPairs: 1, // 7 + 8; 1 + 4 and 7 + 9 share only one day
+      friendStreakPlayers: 2,
+      questsGenerated: 1,
+      questsCompleted: 1,
+      keepalivePosts: 1,
     });
   });
 

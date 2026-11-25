@@ -302,6 +302,20 @@ as a URL; non-link text lands in the box with a hint. Web never sees the suggest
 can't sniff types) and gets the bare input. Don't bring back a fake-input paste box or a
 "Type a URL instead" mode switch.
 
+## Friend streaks and weekly quests (spike #10)
+
+`FriendsTogetherPanel` rides in the Games-home list as `GameCardList`'s `header` (native
+`ListHeaderComponent`, web: before the cards), so it scrolls with them. Three parts, all from the
+server (`GET /v1/friends?today=`, `GET /v1/friends/quests?today=`; rules in apps/backend/CLAUDE.md):
+a one-time "Quest complete" celebration (Nice! → `POST /v1/friends/quests/seen`, removed from the
+cache at once), "keep it alive" lines (two, then "+N more"; the yellow bezel only when one is on
+the viewer; tapping one the viewer can save opens the post screen), and open quests with completed
+ones folded into one line. Friends rows and the profile show the 🔥N pair-flame (`PairFlame`) from
+`STREAK_MIN_DAYS`; the profile adds the pair's quest. Copy and choices live in the pure
+`src/games/lib/friendStreaks.ts`. `queryKeys.friends.all` is shared by the home, the panel and the
+Friends screen, so every `fetchFriends` call must pass the same local `today`;
+`usePostedScoreNotice` invalidates it (exact) and the quests key after every post.
+
 ## Reorder activation vs. taps (Games home)
 
 Every Games-home card is both a drag handle and a stack of tap targets, and once a drag

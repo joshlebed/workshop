@@ -387,7 +387,10 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   push (`lib/friendRequestPush.ts`) goes through
   `apps/backend/src/lib/expoPush.ts` (`sendExpoPushMessages`: 100-per-request chunks, zod tickets,
   `DeviceNotRegistered` pruning). The endpoint is `EXPO_PUSH_URL` (default Expo's): **the sandbox
-  DB is a prod copy with real tokens, so point it at a local stub before exercising any send**.
+  DB is a prod copy with real tokens, so point it at a local stub before exercising any send** —
+  and before writing push code at all: `tsx watch` hot-reloads new send paths into the running
+  backend and an open preview calls them (spike #10 sent real quest pushes that way). Since then a
+  `STAGE=local` backend refuses to send when `EXPO_PUSH_URL` is unset (`lib/expoPush.ts`).
   Agents never send (see Prohibited); runbook: `docs/push-runbook.md`.
 
 - **Nudges (shown to players as a "poke"; code, table and route keep `nudge`): one rule set, in

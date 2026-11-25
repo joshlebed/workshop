@@ -86,7 +86,7 @@ export function pickQuestPartners(
  * Fill the viewer's open quest slots for the week containing `today`. Returns
  * how many quests were created. Idempotent per pair and week (primary key).
  */
-export async function ensureWeeklyQuests(
+async function ensureWeeklyQuests(
   viewerId: string,
   today: string,
   db: DbClient = getDb(),
