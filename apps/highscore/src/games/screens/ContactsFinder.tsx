@@ -69,8 +69,30 @@ import { useGamesRuntime } from "../runtime";
 
 type Phase = "loading" | "unsupported" | "consent" | "denied" | "ready";
 
+/**
+ * What this app session already checked, per signed-in user: the digests sent
+ * and the matches they returned. Re-opening the screen (or reaching it from
+ * the post-accept step) then sends only new digests, so a few visits can't
+ * burn the 5-calls-an-hour budget and come back to an empty list.
+ */
+const sessionCache: { userId: string | null; checked: Set<string>; matches: ContactMatch[] } = {
+  userId: null,
+  checked: new Set(),
+  matches: [],
+};
+
+function cacheFor(userId: string | null) {
+  if (sessionCache.userId !== userId) {
+    sessionCache.userId = userId;
+    sessionCache.checked = new Set();
+    sessionCache.matches = [];
+  }
+  return sessionCache;
+}
+
 export default function ContactsFinder() {
-  const { token, routes } = useGamesRuntime();
+  const { token, routes, user } = useGamesRuntime();
+  const cache = cacheFor(user?.id ?? null);
   const params = useLocalSearchParams<{ surface?: string }>();
   const surface = params.surface === "post_accept" ? "post_accept" : "friends";
   const queryClient = useQueryClient();
@@ -80,15 +102,19 @@ export default function ContactsFinder() {
   const [phase, setPhase] = useState<Phase>("loading");
   const [access, setAccess] = useState<ContactsAccess>("unsupported");
   const [deviceContacts, setDeviceContacts] = useState<DeviceContact[]>([]);
-  const [matches, setMatches] = useState<ContactMatch[]>([]);
+  const [matches, setMatches] = useState<ContactMatch[]>(cache.matches);
   const [checking, setChecking] = useState(false);
   const [limitNote, setLimitNote] = useState<string | null>(null);
   const [busyIds, setBusyIds] = useState<string[]>([]);
   const [invited, setInvited] = useState<string[]>([]);
   const [search, setSearch] = useState("");
-  const checked = useRef(new Set<string>());
+  const checked = useRef(cache.checked);
   const promptReported = useRef(false);
   const region = useMemo(() => deviceRegion(), []);
+
+  useEffect(() => {
+    cache.matches = matches;
+  }, [cache, matches]);
 
   const index = useMemo(() => indexDigests(deviceContacts, region), [deviceContacts, region]);
   const lists = useMemo(
