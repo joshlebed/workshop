@@ -70,6 +70,7 @@ import {
 } from "../../lib/gameRecognitionService.js";
 import { gameShapeColumns, todayPeriodKey, toGameShape } from "../../lib/gameShapes.js";
 import {
+  loadFriendCountsByGame,
   loadReactionsForScores,
   loadStandingsByGame,
   loadViewerStreaksByGame,
@@ -195,9 +196,10 @@ gameRoutes.get("/", async (c) => {
     );
 
   const gameIds = rows.map((r) => r.game.id);
-  const [standingsByGame, streaksByGame] = await Promise.all([
+  const [standingsByGame, streaksByGame, friendCounts] = await Promise.all([
     loadStandingsByGame(userId, gameIds, periodKey),
     loadViewerStreaksByGame(userId, gameIds, periodKey),
+    loadFriendCountsByGame(userId, gameIds),
   ]);
 
   const teachOn = teachModeFor(userId) === "on";
@@ -218,6 +220,7 @@ gameRoutes.get("/", async (c) => {
       addedAt: toIsoString(r.addedAt),
       game: toGameShape(r.game),
       standings,
+      friendCount: friendCounts.get(r.game.id) ?? 0,
     };
   });
 

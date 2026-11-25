@@ -30,6 +30,7 @@ import { type GamesRoutes, GamesRuntimeProvider } from "../src/games/runtime";
 import { ViewDayProvider } from "../src/games/state/viewDay";
 import { useAppReleaseNudge } from "../src/hooks/useAppRelease";
 import { AuthProvider, useAuth } from "../src/hooks/useAuth";
+import { useHomeWidget } from "../src/hooks/useHomeWidget";
 import { isPublicRoute } from "../src/lib/publicRoutes";
 import { addResponseListener, notificationPath } from "../src/lib/pushNotifications";
 import { registerPushTokenIfGranted } from "../src/lib/pushRegistration";
@@ -186,6 +187,7 @@ function AuthGate() {
   const { status, refresh } = useAuth();
   const shareIntentPending = useShareIntentRedirect(status);
   usePushNotifications(status);
+  useHomeWidget();
   // Widen to `string[]` so index access typechecks without the typed-routes
   // augmentation (`.expo/types/router.d.ts`), which is gitignored and not
   // generated in CI. Group segments (`(tabs)`) are stripped so the route

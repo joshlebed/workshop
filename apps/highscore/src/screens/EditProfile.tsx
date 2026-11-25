@@ -23,6 +23,7 @@ import { ImpersonationStatus } from "../admin/ImpersonationPanel";
 import { blockedUsersQueryKey, fetchBlockedUsers, unblockUser } from "../api/moderation";
 import { useAuth } from "../hooks/useAuth";
 import { SHARE_SETUP_SUPPORTED } from "../hooks/useShareAnnouncement";
+import { widgetEntrySupported } from "../hooks/useWidgetCard";
 import {
   ACCOUNT_DELETION_CONSEQUENCES,
   accountDeletionBlockReason,
@@ -219,6 +220,13 @@ export default function EditProfile() {
               label="Share sheet"
               onPress={() => router.push("/share-setup" as Href)}
               testID="profile-share-setup"
+            />
+          ) : null}
+          {widgetEntrySupported() ? (
+            <LinkRow
+              label="Home Screen widget"
+              onPress={() => router.push("/widget-setup" as Href)}
+              testID="profile-widget-setup"
             />
           ) : null}
           <BlockedUsersRow />

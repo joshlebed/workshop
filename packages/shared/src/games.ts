@@ -202,6 +202,13 @@ export interface GameStandings {
 export interface MyGame extends UserGame {
   game: Game;
   standings: GameStandings;
+  /**
+   * How many of the viewer's friends have this game in their My Games — the
+   * denominator of the widget's "2 of 5 friends played". Absent from older
+   * servers; a friend can have posted without the game added, so clients
+   * take the larger of this and the friends on the board.
+   */
+  friendCount?: number;
 }
 
 /**

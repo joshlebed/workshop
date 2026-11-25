@@ -32,6 +32,35 @@ export const shareIntentSchema = z.object({
   updateId: z.string().max(80).nullish(),
 });
 
+// HighScore's home-screen widget (spike 9). One log line per event, CloudWatch
+// filter `client_widget`; the durable cohort marker is the
+// `games.widget-installed` user flag, not these lines. Never carries a
+// friend's name or score — only counts and our own ids.
+const WIDGET_TELEMETRY_EVENTS = [
+  "card_shown",
+  "card_dismissed",
+  "howto_opened",
+  "snapshot_write",
+  "widget_tap",
+  "widget_seen",
+] as const;
+
+export const widgetTelemetrySchema = z.object({
+  event: z.enum(WIDGET_TELEMETRY_EVENTS),
+  // Where the event came from: "home-card", "settings", "deep-link", …
+  source: z.string().max(32).optional(),
+  // systemSmall | systemMedium for taps and timeline markers.
+  family: z.string().max(32).optional(),
+  // The game a widget tap opened (our own games.id).
+  gameId: z.string().uuid().optional(),
+  // snapshot_write: writes since the last report and the snapshot's shape.
+  writes: z.number().int().nonnegative().max(10_000).optional(),
+  gameCount: z.number().int().nonnegative().max(50).optional(),
+  playedCount: z.number().int().nonnegative().max(50).optional(),
+  runtimeVersion: z.string().max(60).nullish(),
+  updateId: z.string().max(80).nullish(),
+});
+
 export const telemetryRoutes = new Hono();
 telemetryRoutes.use("*", requireAuth);
 
@@ -51,6 +80,27 @@ telemetryRoutes.post(
       event: "share_intent",
       user_id: c.get("userId"),
       ...parsed.data,
+    });
+    return ok(c, { ok: true });
+  },
+);
+
+telemetryRoutes.post(
+  "/widget",
+  rateLimit({
+    family: "v1.telemetry.widget",
+    limit: 60,
+    windowSec: 60,
+    key: (c) => c.get("userId") ?? null,
+  }),
+  async (c) => {
+    const parsed = await parseJsonBody(c, widgetTelemetrySchema);
+    if (!parsed.ok) return parsed.response;
+    logger.info("client_widget", {
+      kind: "client_telemetry",
+      user_id: c.get("userId"),
+      ...parsed.data,
+      event: `widget_${parsed.data.event}`,
     });
     return ok(c, { ok: true });
   },
