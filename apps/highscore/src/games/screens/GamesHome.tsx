@@ -25,6 +25,7 @@ import { userAvatarImageUrl } from "@workshop/api-client/avatar";
 import { createFriendInvite, fetchFriends } from "@workshop/api-client/friends";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
+import type { SetupChecklistRowId } from "@workshop/shared/constants";
 import type {
   DiscoveryGame,
   Game,
@@ -38,6 +39,8 @@ import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppUpdateBanner } from "../../components/AppUpdateBanner";
+import { useSetupChecklist } from "../../hooks/useSetupChecklist";
+import { todayBoardLines } from "../../lib/setupChecklist";
 import {
   Button,
   EmptyState,
@@ -60,6 +63,7 @@ import {
 import { DayPicker } from "../components/DayPicker";
 import { FixScoreSheet, type FixScoreTarget } from "../components/FixScoreSheet";
 import { HomeActionBar, homeActionBarListInset } from "../components/HomeActionBar";
+import { SetupChecklistCard } from "../components/SetupChecklistCard";
 import { ShareAnnouncementCard } from "../components/ShareAnnouncementCard";
 import { StandingsCard, type StandingsRow } from "../components/StandingsCard";
 import { usePostedScoreNotice } from "../hooks/usePostedScoreNotice";
@@ -313,7 +317,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
       myGames.find((g) => g.gameId === gameId)?.standings.viewerHasPlayed ?? false,
     [myGames],
   );
-  const { promptItemId, markPlaying, dismiss } = useReturnToPaste({
+  const { promptItemId, markPlaying, openPasteFor, dismiss } = useReturnToPaste({
     todayKey,
     hasScoreForItem: hasMyScore,
     scope: "games",
@@ -402,6 +406,53 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
       toIndex,
     });
   };
+
+  // Day-1 "Get set up" card (onboarding spike 6). Each row hands off to the
+  // surface that finishes it; see src/lib/setupChecklist.ts for the rules.
+  const setup = useSetupChecklist({ games: gamesQuery.data?.games });
+  const [setupPendingRow, setSetupPendingRow] = useState<SetupChecklistRowId | null>(null);
+  const onSetupRow = (row: SetupChecklistRowId) => {
+    setup.onRowTap(row);
+    switch (row) {
+      case "friend":
+      case "friend2":
+        setSetupPendingRow(row);
+        inviteMutation.mutate(undefined, { onSettled: () => setSetupPendingRow(null) });
+        return;
+      case "games":
+        router.push(routes.addGame as Href);
+        return;
+      case "score": {
+        // The paste sheet for the first game not yet played today; with no
+        // games, the post screen (it finds or adds the game from the paste).
+        const first = myGames.find((g) => !g.standings.viewerHasPlayed) ?? myGames[0];
+        if (first) openPasteFor({ id: first.gameId, url: first.game.url });
+        else router.push(routes.share as Href);
+        return;
+      }
+      case "share_sheet":
+        router.push("/share-setup" as Href);
+        return;
+      case "reminder":
+        router.push("/settings/notifications" as Href);
+        return;
+    }
+  };
+  const setupBoard = useMemo(
+    () =>
+      setup.state.kind === "celebrate"
+        ? todayBoardLines(
+            myGames.map((g) => ({
+              gameId: g.gameId,
+              title: g.game.title,
+              viewerHasPlayed: g.standings.viewerHasPlayed,
+              entries: g.standings.entries.filter(hasScore),
+            })),
+            user?.id ?? null,
+          )
+        : [],
+    [setup.state.kind, myGames, user?.id],
+  );
 
   const renderCard = useCallback(
     (mg: MyGame, isDragging: boolean, onLongPressBody?: () => void) => {
@@ -513,7 +564,22 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
       />
 
       <AppUpdateBanner />
-      <ShareAnnouncementCard hasGames={gamesQuery.data ? myGames.length > 0 : undefined} />
+      {/* The share card keeps rendering while the checklist shows — its
+          walkthrough auto-open still fires — but its pitch yields to the
+          checklist's own share-sheet row. */}
+      <ShareAnnouncementCard
+        hasGames={gamesQuery.data ? myGames.length > 0 : undefined}
+        suppressCard={setup.state.kind !== "hidden"}
+      />
+      <SetupChecklistCard
+        state={setup.state}
+        board={setupBoard}
+        pendingRow={setupPendingRow}
+        onRow={onSetupRow}
+        onOpenGame={(gameId) => router.push(routes.game(gameId, todayKey) as Href)}
+        onDismiss={setup.dismiss}
+        onAcknowledge={setup.acknowledge}
+      />
 
       <View style={styles.body}>
         {gamesQuery.isPending ? (
