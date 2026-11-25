@@ -11,7 +11,7 @@ export const SUPPORT_MAILTO = `mailto:${SUPPORT_EMAIL}?subject=${encodeURICompon
 export const PRIVACY_MAILTO = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent("HighScore privacy request")}`;
 
 /** Last time the privacy page's substance changed. Bump on every edit. */
-export const PRIVACY_EFFECTIVE_DATE = "September 15, 2026";
+export const PRIVACY_EFFECTIVE_DATE = "November 25, 2026";
 
 /** Last time the terms page's substance changed. Bump on every edit. */
 export const TERMS_EFFECTIVE_DATE = "September 15, 2026";
@@ -65,6 +65,8 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
       "Reactions, pokes and share links — the reactions you leave on scores, the pokes you send friends (who, which game, which day), and the short links minted when you share.",
       "Blocks and reports — who you've blocked, and any content reports you send (including a snapshot of what was reported) so a person can review them.",
       "Security and session metadata — sign-in and refresh sessions, timestamps, and basic request details kept in server logs.",
+      "Being findable — only if you turn on Let friends find me (Friends screen): a one-way code made from your account email with a secret only the server holds, so someone who has that address in their contacts can find you. It is never the address itself, and turning the setting off deletes it. Finding by phone number isn't available.",
+      "Contacts you choose to share — only if you use Find friends from contacts on iPhone, and only the contacts you pick when iOS asks (or all of them, if you choose Share All). Their names, phone numbers and email addresses stay on your phone. HighScore turns each email address into a one-way code (a hash) on the phone and sends only those codes; the server compares them with people who turned on Let friends find me and keeps none of them. It records counts — how many codes were checked and how many matched — plus which HighScore user you added from the list and whether you sent an invite, never who you invited. Invites go from your own Messages app or share sheet, written by you.",
       "Reminder settings — only if you allow notifications: your device's push token and time zone, and whether and at what hour you want the daily play reminder. Signing out removes that device's token.",
     ],
   },
@@ -94,7 +96,7 @@ export const PRIVACY_SECTIONS: LegalSection[] = [
     heading: "Retention and deletion",
     body: [
       "Your account, scores, and friend connections are kept for as long as your account exists, so your history stays intact between seasons. Sign-in sessions expire on their own — they lapse after long inactivity and always end within a year. Server logs holding request metadata are deleted automatically after one year.",
-      "You can delete your account at any time from the app: profile menu → Edit profile → Danger zone → Delete account. Deletion is immediate and permanent — your profile, scores, reactions, friend connections, invites, blocks and share links are removed, not deactivated, and it can't be undone.",
+      "You can delete your account at any time from the app: profile menu → Edit profile → Danger zone → Delete account. Deletion is immediate and permanent — your profile, scores, reactions, friend connections, invites, blocks, share links and findable setting are removed, not deactivated, and it can't be undone.",
       "Because HighScore and Workshop.dev are one account, deleting also removes your Workshop.dev lists, items, and activity, including shared lists you own. Other people's own lists and scores are untouched.",
       "If you signed in with Apple, HighScore also asks Apple to revoke the sign-in tokens it holds for you. Google sign-in leaves nothing to revoke — HighScore only ever verifies an identity token and never requests ongoing access to your Google account.",
     ],

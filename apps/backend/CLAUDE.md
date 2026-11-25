@@ -848,6 +848,53 @@ Lambda env refresh — not a code or Terraform change.
   (`apt-get install -y zip`). `--out-dir=<dir> --no-zip` builds without it.
 - Cold start ~300–500ms for a bundled Node.js 20 Hono handler.
 
+## Contacts matching ("Let friends find me", spike #3) — `lib/contactHandles.ts`
+
+- **Opt-in only.** `PUT /v1/users/me/discoverability { email: boolean }` writes or deletes the
+  caller's `user_contact_handles` row (`kind` `email`; `phone` is allowed by the CHECK but nothing
+  writes it until OTP verification exists — the schema is `.strict()`, so a `phone` field 400s).
+  The handle is the account's own `users.email`; Apple relay addresses are accepted but flagged
+  (`isRelay`), since nobody has them in their contacts. No email → 400 `NO_EMAIL`.
+- **Hashing.** Client digest = SHA-256(`highscore-contact-v1|<kind>|<normalized>`)
+  (`@workshop/shared/contacts`, pure JS on the device). Stored hash = HMAC-SHA256(pepper, client
+  digest). Pepper = `CONTACT_HASH_PEPPER` when set, else HKDF(`SESSION_SECRET`,
+  `contact-handles:v1`). **Changing either strands every stored hash** (contacts silently find
+  nobody) until `pnpm --filter @workshop/backend run ops:rehash-contact-handles` recomputes them
+  from `users.email` with the new secret. A handle doesn't follow a later email change until the
+  user toggles the setting (PUT on recomputes).
+- **Matching.** `POST /v1/friends/contacts/match { hashes ≤500, surface? }`, rate limit
+  `v1.friends.contactsMatch` 5/hour/user (fixed window, so ≤10 across a boundary). Peppers each
+  digest, looks it up, drops self / blocked either way / nameless accounts, returns
+  `{ userId, displayName, digests, relationship }`. **Nothing submitted is stored or logged** —
+  only `matched` counts. If you add another way to be found, keep the block check (root
+  CLAUDE.md, Guideline 1.2).
+- **Funnel.** `contact_discovery_events` (user, event, count, matched_count, detail,
+  target_user_id) from `POST /v1/telemetry/contacts` (client events, `CONTACT_CLIENT_EVENTS`) and
+  the routes above, plus a `contacts_funnel` log line. The spike's question as SQL:
+
+  ```sql
+  -- share of users shown the consent screen who granted, by grant type
+  SELECT count(DISTINCT user_id) FILTER (WHERE event = 'prompt_shown') AS shown,
+         count(DISTINCT user_id) FILTER (WHERE event = 'limited_granted') AS limited,
+         count(DISTINCT user_id) FILTER (WHERE event = 'full_granted') AS full,
+         count(DISTINCT user_id) FILTER (WHERE event = 'denied') AS denied
+  FROM contact_discovery_events;
+  -- per granting user: matches seen, adds, friendships formed from adds, invites sent
+  SELECT e.user_id,
+         max(e.matched_count) FILTER (WHERE e.event = 'matched') AS matches,
+         count(*) FILTER (WHERE e.event = 'add') AS adds,
+         count(f.*) FILTER (WHERE e.event = 'add') AS friends_formed,
+         count(*) FILTER (WHERE e.event = 'invite_sent') AS invites
+  FROM contact_discovery_events e
+  LEFT JOIN friendships f ON e.event = 'add'
+    AND f.user_low = LEAST(e.user_id, e.target_user_id)
+    AND f.user_high = GREATEST(e.user_id, e.target_user_id)
+  GROUP BY e.user_id;
+  ```
+
+  Invites that turn into signups are not attributed to contacts (the invite link is the user's
+  ordinary friend link; `users.referred_by_user_id` credits the inviter, not the surface).
+
 ## Discord operator notifications: instant for action, a digest for everything else
 
 `#workshop-admin` is for things a human may need to act on. **Instant pings:** `content_report`,

@@ -237,6 +237,48 @@ any other file under `src/` or `app/` mentions the package). Web is always unsup
 - **Delivery needs a push key**: the operator runs `eas credentials --platform ios` → Push
   Notifications → set up a key once; until then Expo can't deliver to iOS.
 
+## Find friends from contacts (spike #3) — `src/lib/contacts.ts` is the only door
+
+**`src/lib/contacts.ts` is the only module that may load `expo-contacts` or `expo-sms`**, both
+new in the **1.4.0** binary: one lazy `require` each, only after `runtimeHasContacts` says iOS ≥
+`1.4.0`, inside a try/catch — the same gate as push, so the 1.3.0 binary keeps getting OTAs and
+simply never shows the feature. `contacts.test.ts` pins it (loaders never called below 1.4.0; a
+source scan fails if any other file under `src/` or `app/` names either package). `__DEV__` web
+accepts `?fakeContactsSupported=1` (three made-up contacts, limited access). Drop `1.3.0` from
+`supported-runtimes.json` only when you remove the gate.
+
+- **Entry points**: the "Find friends from contacts" card on `/friends`, and the post-accept
+  picker's people step when the new friend has no friends to suggest (`ContactsStep` in
+  `PostAcceptPicker.tsx`; Back from `/friends/contacts` returns to it). Both push
+  `routes.findContacts(surface)` → `ContactsFinder.tsx`. Web (and pre-1.4.0) shows only the
+  "Let friends find me by email" toggle (`DiscoverabilityCard`), at the bottom of `/friends`.
+- **Consent before the OS prompt**: `CONTACTS_CONSENT_POINTS` (`lib/contactMatching.ts`, pinned
+  by its test) says what is sent (a hash per email address), what is kept (nothing) and how to
+  stop being findable; the privacy page (`legal.ts`) says the same. Change them together.
+- **iOS 18 limited access** is the expected answer: expo-contacts 58 reports
+  `accessPrivileges: "limited"`, reads only the picked contacts, and offers
+  `Contact.presentAccessPicker()` ("Choose more contacts") and the system
+  `ContactAccessButton` (a SwiftUI view: type a name, tap to share that one contact). Below iOS
+  18 it is all or nothing. The button emits no event to JS, so the screen rescans on the
+  contacts-change listener, debounced 1.5s so a run of single grants costs one match call.
+- **What leaves the phone**: `contactDigests` hashes normalized **emails only**
+  (`CONTACT_MATCH_KINDS` in `@workshop/shared/contacts`). Phone digests are built and tested but
+  not sent: nobody can opt a phone number in until OTP verification exists, so they could never
+  match. Names and numbers stay on the device; the invite list is built locally.
+- **Budget**: ≤500 digests a call, 5 calls/hour server-side; a scan sends at most 3 calls and
+  remembers what it already checked (`planMatchCalls`), so re-scans after a limited grant only
+  send new digests.
+- **Invite**: `contacts.sendInvite` opens the in-app Messages composer (`expo-sms`) for a contact
+  with a number, else the share sheet, with the user's friend-invite link. Only a composer that
+  reports `sent` (or a share iOS reports completed) counts as `invite_sent`. The simulator has no
+  Messages composer (`isAvailableAsync` is false), so it always takes the share sheet, and iOS
+  reports its **Copy** as dismissed — so a closed share sheet flips the row to "Invited" without
+  counting a send. Scans are serialized (the OS prompt's AppState bounce asked for two at once).
+- **Funnel** (`reportContactEvent` → `contact_discovery_events`): `prompt_shown` (consent screen,
+  undetermined access only), `limited_granted` / `full_granted` / `denied` (with the readable
+  count), `picker_opened`, `add` (with the target), `invite_opened`, `invite_sent` (channel); the
+  server adds `matched` per call and `discoverable_on/off`. Queries: apps/backend/CLAUDE.md.
+
 ## App Store release shape (1.0)
 
 `app.json` `version` is the App Store version **and** the runtime version (`appVersion` policy),

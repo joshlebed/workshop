@@ -16,6 +16,7 @@
     "./scoreShapeFixtures": "./src/scoreShapeFixtures.ts",
     "./summarySpec": "./src/summarySpec.ts",
     "./friends": "./src/friends.ts",
+    "./contacts": "./src/contacts.ts",
     "./og": "./src/og.ts",
     "./itemKinds": "./src/itemKinds.ts",
     "./sourceKinds": "./src/sourceKinds.ts",

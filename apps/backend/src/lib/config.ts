@@ -47,7 +47,7 @@ const openaiEffort = z
     return effort ?? DEFAULT_OPENAI_TEACH_EFFORT;
   });
 
-const DEFAULT_EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
+export const DEFAULT_EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 
 const configSchema = z.object({
   stage: z.enum(["local", "prod"]).default("local"),
@@ -153,6 +153,11 @@ const configSchema = z.object({
     .optional()
     .transform((v) => v?.trim() || DEFAULT_EXPO_PUSH_URL)
     .pipe(z.string().url()),
+  // Pepper for "Let friends find me" handle hashes (lib/contactHandles.ts).
+  // Optional: unset, the pepper is derived from SESSION_SECRET (HKDF, its own
+  // purpose string). Changing either makes stored handles unmatchable until
+  // `rehashAllContactHandles` recomputes them from users.email.
+  contactHashPepper: z.string().optional().default(""),
   // S3 bucket for user-uploaded images (lib/imageStorage.ts). Set by
   // Terraform in prod; unset locally, where images go to `imageStorageDir`.
   imageBucket: z.string().optional().default(""),
@@ -175,6 +180,7 @@ export function getConfig(): Config {
     stage: process.env.STAGE,
     databaseUrl: process.env.DATABASE_URL,
     sessionSecret: process.env.SESSION_SECRET,
+    contactHashPepper: process.env.CONTACT_HASH_PEPPER,
     awsRegion: process.env.AWS_REGION,
     logLevel: process.env.LOG_LEVEL,
     appleBundleIds: process.env.APPLE_BUNDLE_ID,

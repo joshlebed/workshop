@@ -5,6 +5,11 @@ import { getDb } from "../../db/client.js";
 import { type DbUser, letterboxdWatchlistFilms, lists, userFlags, users } from "../../db/schema.js";
 import { deleteUserAccount } from "../../lib/accountDeletion.js";
 import { isAdminUser, userLabel } from "../../lib/admin.js";
+import {
+  loadDiscoverability,
+  recordContactEvent,
+  setEmailDiscoverability,
+} from "../../lib/contactHandles.js";
 import { notifyDiscord } from "../../lib/discord.js";
 import { displayNameSchema } from "../../lib/displayName.js";
 import {
@@ -251,6 +256,47 @@ userRoutes.put(
         set: { value: parsed.data.value, updatedAt: now },
       });
     return ok(c, { key: key.data, value: parsed.data.value });
+  },
+);
+
+// --- "Let friends find me" (contacts spike #3, lib/contactHandles.ts) ---
+
+userRoutes.get("/me/discoverability", async (c) => {
+  const state = await loadDiscoverability(c.get("userId"));
+  if (!state) return err(c, "NOT_FOUND", "user not found");
+  return ok(c, state);
+});
+
+// Only the account email can be opted in. A phone number needs OTP
+// verification first (not built): an unverified number would let anyone claim
+// someone else's number and be "found" as them.
+const putDiscoverabilitySchema = z.object({ email: z.boolean() }).strict();
+
+userRoutes.put(
+  "/me/discoverability",
+  rateLimit({
+    family: "v1.users.discoverability",
+    limit: 20,
+    windowSec: 3600,
+    key: (c) => c.get("userId") ?? null,
+  }),
+  async (c) => {
+    const parsed = await parseJsonBody(c, putDiscoverabilitySchema);
+    if (!parsed.ok) return parsed.response;
+    const userId = c.get("userId");
+    const result = await setEmailDiscoverability(userId, parsed.data.email);
+    if (!result.ok) {
+      return result.reason === "no_email"
+        ? err(c, "VALIDATION", "this account has no email address to be found by", {
+            code: "NO_EMAIL",
+          })
+        : err(c, "NOT_FOUND", "user not found");
+    }
+    await recordContactEvent(userId, {
+      event: parsed.data.email ? "discoverable_on" : "discoverable_off",
+      detail: "email",
+    });
+    return ok(c, result.state);
   },
 );
 
