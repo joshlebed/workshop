@@ -65,6 +65,18 @@ describe("privacy page copy", () => {
     }
   });
 
+  it("describes contact matching truthfully: hashes sent, nothing kept, opt-in to be found", () => {
+    expect(privacyText).toContain("let friends find me");
+    expect(privacyText).toContain("one-way code");
+    expect(privacyText).toContain("names, phone numbers and email addresses stay on your phone");
+    expect(privacyText).toContain("sends only those codes");
+    expect(privacyText).toContain("keeps none of them");
+    expect(privacyText).toContain("only the contacts you pick");
+    expect(privacyText).toContain("turning the setting off deletes it");
+    expect(privacyText).toContain("finding by phone number isn't available");
+    expect(privacyText).not.toMatch(/uploads? your (address book|contacts)/i);
+  });
+
   it("states the authentication providers and the limits on use", () => {
     expect(privacyText).toContain("apple");
     expect(privacyText).toContain("google");

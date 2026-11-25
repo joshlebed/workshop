@@ -57,6 +57,7 @@ const HIGHSCORE_GAMES_ROUTES: GamesRoutes = {
   home: "/",
   signIn: "/sign-in",
   friends: "/friends",
+  findContacts: (surface) => `/friends/contacts?surface=${surface}`,
   share: "/share",
   addGame: "/games/add",
   game: (gameId, date) =>

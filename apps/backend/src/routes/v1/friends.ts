@@ -5,6 +5,12 @@
 
 import { WORKSHOP_CLIENTS, type WorkshopClient } from "@workshop/shared/constants";
 import {
+  CONTACT_DIGEST_PATTERN,
+  CONTACT_MATCH_CALLS_PER_HOUR,
+  CONTACT_MATCH_MAX_HASHES,
+  type ContactMatchResponse,
+} from "@workshop/shared/contacts";
+import {
   type AcceptFriendRequestResponse,
   type FriendInviteResponse,
   type FriendProfileGame,
@@ -39,6 +45,7 @@ import {
 import { blockedEitherWay, blockedIdsFor } from "../../lib/blocks.js";
 import { callerIpKey } from "../../lib/clientIp.js";
 import { getConfig } from "../../lib/config.js";
+import { matchContactDigests, recordContactEvent } from "../../lib/contactHandles.js";
 import { toIsoString } from "../../lib/dates.js";
 import { sendFriendRequestPush } from "../../lib/friendRequestPush.js";
 import { addFriendship, canonicalPair, friendsOf, removeFriendship } from "../../lib/friends.js";
@@ -649,6 +656,49 @@ friendRoutes.delete("/requests/user/:userId", requireAuth, async (c) => {
   await deleteDirectedPending(userId, otherId);
   return ok(c, { ok: true });
 });
+
+// --- POST /v1/friends/contacts/match — who in my shared contacts is on HighScore ---
+// Contacts spike #3 (lib/contactHandles.ts). Takes ≤500 SHA-256 digests the
+// device computed from contacts the user shared (never a raw handle), ≤5 calls
+// per user per hour, and answers with the discoverable users they match. The
+// digests are peppered, looked up and dropped; only the counts are recorded.
+
+const contactMatchSchema = z.object({
+  hashes: z
+    .array(z.string().regex(CONTACT_DIGEST_PATTERN, "hashes must be 64 lowercase hex chars"))
+    .min(1)
+    .max(CONTACT_MATCH_MAX_HASHES),
+  /** Where the request came from (`friends` | `post_accept`), for the funnel. */
+  surface: z
+    .string()
+    .regex(/^[a-z_]{1,32}$/)
+    .optional(),
+});
+
+friendRoutes.post(
+  "/contacts/match",
+  requireAuth,
+  rateLimit({
+    family: "v1.friends.contactsMatch",
+    limit: CONTACT_MATCH_CALLS_PER_HOUR,
+    windowSec: 3600,
+    key: (c) => c.get("userId") ?? null,
+  }),
+  async (c) => {
+    const parsed = await parseJsonBody(c, contactMatchSchema);
+    if (!parsed.ok) return parsed.response;
+    const userId = c.get("userId");
+    const matches = await matchContactDigests(userId, parsed.data.hashes);
+    await recordContactEvent(userId, {
+      event: "matched",
+      count: new Set(parsed.data.hashes).size,
+      matchedCount: matches.length,
+      detail: parsed.data.surface ?? null,
+    });
+    const response: ContactMatchResponse = { matches };
+    return ok(c, response);
+  },
+);
 
 // --- GET /v1/friends/mutuals — friends of friends, most-connected first ---
 // Two-hop walk over `friendships`: candidates are everyone adjacent to one

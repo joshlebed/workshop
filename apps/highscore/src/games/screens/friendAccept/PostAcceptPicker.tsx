@@ -15,13 +15,16 @@ import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { MutualSummary } from "@workshop/shared/friends";
 import type { DiscoveryGame } from "@workshop/shared/games";
 import { haptics } from "@workshop/ui";
+import { type Href, useRouter } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { contacts } from "../../../lib/contacts";
 import { Avatar, Button, Card, Text, tokens } from "../../../theme";
 import { addGame, fetchGameDiscovery } from "../../api/games";
 import { useOpenProfile } from "../../hooks/useOpenProfile";
 import { localDateKey } from "../../lib/gameDate";
 import { mutualsVia } from "../../lib/mutualsVia";
+import { useGamesRuntime } from "../../runtime";
 import { FriendGameSuggestions } from "../games/FriendGameSuggestions";
 
 /**
@@ -61,7 +64,11 @@ export function PostAcceptPicker({
         </Centered>
       );
     }
-    // Nothing to offer (or the feed failed) → straight to games.
+    // Nothing to offer: on iOS 1.4.0+ offer contacts instead (spike #3), else
+    // (or once skipped, or if the feed failed) straight to games.
+    if ((!people || people.length === 0) && mutualsQuery.isSuccess && contacts.isSupported()) {
+      return <ContactsStep friend={friend} name={name} onContinue={() => setStep("games")} />;
+    }
     if (!people || people.length === 0) {
       return <GamesStep friend={friend} name={name} token={token} requested={[]} onDone={onDone} />;
     }
@@ -216,6 +223,60 @@ function PeopleStep({
           label={requestedAny ? "Continue" : "Skip for now"}
           onPress={onContinue}
           testID="friend-accept-people-continue"
+        />
+      </Card>
+    </Centered>
+  );
+}
+
+/**
+ * Step 1, when the new friend has no friends you could add: "Find friends from
+ * contacts" opens `/friends/contacts` on top (this screen stays mounted, so
+ * Back returns here) and Continue moves on to games.
+ */
+function ContactsStep({
+  friend,
+  name,
+  onContinue,
+}: {
+  friend: { userId: string; displayName: string | null };
+  name: string;
+  onContinue: () => void;
+}) {
+  const router = useRouter();
+  const { routes } = useGamesRuntime();
+  const [opened, setOpened] = useState(false);
+  return (
+    <Centered testID="friend-accept-contacts">
+      <Card style={styles.card} elevated>
+        <View style={styles.inviterBlock}>
+          <Avatar
+            name={friend.displayName}
+            imageUrl={userAvatarImageUrl(friend.userId)}
+            size="lg"
+          />
+          <Text variant="title" style={styles.inviterTitle}>
+            You're friends with {name}
+          </Text>
+          <Text tone="secondary" style={styles.inviterCaption}>
+            Scores are more fun with more people. See who else you know is on HighScore, or invite
+            them.
+          </Text>
+        </View>
+        <Button
+          label="Find friends from contacts"
+          variant={opened ? "secondary" : "primary"}
+          onPress={() => {
+            setOpened(true);
+            router.push(routes.findContacts("post_accept") as Href);
+          }}
+          testID="friend-accept-contacts-open"
+        />
+        <Button
+          label={opened ? "Continue" : "Not now"}
+          variant={opened ? "primary" : "ghost"}
+          onPress={onContinue}
+          testID="friend-accept-contacts-continue"
         />
       </Card>
     </Centered>

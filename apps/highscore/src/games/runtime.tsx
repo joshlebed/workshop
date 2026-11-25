@@ -13,6 +13,8 @@ export interface GamesRoutes {
   home: string;
   signIn: string;
   friends: string;
+  /** "Find friends from contacts"; `surface` says which entry point opened it. */
+  findContacts: (surface: "friends" | "post_accept") => string;
   /** Paste-any-score entry: the share flow's picker, which recognises the game from the text. */
   share: string;
   /** Add-a-game screen: "Friends only" checkbox over the catalog + add-by-URL. */

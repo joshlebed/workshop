@@ -2,7 +2,7 @@
   "expo": {
     "name": "HighScore",
     "slug": "highscore",
-    "version": "1.3.0",
+    "version": "1.4.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "splash": {
@@ -70,6 +70,12 @@
           },
           "iosHideView": true,
           "disableAndroid": true
+        }
+      ],
+      [
+        "expo-contacts",
+        {
+          "contactsPermission": "HighScore uses the contacts you choose to show which of them are already on HighScore and to let you invite the rest. Only one-way codes made from their email addresses leave your phone, and nothing is kept."
         }
       ],
       [

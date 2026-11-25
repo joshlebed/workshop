@@ -1,5 +1,7 @@
+import { CONTACT_CLIENT_EVENTS } from "@workshop/shared/contacts";
 import { Hono } from "hono";
 import { z } from "zod";
+import { recordContactEvent } from "../../lib/contactHandles.js";
 import { logger } from "../../lib/logger.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { ok } from "../../lib/response.js";
@@ -51,6 +53,44 @@ telemetryRoutes.post(
       event: "share_intent",
       user_id: c.get("userId"),
       ...parsed.data,
+    });
+    return ok(c, { ok: true });
+  },
+);
+
+// Contacts "find and invite" funnel (spike #3). Stored in
+// `contact_discovery_events` (counts and ids only) as well as logged, so the
+// grant / match / add / invite rates are a query, not a 30-day log search.
+const contactEventSchema = z.object({
+  event: z.enum(CONTACT_CLIENT_EVENTS),
+  /** How many contacts the grant made readable (grant events) — a count, never names. */
+  count: z.number().int().nonnegative().max(100000).optional(),
+  /** Entry surface or invite channel: `friends`, `post_accept`, `sms`, `share`. */
+  detail: z
+    .string()
+    .regex(/^[a-z_]{1,32}$/)
+    .optional(),
+  /** The HighScore user an `add` was sent to. */
+  targetUserId: z.string().uuid().optional(),
+});
+
+telemetryRoutes.post(
+  "/contacts",
+  rateLimit({
+    family: "v1.telemetry.contacts",
+    limit: 60,
+    windowSec: 60,
+    key: (c) => c.get("userId") ?? null,
+  }),
+  async (c) => {
+    const parsed = await parseJsonBody(c, contactEventSchema);
+    if (!parsed.ok) return parsed.response;
+    const { event, count, detail, targetUserId } = parsed.data;
+    await recordContactEvent(c.get("userId"), {
+      event,
+      count: count ?? null,
+      detail: detail ?? null,
+      targetUserId: event === "add" ? (targetUserId ?? null) : null,
     });
     return ok(c, { ok: true });
   },

@@ -16,8 +16,10 @@ import { queryKeys } from "@workshop/api-client/queryKeys";
 import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
 import type { FriendSummary, MutualSummary } from "@workshop/shared/friends";
 import { confirm, formatRelative, haptics } from "@workshop/ui";
+import { type Href, useRouter } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { contacts } from "../../lib/contacts";
 import {
   Avatar,
   Button,
@@ -30,6 +32,7 @@ import {
   tokens,
   useToast,
 } from "../../theme";
+import { DiscoverabilityCard } from "../components/DiscoverabilityCard";
 import { useOpenProfile } from "../hooks/useOpenProfile";
 import { goBack } from "../lib/navigation";
 import { shareOrCopyLink } from "../lib/share";
@@ -245,6 +248,10 @@ export default function FriendsScreen() {
   };
 
   const openProfile = useOpenProfile();
+  const router = useRouter();
+  // iOS 1.4.0+ only (`lib/contacts.ts`); web and older binaries see just the
+  // discoverability setting.
+  const contactsSupported = contacts.isSupported();
 
   return (
     <Screen testID="friends-screen">
@@ -323,6 +330,23 @@ export default function FriendsScreen() {
             </>
           ) : null}
         </View>
+
+        {contactsSupported ? (
+          <View style={styles.inviteCard} testID="friends-contacts-card">
+            <Text variant="heading" style={styles.inviteTitle}>
+              Find friends from contacts
+            </Text>
+            <Text variant="caption" tone="muted">
+              See who's already here and invite the rest. You pick which contacts to share.
+            </Text>
+            <Button
+              label="Find friends from contacts"
+              variant="secondary"
+              onPress={() => router.push(routes.findContacts("friends") as Href)}
+              testID="friends-contacts-button"
+            />
+          </View>
+        ) : null}
 
         {/* Pending inbound requests. */}
         {inbound.length > 0 ? (
@@ -529,6 +553,8 @@ export default function FriendsScreen() {
             })}
           </View>
         ) : null}
+
+        <DiscoverabilityCard token={token} />
       </ScrollView>
     </Screen>
   );

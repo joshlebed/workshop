@@ -1219,6 +1219,61 @@ export const contentReports = pgTable(
   }),
 );
 
+/**
+ * "Let friends find me" (onboarding spike #3, `lib/contactHandles.ts`). One row
+ * per handle a user opted in to be found by — today only `email`, computed from
+ * the account's own `users.email`; `phone` waits for OTP verification. `hash`
+ * is HMAC-SHA256(server pepper, `contactHandleDigest(kind, normalized)`) as
+ * lowercase hex: never the handle itself, and never a digest someone else
+ * uploaded. Turning the setting off deletes the row.
+ */
+export const userContactHandles = pgTable(
+  "user_contact_handles",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    hash: text("hash").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.kind] }),
+    hashIdx: index("user_contact_handles_hash_idx").on(t.hash),
+    kindCheck: check("user_contact_handles_kind_check", sql`${t.kind} IN ('email', 'phone')`),
+  }),
+);
+
+/**
+ * Funnel events for the contacts "find and invite" spike: what share of users
+ * grant (limited) access and what each grant yields. Client events arrive via
+ * `POST /v1/telemetry/contacts` (`CONTACT_CLIENT_EVENTS`); `matched` is written
+ * by the match route. Counts only — never a contact's name, number or digest.
+ * `target_user_id` is set on `add` so friendships formed can be attributed.
+ */
+export const contactDiscoveryEvents = pgTable(
+  "contact_discovery_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    event: text("event").notNull(),
+    /** `matched`: digests submitted; `limited_granted` etc.: contacts readable. */
+    count: integer("count"),
+    /** `matched`: users matched. */
+    matchedCount: integer("matched_count"),
+    /** Short qualifier: invite channel (`sms` | `share`), entry surface, etc. */
+    detail: text("detail"),
+    targetUserId: uuid("target_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => ({
+    eventIdx: index("contact_discovery_events_event_idx").on(t.event, t.createdAt),
+    userIdx: index("contact_discovery_events_user_idx").on(t.userId, t.createdAt),
+  }),
+);
+
 export const rateLimits = pgTable(
   "rate_limits",
   {
