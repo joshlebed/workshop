@@ -1,5 +1,7 @@
 # Bundled simulator preview of the existing app; no development-client dependency.
 # Rebuild after JS or native changes. The backend is routed to simulator localhost.
+# HighScore needs the (public) Google iOS client id from eas.json: without it the
+# sign-in screen's Google button throws on native and the app dies on /sign-in.
 targets:
   - name: highscore
     displayName: HighScore
@@ -10,6 +12,7 @@ targets:
         lim xcode build . --expo-app-dir apps/highscore --configuration Release
         --env EXPO_PUBLIC_API_URL=http://localhost:8787
         --env EXPO_PUBLIC_DEV_AUTH=1
+        --env EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID=267582241036-7vtcgkd594ldgimcu3dickj9u5ga951l.apps.googleusercontent.com
     serviceDependencies: [backend]
   - name: workshop
     displayName: Workshop.dev

@@ -6,7 +6,8 @@
 // draft (`usePreloginDraftPost`) and opens the board.
 
 import { userAvatarImageUrl } from "@workshop/api-client/avatar";
-import { ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { StyleSheet, TextInput, View } from "react-native";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { Avatar, Button, Card, Text, tokens } from "../../../theme";
 import { type InviteLandingInviter, usePreloginDraftEditor } from "../../hooks/usePreloginDraft";
 import {
@@ -41,10 +42,14 @@ export function SignedOutInviteLanding({
       : `Sign in to add ${name}`;
 
   return (
-    <ScrollView
+    // Keeps room under the focused paste box for the reading and the button
+    // (native; the keyboard would otherwise cover them).
+    <KeyboardAwareScrollView
       style={styles.scroll}
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="interactive"
+      bottomOffset={KEYBOARD_ROOM}
       testID={testID}
     >
       <Card style={styles.card} elevated>
@@ -136,9 +141,12 @@ export function SignedOutInviteLanding({
             : "Nothing you paste here leaves this device until you sign in."}
         </Text>
       </Card>
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
+
+/** Space kept visible below the focused paste box: the draft card + button. */
+const KEYBOARD_ROOM = 190;
 
 function DraftReadingView({
   reading,
