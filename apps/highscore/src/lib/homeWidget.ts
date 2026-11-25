@@ -28,6 +28,8 @@ export const WIDGET_KIND = "HighScoreWidget";
 const SNAPSHOT_KEY = "widget.snapshot";
 const TIMELINE_MARKER_KEY = "widget.timelineAt";
 const FAMILIES_KEY = "widget.families";
+/** Delay before the second reload that follows every snapshot write. */
+export const WIDGET_RELOAD_SETTLE_MS = 1500;
 
 export interface HomeWidgetEnv {
   os: string;
@@ -71,10 +73,21 @@ export function createHomeWidget(env: HomeWidgetEnv): HomeWidget {
       try {
         m.storage.set(SNAPSHOT_KEY, JSON.stringify(snapshot));
         m.mod.ExtensionStorage.reloadWidget(WIDGET_KIND);
-        return true;
       } catch {
         return false;
       }
+      // The write reaches the widget's process through cfprefsd asynchronously,
+      // so the immediate reload can render the previous snapshot (seen on the
+      // simulator: a timeline built at the moment of a post, showing the old
+      // state). Ask once more after the write has landed.
+      setTimeout(() => {
+        try {
+          m.mod.ExtensionStorage.reloadWidget(WIDGET_KIND);
+        } catch {
+          /* best effort */
+        }
+      }, WIDGET_RELOAD_SETTLE_MS);
+      return true;
     },
 
     readMarker() {

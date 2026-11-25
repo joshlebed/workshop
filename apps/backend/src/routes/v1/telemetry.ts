@@ -100,7 +100,6 @@ telemetryRoutes.post(
       kind: "client_telemetry",
       user_id: c.get("userId"),
       ...parsed.data,
-      event: `widget_${parsed.data.event}`,
     });
     return ok(c, { ok: true });
   },

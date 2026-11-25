@@ -43,6 +43,9 @@ struct Snapshot: Codable {
 }
 
 func loadSnapshot() -> Snapshot? {
+  // Pick up a write the app made a moment ago rather than this process's
+  // cached copy of the domain.
+  CFPreferencesAppSynchronize(appGroup as CFString)
   guard
     let raw = UserDefaults(suiteName: appGroup)?.string(forKey: snapshotKey),
     let data = raw.data(using: .utf8)
@@ -201,10 +204,12 @@ struct YouMark: View {
   }
 }
 
+/// "2 of 5 played" — the friends who posted today out of the friends who
+/// have the game. Short enough for the medium row at any count.
 func friendsLine(_ g: SnapshotGame) -> String {
   let of = Swift.max(g.friends, g.played)
-  if of == 0 { return "No friends yet" }
-  return "\(g.played) of \(of) friend\(of == 1 ? "" : "s") played"
+  if of == 0 { return "no friends yet" }
+  return "\(g.played) of \(of) played"
 }
 
 struct Header: View {

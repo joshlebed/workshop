@@ -16,6 +16,7 @@ import {
   isHomeWidgetSupported,
   WIDGET_APP_GROUP,
   WIDGET_KIND,
+  WIDGET_RELOAD_SETTLE_MS,
   writeWidgetSnapshot,
 } from "./homeWidget";
 import { signedOutWidgetSnapshot } from "./widgetSnapshot";
@@ -74,7 +75,8 @@ describe("homeWidget gate", () => {
     expect(w.isSupported()).toBe(false);
   });
 
-  it("on 1.4.0 writes the snapshot to the App Group and reloads the widget", () => {
+  it("on 1.4.0 writes the snapshot to the App Group and reloads the widget twice", () => {
+    vi.useFakeTimers();
     const fake = fakeModule();
     const w = createHomeWidget({ os: "ios", runtimeVersion: "1.4.0", load: () => fake.mod });
     const snap = signedOutWidgetSnapshot("2026-11-25");
@@ -82,6 +84,10 @@ describe("homeWidget gate", () => {
     expect(fake.groups).toEqual([WIDGET_APP_GROUP]);
     expect(JSON.parse(fake.store.get("widget.snapshot") ?? "")).toEqual(snap);
     expect(fake.reloads).toEqual([WIDGET_KIND]);
+    // A second reload once the write has reached the widget's process.
+    vi.advanceTimersByTime(WIDGET_RELOAD_SETTLE_MS);
+    expect(fake.reloads).toEqual([WIDGET_KIND, WIDGET_KIND]);
+    vi.useRealTimers();
   });
 
   it("reads the widget's timeline marker back", () => {
