@@ -18,6 +18,7 @@
     "eas:submit:ios": "eas submit --platform ios --latest --non-interactive"
   },
   "dependencies": {
+    "@bacons/apple-targets": "5.0.0",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
@@ -39,6 +40,7 @@
     "expo-clipboard": "58.0.4",
     "expo-constants": "58.0.15",
     "expo-device": "58.0.5",
+    "expo-file-system": "58.0.13",
     "expo-font": "~58.0.11",
     "expo-haptics": "58.0.7",
     "expo-image": "58.0.18",

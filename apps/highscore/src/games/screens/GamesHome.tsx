@@ -38,6 +38,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppUpdateBanner } from "../../components/AppUpdateBanner";
+import { useShareAnnouncement } from "../../hooks/useShareAnnouncement";
 import {
   Button,
   EmptyState,
@@ -62,6 +63,7 @@ import { FixScoreSheet, type FixScoreTarget } from "../components/FixScoreSheet"
 import { HomeActionBar, homeActionBarListInset } from "../components/HomeActionBar";
 import { ShareAnnouncementCard } from "../components/ShareAnnouncementCard";
 import { StandingsCard, type StandingsRow } from "../components/StandingsCard";
+import { WidgetCard } from "../components/WidgetCard";
 import { usePostedScoreNotice } from "../hooks/usePostedScoreNotice";
 import { useReturnToPaste } from "../hooks/useReturnToPaste";
 import { askScoreDirection } from "../lib/askScoreDirection";
@@ -132,6 +134,14 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
     refetchInterval: livePoll,
   });
   const myGames = gamesQuery.data?.games ?? [];
+  // The widget card waits for a first score (today, or a live streak) and for
+  // the share-sheet card to be dealt with, so the two never stack.
+  const hasPostedScore = myGames.some(
+    (g) => g.standings.viewerHasPlayed || g.standings.viewerStreak > 0,
+  );
+  const { visible: shareCardVisible } = useShareAnnouncement({
+    hasGames: gamesQuery.data ? myGames.length > 0 : undefined,
+  });
   const isEmpty = !gamesQuery.isPending && !gamesQuery.isError && myGames.length === 0;
   // The bar floats over the list, so the list pads its tail to clear it and
   // toasts lift above it while this screen is mounted.
@@ -514,6 +524,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
 
       <AppUpdateBanner />
       <ShareAnnouncementCard hasGames={gamesQuery.data ? myGames.length > 0 : undefined} />
+      <WidgetCard hasPosted={hasPostedScore} otherCardVisible={shareCardVisible} />
 
       <View style={styles.body}>
         {gamesQuery.isPending ? (

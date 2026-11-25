@@ -66,6 +66,16 @@ export const USER_FLAG_KEYS = {
   // walkthrough finished. Server-side so a reinstall/second device never
   // re-blasts a user who already dealt with it.
   shareSheetAnnouncement: "games.share-sheet-announcement",
+  // HighScore's one-time "Add the widget" card on Games home (iOS 1.4.0+).
+  // Client-authored: `{ shownAt }` the first time it rendered, then
+  // `{ shownAt, dismissedAt }` when X'd away.
+  widgetCard: "games.widget-card",
+  // The home-screen widget is on this account's device: the widget wrote a
+  // timeline marker into the App Group, or a widget tap opened the app.
+  // Client-authored, written once: `{ firstSeenAt, via: "timeline" | "tap",
+  // family? }`. The cohort marker for spike 9 (does the widget lift
+  // day-2..7 score days?).
+  widgetInstalled: "games.widget-installed",
 } as const;
 
 // Operator-set "update from the App Store" nudge (`client_releases`, read by

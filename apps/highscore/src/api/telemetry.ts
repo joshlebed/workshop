@@ -38,3 +38,39 @@ export async function reportShareIntent(
     // Telemetry must never affect the user-facing flow.
   }
 }
+
+/** Home-screen widget events (spike 9). Mirrors `widgetTelemetrySchema` on the backend. */
+export interface WidgetTelemetry {
+  event:
+    | "card_shown"
+    | "card_dismissed"
+    | "howto_opened"
+    | "snapshot_write"
+    | "widget_tap"
+    | "widget_seen";
+  source?: string;
+  family?: string;
+  gameId?: string;
+  writes?: number;
+  gameCount?: number;
+  playedCount?: number;
+  runtimeVersion?: string | null;
+  updateId?: string | null;
+}
+
+/** Log-only `POST /v1/telemetry/widget` (CloudWatch filter `client_widget`). Fire-and-forget. */
+export async function reportWidgetEvent(
+  event: WidgetTelemetry,
+  token: string | null,
+): Promise<void> {
+  try {
+    await apiRequest<{ ok: boolean }>({
+      method: "POST",
+      path: "/v1/telemetry/widget",
+      body: event,
+      token,
+    });
+  } catch {
+    // Telemetry must never affect the user-facing flow.
+  }
+}

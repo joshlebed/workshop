@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { shareIntentSchema } from "./telemetry.js";
+import { shareIntentSchema, widgetTelemetrySchema } from "./telemetry.js";
 
 describe("shareIntentSchema", () => {
   it("accepts a minimal valid snapshot", () => {
@@ -51,5 +51,36 @@ describe("shareIntentSchema", () => {
       textPreview: "x".repeat(5000),
     });
     expect(r.success).toBe(false);
+  });
+});
+
+describe("widgetTelemetrySchema", () => {
+  it("accepts each widget event with its optional context", () => {
+    expect(
+      widgetTelemetrySchema.safeParse({ event: "card_shown", source: "home-card" }).success,
+    ).toBe(true);
+    expect(
+      widgetTelemetrySchema.safeParse({
+        event: "widget_tap",
+        family: "systemMedium",
+        gameId: "00000000-0000-4000-8000-000000000001",
+      }).success,
+    ).toBe(true);
+    expect(
+      widgetTelemetrySchema.safeParse({
+        event: "snapshot_write",
+        writes: 3,
+        gameCount: 4,
+        playedCount: 2,
+        runtimeVersion: "1.4.0",
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects an unknown event and a non-uuid game id", () => {
+    expect(widgetTelemetrySchema.safeParse({ event: "installed" }).success).toBe(false);
+    expect(widgetTelemetrySchema.safeParse({ event: "widget_tap", gameId: "wordle" }).success).toBe(
+      false,
+    );
   });
 });

@@ -1282,6 +1282,13 @@ the synthetic seed); re-run `.niteshift/files/snapshot-prod.sh` to get the prod 
 
 **PII caveat**: every sandbox gets a copy of real user data.
 
+**Push caveat**: the copy has real Expo push tokens. Set `EXPO_PUSH_URL=http://127.0.0.1:9/push-stub`
+in `apps/backend/.env` and `ns services restart backend` before any verification that could send
+one (pokes, friend requests, reminders). A `STAGE=local` backend also refuses Expo outright unless
+`EXPO_PUSH_URL` is set explicitly (`lib/expoPush.ts`). Verify as a throwaway `POST /v1/auth/dev`
+user, not a real account; HighScore simulator builds take `EXPO_PUBLIC_DEV_AUTH_EMAIL` /
+`EXPO_PUBLIC_DEV_AUTH_NAME` for that.
+
 ### Dev data seed
 
 `apps/backend/scripts/seed.ts` populates Postgres with a lived-in set of lists owned by

@@ -9,9 +9,9 @@ import type {
   ScoreReactionSummary,
 } from "@workshop/shared/games";
 import { computeGameStreak, shiftPeriodKey } from "@workshop/shared/games";
-import { and, asc, eq, gte, inArray, lte } from "drizzle-orm";
+import { and, asc, count, eq, gte, inArray, lte } from "drizzle-orm";
 import { getDb } from "../db/client.js";
-import { type DbGame, gameScoreReactions, gameScores, users } from "../db/schema.js";
+import { type DbGame, gameScoreReactions, gameScores, userGames, users } from "../db/schema.js";
 import { toIsoOrNull } from "./dates.js";
 import { friendsOf } from "./friends.js";
 import { normalizeScoreDirection } from "./gameCatalog.js";
@@ -167,6 +167,31 @@ export async function loadStandingsByGame(
       entry.reactions = reactionsByScore.get(reactionKey(gameId, entry.userId)) ?? [];
     }
   }
+  return byGame;
+}
+
+/**
+ * How many of the viewer's friends have each game in their My Games — the
+ * "of 5" in the home-screen widget's "2 of 5 friends played". One grouped
+ * count (no rows leave Postgres but the counts); games no friend has are
+ * omitted (the caller defaults them to 0). Pass the viewer's friend ids when
+ * the caller already has them.
+ */
+export async function loadFriendCountsByGame(
+  viewerId: string,
+  gameIds: string[],
+  friendIds?: string[],
+): Promise<Map<string, number>> {
+  const byGame = new Map<string, number>();
+  if (gameIds.length === 0) return byGame;
+  const friends = friendIds ?? (await friendsOf(viewerId));
+  if (friends.length === 0) return byGame;
+  const rows = await getDb()
+    .select({ gameId: userGames.gameId, n: count() })
+    .from(userGames)
+    .where(and(inArray(userGames.gameId, gameIds), inArray(userGames.userId, friends)))
+    .groupBy(userGames.gameId);
+  for (const r of rows) byGame.set(r.gameId, Number(r.n));
   return byGame;
 }
 

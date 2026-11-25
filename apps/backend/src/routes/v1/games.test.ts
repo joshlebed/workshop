@@ -503,6 +503,40 @@ describe("GET /v1/games — ordered list + standings block per game", () => {
     expect(unplayed?.standings.viewerHasPlayed).toBe(false);
   });
 
+  it("counts, per game, the viewer's friends who have it in My Games (friendCount)", async () => {
+    const viewer = "00000000-0000-4000-8000-0000000000f1";
+    const friendA = "00000000-0000-4000-8000-0000000000f2";
+    const friendB = "00000000-0000-4000-8000-0000000000f3";
+    const stranger = "00000000-0000-4000-8000-0000000000f4";
+    await rows(
+      `INSERT INTO users (id, email) VALUES
+         ($1, 'fc-viewer@example.com'), ($2, 'fc-a@example.com'),
+         ($3, 'fc-b@example.com'), ($4, 'fc-stranger@example.com')`,
+      [viewer, friendA, friendB, stranger],
+    );
+    await rows(`INSERT INTO friendships (user_low, user_high) VALUES ($1, $2), ($1, $3)`, [
+      viewer,
+      friendA,
+      friendB,
+    ]);
+    const wordle = await addGame("https://www.nytimes.com/games/wordle/index.html", viewer);
+    const globle = await addGame("https://globle-game.com", viewer);
+    // Both friends have Wordle, one has Globle; a stranger's Wordle never counts.
+    await addGame("https://www.nytimes.com/games/wordle/index.html", friendA);
+    await addGame("https://www.nytimes.com/games/wordle/index.html", friendB);
+    await addGame("https://globle-game.com", friendA);
+    await addGame("https://www.nytimes.com/games/wordle/index.html", stranger);
+    const solo = await addGame("https://example.com/fc-solo-game", viewer);
+
+    const body = (await myGames(viewer)) as unknown as {
+      games: { gameId: string; friendCount?: number }[];
+    };
+    const countOf = (id: string) => body.games.find((g) => g.gameId === id)?.friendCount;
+    expect(countOf(wordle.game.id)).toBe(2);
+    expect(countOf(globle.game.id)).toBe(1);
+    expect(countOf(solo.game.id)).toBe(0);
+  });
+
   it("an empty selection returns an empty list", async () => {
     const fresh = "00000000-0000-4000-8000-000000000003";
     await rows(`INSERT INTO users (id, email) VALUES ($1, 'fresh@example.com')`, [fresh]);
