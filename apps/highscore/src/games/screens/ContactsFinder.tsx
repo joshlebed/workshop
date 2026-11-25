@@ -97,7 +97,7 @@ export default function ContactsFinder() {
   );
 
   /** Read the shared contacts and check any digests not checked yet. */
-  const scan = useCallback(async () => {
+  const runScan = useCallback(async () => {
     const list = await contacts.readContacts().catch(() => [] as DeviceContact[]);
     setDeviceContacts(list);
     const plan = planMatchCalls(indexDigests(list, region).digests, checked.current);
@@ -125,6 +125,33 @@ export default function ContactsFinder() {
     }
     return list.length;
   }, [region, surface, token]);
+
+  // One scan at a time: the OS prompt backgrounds the app, so the grant and the
+  // AppState "active" refresh both ask for a scan at once. A request during a
+  // scan runs once more after it, so a mid-scan grant is never missed and the
+  // same digests are never sent twice.
+  const inFlight = useRef<Promise<number> | null>(null);
+  const again = useRef(false);
+  const scan = useCallback(async (): Promise<number> => {
+    if (inFlight.current) {
+      again.current = true;
+      return inFlight.current;
+    }
+    const run = (async () => {
+      let count = await runScan();
+      while (again.current) {
+        again.current = false;
+        count = await runScan();
+      }
+      return count;
+    })();
+    inFlight.current = run;
+    try {
+      return await run;
+    } finally {
+      inFlight.current = null;
+    }
+  }, [runScan]);
 
   const applyAccess = useCallback(
     async (next: ContactsAccess) => {
@@ -240,8 +267,16 @@ export default function ContactsFinder() {
       const { channel, result } = await contacts.sendInvite(contact, inviteMessage(link.url));
       if (result === "sent") {
         haptics.medium();
-        setInvited((ids) => [...ids, contact.id]);
         void reportContactEvent("invite_sent", token, { detail: channel });
+      }
+      // The share sheet can't say whether a copied link was sent on (iOS reports
+      // Copy as dismissed), so any close of it reads as invited; a cancelled
+      // Messages composer doesn't. Only a confirmed send is counted above.
+      if (result === "sent" || (channel === "share" && result !== "failed")) {
+        setInvited((ids) => [...ids, contact.id]);
+      }
+      if (result === "failed") {
+        showToast({ message: "Couldn't open the invite.", tone: "danger" });
       }
     } catch (e) {
       showToast({ message: errorMessage(e, "Couldn't open the invite."), tone: "danger" });

@@ -270,7 +270,10 @@ accepts `?fakeContactsSupported=1` (three made-up contacts, limited access). Dro
   send new digests.
 - **Invite**: `contacts.sendInvite` opens the in-app Messages composer (`expo-sms`) for a contact
   with a number, else the share sheet, with the user's friend-invite link. Only a composer that
-  reports `sent` (or a completed share) counts as `invite_sent`.
+  reports `sent` (or a share iOS reports completed) counts as `invite_sent`. The simulator has no
+  Messages composer (`isAvailableAsync` is false), so it always takes the share sheet, and iOS
+  reports its **Copy** as dismissed — so a closed share sheet flips the row to "Invited" without
+  counting a send. Scans are serialized (the OS prompt's AppState bounce asked for two at once).
 - **Funnel** (`reportContactEvent` → `contact_discovery_events`): `prompt_shown` (consent screen,
   undetermined access only), `limited_granted` / `full_granted` / `denied` (with the readable
   count), `picker_opened`, `add` (with the target), `invite_opened`, `invite_sent` (channel); the
