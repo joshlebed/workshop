@@ -920,7 +920,7 @@ describe("POST /v1/friends/requests — recipient push", () => {
         to,
         title: "New friend request",
         body: "Sendy wants to be friends on HighScore",
-        data: { kind: "friend_request", userId: sender },
+        data: { kind: "friend_request", userId: sender, url: "highscore:///friends" },
         sound: "default",
       })),
     );

@@ -41,6 +41,21 @@ beforeEach(() => {
 });
 
 describe("fetchFriendProfile", () => {
+  it("keeps outboundExpiredAt (the sender's expired request), absent on older backends", async () => {
+    apiRequest.mockResolvedValue({
+      ...profileResponse([]),
+      relationship: "none",
+      friendsSince: null,
+      outboundExpiredAt: "2026-12-09T00:00:00.000Z",
+    });
+    const expired = await fetchFriendProfile("friend-1", "2026-10-07", "token");
+    expect(expired.outboundExpiredAt).toBe("2026-12-09T00:00:00.000Z");
+
+    apiRequest.mockResolvedValue(profileResponse([]));
+    const legacy = await fetchFriendProfile("friend-1", "2026-10-07", "token");
+    expect(legacy.outboundExpiredAt).toBeUndefined();
+  });
+
   it("passes through the server-computed fields on a score the server parsed", async () => {
     apiRequest.mockResolvedValue(
       profileResponse([

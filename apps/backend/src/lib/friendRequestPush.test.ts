@@ -20,14 +20,14 @@ describe("buildFriendRequestPushMessages", () => {
         to: "tok-a",
         title: "New friend request",
         body: "Josh wants to be friends on HighScore",
-        data: { kind: "friend_request", userId: "u-1" },
+        data: { kind: "friend_request", userId: "u-1", url: "highscore:///friends" },
         sound: "default",
       },
       {
         to: "tok-b",
         title: "New friend request",
         body: "Josh wants to be friends on HighScore",
-        data: { kind: "friend_request", userId: "u-1" },
+        data: { kind: "friend_request", userId: "u-1", url: "highscore:///friends" },
         sound: "default",
       },
     ]);

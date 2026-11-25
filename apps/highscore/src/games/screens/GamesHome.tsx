@@ -59,6 +59,7 @@ import {
 } from "../api/games";
 import { DayPicker } from "../components/DayPicker";
 import { FixScoreSheet, type FixScoreTarget } from "../components/FixScoreSheet";
+import { FriendRequestCard } from "../components/FriendRequestCard";
 import { HomeActionBar, homeActionBarListInset } from "../components/HomeActionBar";
 import { ShareAnnouncementCard } from "../components/ShareAnnouncementCard";
 import { StandingsCard, type StandingsRow } from "../components/StandingsCard";
@@ -513,6 +514,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
       />
 
       <AppUpdateBanner />
+      <FriendRequestCard />
       <ShareAnnouncementCard hasGames={gamesQuery.data ? myGames.length > 0 : undefined} />
 
       <View style={styles.body}>

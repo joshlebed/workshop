@@ -40,6 +40,14 @@ import { blockedEitherWay, blockedIdsFor } from "../../lib/blocks.js";
 import { callerIpKey } from "../../lib/clientIp.js";
 import { getConfig } from "../../lib/config.js";
 import { toIsoString } from "../../lib/dates.js";
+import {
+  clearExpiredForResend,
+  consumeDirectedRequests,
+  directedPairWhere,
+  friendRequestExpiresAt,
+  livePendingWhere,
+  outboundExpiredAt,
+} from "../../lib/friendRequestLifecycle.js";
 import { sendFriendRequestPush } from "../../lib/friendRequestPush.js";
 import { addFriendship, canonicalPair, friendsOf, removeFriendship } from "../../lib/friends.js";
 import { scoreCodeFields } from "../../lib/gameCodeService.js";
@@ -82,25 +90,6 @@ const FRIEND_INVITE_BASE_URLS = {
     production: "https://highscore.live",
   },
 } as const satisfies Record<WorkshopClient, { local: string; production: string }>;
-
-/**
- * Drop every pending directed request between two users (both directions).
- * Used by accept (the request is consumed), deny/cancel (silent delete —
- * re-requesting is allowed), and the cross-request auto-accept.
- */
-async function deleteDirectedPending(a: string, b: string): Promise<void> {
-  await getDb()
-    .delete(friendRequests)
-    .where(
-      and(
-        eq(friendRequests.status, "pending"),
-        or(
-          and(eq(friendRequests.inviterId, a), eq(friendRequests.inviteeId, b)),
-          and(eq(friendRequests.inviterId, b), eq(friendRequests.inviteeId, a)),
-        ),
-      ),
-    );
-}
 
 /** The `friendships` edge between two users, or undefined. */
 async function friendshipEdge(a: string, b: string): Promise<{ createdAt: Date } | undefined> {
@@ -400,7 +389,7 @@ friendRoutes.post(
     // pending *directed* request between the pair is consumed — the link
     // accept satisfied it.
     await addFriendship(request.inviterId, userId);
-    await deleteDirectedPending(request.inviterId, userId);
+    await consumeDirectedRequests(request.inviterId, userId, { outcome: "accepted" });
 
     const pair = canonicalPair(request.inviterId, userId);
     const [edge] = await db
@@ -444,7 +433,7 @@ friendRoutes.get("/requests", requireAuth, async (c) => {
       })
       .from(friendRequests)
       .innerJoin(users, eq(users.id, friendRequests.inviterId))
-      .where(and(eq(friendRequests.inviteeId, userId), eq(friendRequests.status, "pending")))
+      .where(and(eq(friendRequests.inviteeId, userId), livePendingWhere()))
       .orderBy(desc(friendRequests.createdAt)),
     db
       .select({
@@ -454,7 +443,7 @@ friendRoutes.get("/requests", requireAuth, async (c) => {
       })
       .from(friendRequests)
       .innerJoin(users, eq(users.id, friendRequests.inviteeId))
-      .where(and(eq(friendRequests.inviterId, userId), eq(friendRequests.status, "pending")))
+      .where(and(eq(friendRequests.inviterId, userId), livePendingWhere()))
       .orderBy(desc(friendRequests.createdAt)),
   ]);
 
@@ -526,8 +515,7 @@ friendRoutes.post(
       (await resolveGameShareLink(via))?.userId === targetId;
     if (vouched) {
       await addFriendship(userId, targetId);
-      await deleteDirectedPending(userId, targetId);
-      await deleteDirectedPending(targetId, userId);
+      await consumeDirectedRequests(userId, targetId, { outcome: "accepted" });
       const edge = await friendshipEdge(userId, targetId);
       if (!edge) return err(c, "INTERNAL", "friendship lookup failed");
       const response: SendFriendRequestResponse = {
@@ -544,13 +532,13 @@ friendRoutes.post(
         and(
           eq(friendRequests.inviterId, targetId),
           eq(friendRequests.inviteeId, userId),
-          eq(friendRequests.status, "pending"),
+          livePendingWhere(),
         ),
       )
       .limit(1);
     if (inbound) {
       await addFriendship(userId, targetId);
-      await deleteDirectedPending(userId, targetId);
+      await consumeDirectedRequests(userId, targetId, { outcome: "accepted" });
       const edge = await friendshipEdge(userId, targetId);
       if (!edge) return err(c, "INTERNAL", "friendship lookup failed");
       const response: SendFriendRequestResponse = {
@@ -560,9 +548,13 @@ friendRoutes.post(
       return ok(c, response, 201);
     }
 
+    // A re-send after an expiry: drop the expired row (and record the
+    // re-send) so the fresh row is the only one between the pair.
+    await clearExpiredForResend(userId, targetId);
+    const now = new Date();
     const insertedRequest = await db
       .insert(friendRequests)
-      .values({ inviterId: userId, inviteeId: targetId })
+      .values({ inviterId: userId, inviteeId: targetId, expiresAt: friendRequestExpiresAt(now) })
       .onConflictDoNothing()
       .returning({ id: friendRequests.id });
     // Only push when a fresh pending row was actually created: a duplicate send
@@ -604,7 +596,7 @@ friendRoutes.post(
         and(
           eq(friendRequests.inviterId, senderId),
           eq(friendRequests.inviteeId, userId),
-          eq(friendRequests.status, "pending"),
+          livePendingWhere(),
         ),
       )
       .limit(1);
@@ -612,7 +604,7 @@ friendRoutes.post(
     if (await blockedEitherWay(userId, senderId)) return err(c, "NOT_FOUND", "request not found");
 
     await addFriendship(senderId, userId);
-    await deleteDirectedPending(userId, senderId);
+    await consumeDirectedRequests(userId, senderId, { outcome: "accepted" });
 
     const [edge, [sender]] = await Promise.all([
       friendshipEdge(userId, senderId),
@@ -646,7 +638,7 @@ friendRoutes.delete("/requests/user/:userId", requireAuth, async (c) => {
   if (!UUID_RE.test(otherId)) return err(c, "NOT_FOUND", "request not found");
   if (otherId === userId) return err(c, "VALIDATION", "you can't request yourself");
 
-  await deleteDirectedPending(userId, otherId);
+  await consumeDirectedRequests(userId, otherId, { outcome: "removed", actorId: userId });
   return ok(c, { ok: true });
 });
 
@@ -762,15 +754,7 @@ friendRoutes.get("/users/:userId", requireAuth, async (c) => {
       const pendings = await db
         .select({ inviterId: friendRequests.inviterId })
         .from(friendRequests)
-        .where(
-          and(
-            eq(friendRequests.status, "pending"),
-            or(
-              and(eq(friendRequests.inviterId, viewerId), eq(friendRequests.inviteeId, targetId)),
-              and(eq(friendRequests.inviterId, targetId), eq(friendRequests.inviteeId, viewerId)),
-            ),
-          ),
-        );
+        .where(and(livePendingWhere(), directedPairWhere(viewerId, targetId)));
       if (pendings.some((p) => p.inviterId === viewerId)) relationship = "outbound";
       else if (pendings.length > 0) relationship = "inbound";
     }
@@ -792,7 +776,11 @@ friendRoutes.get("/users/:userId", requireAuth, async (c) => {
     }
   }
 
-  if (relationship === "none" && mutualFriends.length === 0) {
+  // The viewer's own expired request to this person (spike #7): it shows
+  // "Request expired — send again", and vouches the viewer in like the
+  // pending request did, so a sender with no mutuals can still re-send.
+  const expiredAt = relationship === "none" ? await outboundExpiredAt(viewerId, targetId) : null;
+  if (relationship === "none" && mutualFriends.length === 0 && !expiredAt) {
     // A valid game-share link (`/g/:token`) for this target vouches the viewer
     // in: the sharer handed out the link, so showing their minimal profile (so
     // the recipient can add them) is exactly the intended flow. Without this a
@@ -865,6 +853,7 @@ friendRoutes.get("/users/:userId", requireAuth, async (c) => {
     mutualFriends,
     periodKey,
     games: profileGames,
+    outboundExpiredAt: expiredAt ? toIsoString(expiredAt) : null,
   };
   return ok(c, response);
 });

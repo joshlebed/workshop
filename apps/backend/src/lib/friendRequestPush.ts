@@ -25,7 +25,9 @@ export function buildFriendRequestPushMessages(
     to,
     title: "New friend request",
     body: `${name} wants to be friends on HighScore`,
-    data: { kind: "friend_request", userId: inviter.id },
+    // `url` routes the tap to the Friends inbox (HighScore's notificationPath);
+    // before it, a tap opened the home.
+    data: { kind: "friend_request", userId: inviter.id, url: "highscore:///friends" },
     sound: "default",
   }));
 }

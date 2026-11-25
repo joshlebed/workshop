@@ -20,8 +20,9 @@ import { and, desc, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { getDb } from "../../db/client.js";
-import { contentReports, friendRequests, gameScores, userBlocks, users } from "../../db/schema.js";
+import { contentReports, gameScores, userBlocks, users } from "../../db/schema.js";
 import { toIsoString } from "../../lib/dates.js";
+import { consumeDirectedRequests } from "../../lib/friendRequestLifecycle.js";
 import { removeFriendship } from "../../lib/friends.js";
 import { notifyContentReport, notifyUserBlocked } from "../../lib/opsNotifications.js";
 import { parseJsonBody } from "../../lib/request.js";
@@ -85,23 +86,8 @@ moderationRoutes.post(
       .onConflictDoNothing()
       .returning({ blockerId: userBlocks.blockerId });
     await removeFriendship(userId, target.data);
-    await db.delete(friendRequests).where(
-      and(
-        eq(friendRequests.status, "pending"),
-        // Both directions; `or` spelled out so the partial index is usable.
-        eq(friendRequests.inviterId, userId),
-        eq(friendRequests.inviteeId, target.data),
-      ),
-    );
-    await db
-      .delete(friendRequests)
-      .where(
-        and(
-          eq(friendRequests.status, "pending"),
-          eq(friendRequests.inviterId, target.data),
-          eq(friendRequests.inviteeId, userId),
-        ),
-      );
+    // Pending and expired directed requests, both directions.
+    await consumeDirectedRequests(userId, target.data, { outcome: "removed", actorId: userId });
     if (inserted.length > 0) await notifyUserBlocked(userId, target.data);
     return ok(c, { ok: true }, inserted.length > 0 ? 201 : 200);
   },
