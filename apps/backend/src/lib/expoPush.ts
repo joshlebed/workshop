@@ -12,7 +12,7 @@ import { inArray } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "../db/client.js";
 import { pushTokens } from "../db/schema.js";
-import { getConfig } from "./config.js";
+import { DEFAULT_EXPO_PUSH_URL, getConfig } from "./config.js";
 import { logger } from "./logger.js";
 import type { DbClient } from "./sql.js";
 
@@ -83,8 +83,24 @@ export async function sendExpoPushMessages(
   } = {},
 ): Promise<ExpoPushSendResult> {
   const fetchFn = opts.fetchFn ?? fetch;
-  const url = getConfig().expoPushUrl;
+  const config = getConfig();
+  const url = config.expoPushUrl;
   const outcomes: ExpoPushOutcome[] = [];
+  // A local backend never reaches Expo unless EXPO_PUSH_URL is set on purpose:
+  // the sandbox database is a prod copy with real tokens. A hot-reloaded dev
+  // server without the stub once delivered real pushes (Nov 2026). Tests run
+  // under vitest with a mocked fetch and keep the default URL.
+  if (config.isLocal && url === DEFAULT_EXPO_PUSH_URL && !process.env.VITEST) {
+    logger.warn("expo push refused: local stage without EXPO_PUSH_URL", {
+      message_count: messages.length,
+    });
+    return {
+      sent: 0,
+      failed: messages.length,
+      prunedTokens: [],
+      outcomes: messages.map((m) => ({ to: m.to, status: "request_failed" as const })),
+    };
+  }
   const tokensToPrune = new Set<string>();
 
   for (const [chunkIndex, chunk] of chunksOf(messages, EXPO_CHUNK_SIZE).entries()) {
