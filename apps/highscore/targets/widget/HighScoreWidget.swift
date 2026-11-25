@@ -42,9 +42,24 @@ struct Snapshot: Codable {
   let more: Int?
 }
 
+let snapshotFile = "widget-snapshot.json"
+let markerFile = "widget-marker.json"
+
+func groupFileURL(_ name: String) -> URL? {
+  FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup)?
+    .appendingPathComponent(name)
+}
+
+/// The app's last snapshot: `widget-snapshot.json` in the App Group container
+/// (always current), else the UserDefaults copy. A file because the
+/// widget's process was seen reading a stale UserDefaults value right after
+/// the app's write + reload.
 func loadSnapshot() -> Snapshot? {
-  // Pick up a write the app made a moment ago rather than this process's
-  // cached copy of the domain.
+  if let url = groupFileURL(snapshotFile), let data = try? Data(contentsOf: url),
+    let s = try? JSONDecoder().decode(Snapshot.self, from: data)
+  {
+    return s
+  }
   CFPreferencesAppSynchronize(appGroup as CFString)
   guard
     let raw = UserDefaults(suiteName: appGroup)?.string(forKey: snapshotKey),
@@ -134,11 +149,23 @@ struct Provider: TimelineProvider {
   /// Tells the app a widget is on the home screen (`widget-installed` flag).
   /// getTimeline runs only for placed widgets, never for gallery previews.
   private func markInstalled(_ family: WidgetFamily, at date: Date) {
-    guard let defaults = UserDefaults(suiteName: appGroup) else { return }
-    defaults.set(ISO8601DateFormatter().string(from: date), forKey: timelineMarkerKey)
-    var families = Set((defaults.string(forKey: familiesKey) ?? "").split(separator: ",").map(String.init))
+    let at = ISO8601DateFormatter().string(from: date)
+    var families = Set<String>()
+    if let url = groupFileURL(markerFile), let data = try? Data(contentsOf: url),
+      let old = try? JSONDecoder().decode([String: String].self, from: data)
+    {
+      families.formUnion((old["families"] ?? "").split(separator: ",").map(String.init))
+    }
     families.insert(familyParam(family))
-    defaults.set(families.sorted().joined(separator: ","), forKey: familiesKey)
+    let joined = families.sorted().joined(separator: ",")
+    if let url = groupFileURL(markerFile),
+      let data = try? JSONEncoder().encode(["timelineAt": at, "families": joined])
+    {
+      try? data.write(to: url, options: .atomic)
+    }
+    let defaults = UserDefaults(suiteName: appGroup)
+    defaults?.set(at, forKey: timelineMarkerKey)
+    defaults?.set(joined, forKey: familiesKey)
   }
 }
 

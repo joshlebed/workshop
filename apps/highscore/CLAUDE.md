@@ -204,10 +204,72 @@ once a pre-1.3.0 runtime is re-added (it won't be). Rules:
   pre-1.2.0 binary (`Cannot find native module …`). The one alternative is a **runtime gate**
   like `src/lib/pushNotifications.ts` (below): compare the binary version first, `require` lazily
   inside a function, catch a throw. Then the older runtimes stay.
+- **1.4.0 added `@bacons/apple-targets`** (the widget extension + its `ExtensionStorage`
+  module); 1.3.0 stays in `supported-runtimes.json` because the only import is runtime-gated
+  (see "Home-screen widget").
 - **Any further native dep, config-plugin option, entitlement, or Info.plist key is another
   `version` bump + TestFlight build + App Review.** Silent/background push
   (`enableBackgroundRemoteNotifications` → `remote-notification` mode), notification sounds, and
   a custom notification icon are all plugin options and are deliberately left off.
+
+## Home-screen widget (1.4.0+) — `src/lib/homeWidget.ts` is the only door
+
+iOS WidgetKit extension "Who's played today" (small + medium), spike 9 of
+`docs/onboarding-spikes-2026-11.md` (on `joshlebed/onboarding-spikes-plan`). Built with
+**`@bacons/apple-targets`**, not `expo-widgets`: `expo-widgets` (alpha in SDK 58) hard-codes
+`policy: .atEnd`, so the 30-minute refresh is impossible; its plugin always sets
+`NSSupportsLiveActivities` in Info.plist (a capability we don't use, i.e. an App Review question);
+and it runs a JS runtime inside the extension. apple-targets generates a plain SwiftUI target
+from `targets/widget/` (`expo-target.config.js` + `HighScoreWidget.swift`; the `Info.plist` and
+`Assets.xcassets` beside them are written by prebuild and committed), mirrors the
+`group.live.highscore.app` App Group onto it, and adds the
+`extra.eas.build.experimental.ios.appExtensions` entry EAS signs from (`npx expo config --type
+public` shows it). It pulls SDK 55 copies of `@expo/config-plugins` / `@expo/prebuild-config` as
+its own nested deps; the hoisted SDK 58 copies are unchanged.
+
+- **Data path**: app → App Group → widget. `useHomeWidget` (root `AuthGate`) watches the query
+  cache for today's `GET /v1/games` list (every fetch, refetch, and the `writePostedScore` write
+  after a post), builds a `WidgetSnapshot` (`src/lib/widgetSnapshot.ts`: up to 4 games, your
+  posted/not, friends who posted, `friendCount` from the server), and writes it as one JSON
+  string under `widget.snapshot` with `ExtensionStorage`, then reloads the timeline **twice**
+  (now and 1.5s later): the write reaches the widget's process through cfprefsd asynchronously
+  and the immediate reload rendered the old snapshot on the simulator. Sign-out writes a
+  signed-out snapshot. Never while impersonating.
+- **Refresh policy**: the widget never touches the network. Its timeline is the snapshot now
+  plus a rolled-over copy (every dot empty) at the next local midnight, with
+  `.after(now + 30 min)`. No background fetch / `UIBackgroundModes` (App Review); a widget only
+  learns what the app last saw.
+- **Deep links**: `highscore:///games/<id>?src=widget&family=small|medium` opens the board, whose
+  paste slot leads until you've posted (that's "tap to paste"). Medium rows are per-game
+  `Link`s; the small widget is one `widgetURL` to the first game you haven't posted, else home.
+- **What it never shows**: friends' names, pictures or scores — only counts. The privacy page's
+  promise (scores are shown to friends, in HighScore) stays literally true;
+  `widgetSnapshot.test.ts` pins that the snapshot carries no names or scores.
+- **Runtime gate**: the facade `require`s `@bacons/apple-targets` lazily, only when
+  `runtimeHasWidget` (iOS, binary ≥ `WIDGET_MIN_RUNTIME` 1.4.0), inside a try/catch; the 1.3.0
+  runtime still gets every OTA. `homeWidget.test.ts` source-scans like the push test. Lower
+  nothing here — 1.3.0 has no extension.
+- **In-app entry**: `WidgetCard` on Games home after the first score (today, or a live streak),
+  iOS 1.4.0+, once per account (`games.widget-card` `{ shownAt, dismissedAt }`), only when the
+  share-sheet card isn't up, and gone once `games.widget-installed` exists. You → Account →
+  "Home Screen widget" opens `/widget-setup`. Both show `WidgetHowTo`'s three system steps.
+  `WIDGET_ENTRY_ENABLED` is the kill switch.
+- **Instrumentation** (the spike's question: do widget installers score more on days 2–7?):
+  `games.widget-installed` `{ firstSeenAt, via: "timeline" | "tap", family }` is the durable
+  cohort marker — the widget writes `widget.timelineAt` / `widget.families` into the App Group
+  whenever it builds a timeline (placed widgets only, never gallery previews) and the app turns
+  that, or a `?src=widget` tap, into the flag. Log-only `POST /v1/telemetry/widget` (CloudWatch
+  filter `client_widget`): `card_shown`, `card_dismissed`, `howto_opened`, `snapshot_write`
+  (throttled to one line per 30 min with a `writes` count), `widget_tap` (family, gameId),
+  `widget_seen`.
+- **Simulator**: `ns mobile build highscore` builds the extension with the unchanged manifest
+  command. To place it: `lim ios perform --action type=touchDown,x=200,y=500 --action
+type=wait,durationMs=1500 --action type=touchUp,x=200,y=500` on the Home Screen → tap Edit
+  (top left) → Add Widget → type "HighScore" in the search → pick the result → swipe for medium
+  → Add Widget → Done. `simctl` has no widget command. The App Group plist can be pulled with
+  `lim ios pull-file Library/Preferences/group.live.highscore.app.plist ./g.plist --bundle-id
+live.highscore.app --container-type group.live.highscore.app`, but cfprefsd flushes it
+  lazily, so a fresh write may not be on disk yet.
 
 ## Play reminders (push) — `src/lib/pushNotifications.ts` is the only door
 
