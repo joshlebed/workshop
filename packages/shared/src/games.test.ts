@@ -40,6 +40,7 @@ describe("normalizeGameUrl", () => {
     expect(normalizeGameUrl("bandle.app/menu?x=1")).toBe("bandle.app");
     expect(normalizeGameUrl("https://t30.teuteuf.fr/w43")).toBe("t30.teuteuf.fr");
     expect(normalizeGameUrl("https://www.wordle.com/")).toBe("nytimes.com/games/wordle");
+    expect(normalizeGameUrl("https://www.alldle.net/game/dartle")).toBe("dartle.net");
     // Only the listed shapes: other paths on the same site stay their own game.
     expect(normalizeGameUrl("https://t30.teuteuf.fr/archive")).toBe("t30.teuteuf.fr/archive");
     expect(normalizeGameUrl("https://playplain.app/play/extra")).toBe("playplain.app/play/extra");
