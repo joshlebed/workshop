@@ -9,6 +9,7 @@
     "./avatar": "./src/avatar.ts",
     "./authBootstrap": "./src/authBootstrap.ts",
     "./config": "./src/config.ts",
+    "./crews": "./src/crews.ts",
     "./friends": "./src/friends.ts",
     "./oauth/apple": "./src/oauth/apple/index.ts",
     "./oauth/google": "./src/oauth/google/index.ts",

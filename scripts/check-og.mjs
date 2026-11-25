@@ -169,6 +169,7 @@ if (meta.get("twitter:card") && meta.get("twitter:card") !== "summary_large_imag
 //   HighScore:
 //   - `/g/<token>`                      → game-share card
 //   - `/friends/accept/<token>`         → friend card
+//   - `/crew/<token>`                   → crew card
 //   - everything else                  → HighScore default
 //   Workshop:
 //   - `/l/<slug>` or `/invite/<token>` → list-specific (preview API returned data)
@@ -196,15 +197,17 @@ const variant = pathname.startsWith("/g/")
   ? "game"
   : pathname.startsWith("/friends/accept/")
     ? "friend"
-    : site === "highscore"
-      ? "default"
-      : pathname.startsWith("/l/") || pathname.startsWith("/invite/")
-        ? "list-specific"
-        : listIdMatch && UUID_RE.test(listIdMatch[1])
-          ? "list-or-locked"
-          : pathname.startsWith("/list/")
-            ? "locked-list"
-            : "default";
+    : site === "highscore" && pathname.startsWith("/crew/")
+      ? "crew"
+      : site === "highscore"
+        ? "default"
+        : pathname.startsWith("/l/") || pathname.startsWith("/invite/")
+          ? "list-specific"
+          : listIdMatch && UUID_RE.test(listIdMatch[1])
+            ? "list-or-locked"
+            : pathname.startsWith("/list/")
+              ? "locked-list"
+              : "default";
 if (variant === "list-specific") {
   if (ogTitle === "Workshop.dev" || ogTitle.includes("Sign in") || ogTitle === "") {
     fail(
@@ -231,6 +234,10 @@ if (variant === "list-specific") {
       "friend-fallback-title",
       `og:title is "${ogTitle}" — the friend Pages function didn't fire`,
     );
+  }
+} else if (variant === "crew") {
+  if (!ogTitle.startsWith("Join")) {
+    fail("crew-fallback-title", `og:title is "${ogTitle}" — the crew Pages function didn't fire`);
   }
 } else if (variant === "game") {
   if (ogTitle === expectedSiteName || ogTitle === "") {

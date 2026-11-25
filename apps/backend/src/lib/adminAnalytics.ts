@@ -35,6 +35,7 @@ import { and, eq, gte, isNull, sql } from "drizzle-orm";
 import { getDb } from "../db/client.js";
 import {
   activityEvents,
+  crewMembers,
   friendships,
   gameNudges,
   gameScoreReactions,
@@ -235,6 +236,13 @@ async function actionRows(db: Db, client: WorkshopClient): Promise<ActionRow[]> 
         .select({ userId: gameNudges.senderId, day: utcDayOf(gameNudges.createdAt) })
         .from(gameNudges)
         .groupBy(gameNudges.senderId, utcDayOf(gameNudges.createdAt)),
+    );
+    // Creating or joining a crew (the creator's own row counts as creating).
+    push(
+      await db
+        .select({ userId: crewMembers.userId, day: utcDayOf(crewMembers.joinedAt) })
+        .from(crewMembers)
+        .groupBy(crewMembers.userId, utcDayOf(crewMembers.joinedAt)),
     );
   } else {
     push(

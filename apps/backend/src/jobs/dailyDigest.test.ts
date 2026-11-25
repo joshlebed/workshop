@@ -37,6 +37,9 @@ const base: DailyDigest = {
   listsArchived: 0,
   listsJoined: 0,
   letterboxdConnected: 0,
+  crewsCreated: 1,
+  crewJoins: 2,
+  crewFriendships: 3,
 };
 
 describe("buildDailyDigestMessage", () => {
@@ -48,6 +51,7 @@ describe("buildDailyDigestMessage", () => {
         "**Never scored:** 25 of 56 signups in the last 30 days (45%)",
         "**HighScore:** 18 active (7-day avg 16.4) · 142 scores",
         "**Activity:** 12 games added · 3 friendships · 2 first scores · 1 first friend after signup",
+        "**Crews:** 1 created · 2 joins · 3 friendships from joins",
         "**Lists:** 1 new",
       ].join("\n"),
     );
@@ -68,6 +72,9 @@ describe("buildDailyDigestMessage", () => {
       firstScores: 0,
       firstFriends: 0,
       listsCreated: 0,
+      crewsCreated: 0,
+      crewJoins: 0,
+      crewFriendships: 0,
     });
     expect(quiet).toContain("**Never scored:** 0 of 0 signups in the last 30 days");
     expect(quiet).not.toContain("NaN");
@@ -144,6 +151,16 @@ describe("daily digest job", () => {
        ($1, $2, 'owner', $4), ($1, $3, 'member', $4)`,
       [listId, id(4), id(1), IN_WINDOW],
     );
+    const crew = await client.query<{ id: string }>(
+      `INSERT INTO crews (name, created_by, token, created_at) VALUES ('C', $1, 'digestcrew', $2)
+       RETURNING id`,
+      [id(1), IN_WINDOW],
+    );
+    await client.query(
+      `INSERT INTO crew_members (crew_id, user_id, joined_at, friendships_formed) VALUES
+       ($1, $2, $4, 0), ($1, $3, $4, 1)`,
+      [crew.rows[0]?.id, id(1), id(4), IN_WINDOW],
+    );
   }, 60_000);
 
   it("counts the previous Eastern day and nothing outside it", async () => {
@@ -164,6 +181,9 @@ describe("daily digest job", () => {
       listsArchived: 1,
       listsJoined: 1, // the owner row is not a join
       letterboxdConnected: 1,
+      crewsCreated: 1,
+      crewJoins: 1, // the creator's own row is not a join
+      crewFriendships: 1,
     });
   });
 

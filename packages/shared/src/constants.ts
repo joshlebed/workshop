@@ -42,6 +42,7 @@ export const SIGNUP_SOURCES = [
   "friend_invite",
   "play_link",
   "list_invite",
+  "crew_invite",
   "web_referral",
   "none",
 ] as const;

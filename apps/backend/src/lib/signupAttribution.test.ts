@@ -14,6 +14,7 @@ const owners: Record<string, string> = {
   "friend_invite:good": PHILIP,
   "play_link:play1": PHILIP,
   "list_invite:list1": PHILIP,
+  "crew_invite:crew1": PHILIP,
   "friend_invite:self": NEW_USER,
 };
 const lookup: LinkOwnerLookup = async (kind, token) => owners[`${kind}:${token}`] ?? null;
@@ -61,6 +62,23 @@ describe("resolveSignupAttribution", () => {
       referredByUserId: PHILIP,
       context: { linkResolved: true },
     });
+  });
+
+  it("resolves a crew link to the crew's creator, ahead of a play link", async () => {
+    expect(
+      await resolveSignupAttribution(
+        { crewInviteToken: "crew1", gameShareToken: "play1" },
+        NEW_USER,
+        lookup,
+      ),
+    ).toEqual({ source: "crew_invite", referredByUserId: PHILIP, context: { linkResolved: true } });
+    expect(
+      describeSignupAttribution(
+        { source: "crew_invite", referredByUserId: PHILIP, context: { linkResolved: true } },
+        "Philip",
+        "ios",
+      ),
+    ).toBe("invited by Philip (crew invite link)");
   });
 
   it("falls through a dead invite to a live play link", async () => {

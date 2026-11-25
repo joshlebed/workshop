@@ -647,6 +647,41 @@ friend's reaction on a shared friend's score never reveals who they are. The emo
 validated by `isReactionEmoji` (`@workshop/shared/games`). When you add a new code path that
 builds `GameStandingsEntry`, populate `reactions` (it's a required field now).
 
+## Crews (`lib/crews.ts`, `routes/v1/crews.ts`, migration 0066) — onboarding spike #8
+
+A crew is one share link that makes everyone who joins friends with everyone already in it (the
+spike's question: does a group link form 3+ mutual friendships per invite vs ~1 for a 1:1 link?).
+`lib/crews.ts` owns every rule; the router only parses. Same games flag gate as friends.
+
+- **Data:** `crews` (`id`, `name` ≤40 with CHECK `crews_name_check`, `created_by` → users
+  `set null`, `token` = 8-char share slug, `created_at`); `crew_members` (`crew_id`, `user_id` PK,
+  `joined_at`, `friendships_formed`, request-origin columns). No `restrict` FK to `users`, so
+  account deletion needs nothing new.
+- **Endpoints:** `POST /v1/crews { name }` (trimmed, one line, 1–40 code points, content filter →
+  400 `CREW_NAME_INVALID` / `OBJECTIONABLE_CONTENT`); `GET /v1/crews/mine`; `GET /v1/crews/:token`
+  (public, `optionalAuth`, `withDbRetry`; name, creator, member count, ≤6 first names, `viewer`);
+  `POST /v1/crews/:token/join`; `GET /v1/crews/:id/board?period=`; `POST /v1/crews/:id/leave`.
+  `/mine` is registered before `/:token`.
+- **Join:** inserts the membership inside a transaction that locks the crew row (`FOR UPDATE`) so
+  two last-seat joins can't both land, then `addFriendship` with every other member — **except a
+  pair blocked in either direction (`blockedIdsFor`): they share the crew, get no edge, and are
+  hidden from each other on the board.** Any pending directed request between the joiner and a
+  befriended member is consumed. Re-joining is a no-op (`alreadyMember`) and never re-forms an edge
+  someone removed. Caps: 25 members per crew (409 `crew_full`), 10 crews per person, created or
+  joined (409 `crew_limit`). Leaving keeps the friendships; the last one out deletes the crew.
+- **Board:** visibility follows the friend graph, never the crew. Games = any visible member posted
+  on the period; entries come from `loadStandingsByGame` (already `viewer ∪ friends`) filtered to
+  crew members and ranked with `rankEntries`. A member the viewer unfriended stays listed with
+  `isFriend: false` and no scores; a blocked member is left out of `members` entirely.
+- **Instrumentation:** `crew_members.friendships_formed` per join (0 for the creator's row), the
+  `crew created` / `crew joined` (`memberCount`, `friendshipsFormed`, `blockedSkipped`) log lines,
+  the daily digest's **Crews** line (created · joins · friendships from joins), `crew_members` in
+  `actionRows` and the digest's actions CTE, and the `crew_invite` signup source (referrer = the
+  crew's creator). Friendships per join:
+  `SELECT crew_id, count(*) FILTER (WHERE friendships_formed > 0) joins, avg(friendships_formed)
+FILTER (WHERE user_id IS DISTINCT FROM c.created_by) FROM crew_members m JOIN crews c ON
+c.id = m.crew_id GROUP BY crew_id`.
+
 ## Game-score recognition (`lib/gameRecognition.ts`) — which game is this paste for?
 
 `recognizeGame(raw, candidates, { loadExamples, judge })` → `{ gameId, confidence, method } | null`.

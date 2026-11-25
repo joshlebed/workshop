@@ -35,6 +35,7 @@ import {
 } from "react";
 import { requestAccountDeletion } from "../api/users";
 import {
+  PENDING_CREW_TOKEN_KEY,
   PENDING_FRIEND_INVITE_TOKEN_KEY,
   PENDING_GAME_SHARE_TOKEN_KEY,
 } from "../games/lib/inviteStash";
@@ -45,6 +46,7 @@ import { unregisterPushToken } from "../lib/pushRegistration";
 const PENDING_LINK_KEYS: PendingLinkKeys = {
   friendInvite: PENDING_FRIEND_INVITE_TOKEN_KEY,
   gameShare: PENDING_GAME_SHARE_TOKEN_KEY,
+  crewInvite: PENDING_CREW_TOKEN_KEY,
 };
 
 const AUTO_DEV_OPT_OUT_KEY = "highscore.disable-auto-dev";

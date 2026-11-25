@@ -43,6 +43,12 @@ export interface DailyDigest {
   listsArchived: number;
   listsJoined: number;
   letterboxdConnected: number;
+  /** Crews created (spike #8). */
+  crewsCreated: number;
+  /** Joins by someone other than the creator. */
+  crewJoins: number;
+  /** New friendships those joins formed (`crew_members.friendships_formed`). */
+  crewFriendships: number;
 }
 
 type DigestRow = Record<
@@ -77,6 +83,9 @@ export async function loadDailyDigest(db: DbClient, now: Date): Promise<DailyDig
       UNION ALL
       SELECT sender_id, created_at FROM game_nudges, bounds
         WHERE created_at >= week_start_at AND created_at < end_at
+      UNION ALL
+      SELECT user_id, joined_at FROM crew_members, bounds
+        WHERE joined_at >= week_start_at AND joined_at < end_at
       UNION ALL
       SELECT user_low, created_at FROM friendships, bounds
         WHERE created_at >= week_start_at AND created_at < end_at
@@ -141,7 +150,14 @@ export async function loadDailyDigest(db: DbClient, now: Date): Promise<DailyDig
       (SELECT count(*)::int FROM list_members
         WHERE role <> 'owner' AND joined_at >= b.start_at AND joined_at < b.end_at) AS "listsJoined",
       (SELECT count(*)::int FROM users
-        WHERE letterboxd_connected_at >= b.start_at AND letterboxd_connected_at < b.end_at) AS "letterboxdConnected"
+        WHERE letterboxd_connected_at >= b.start_at AND letterboxd_connected_at < b.end_at) AS "letterboxdConnected",
+      (SELECT count(*)::int FROM crews
+        WHERE created_at >= b.start_at AND created_at < b.end_at) AS "crewsCreated",
+      (SELECT count(*)::int FROM crew_members m JOIN crews c ON c.id = m.crew_id
+        WHERE m.user_id IS DISTINCT FROM c.created_by
+          AND m.joined_at >= b.start_at AND m.joined_at < b.end_at) AS "crewJoins",
+      (SELECT coalesce(sum(friendships_formed), 0)::int FROM crew_members
+        WHERE joined_at >= b.start_at AND joined_at < b.end_at) AS "crewFriendships"
     FROM bounds b, funnel f
   `,
   );
@@ -165,6 +181,9 @@ export async function loadDailyDigest(db: DbClient, now: Date): Promise<DailyDig
     listsArchived: n(row.listsArchived),
     listsJoined: n(row.listsJoined),
     letterboxdConnected: n(row.letterboxdConnected),
+    crewsCreated: n(row.crewsCreated),
+    crewJoins: n(row.crewJoins),
+    crewFriendships: n(row.crewFriendships),
   };
 }
 
@@ -202,12 +221,18 @@ export function buildDailyDigestMessage(d: DailyDigest): string {
     [d.listsJoined, `${d.listsJoined} joined`],
     [d.letterboxdConnected, `${d.letterboxdConnected} Letterboxd connected`],
   ]);
+  const crewActivity = nonZero([
+    [d.crewsCreated, `${d.crewsCreated} created`],
+    [d.crewJoins, plural(d.crewJoins, "join")],
+    [d.crewFriendships, `${plural(d.crewFriendships, "friendship")} from joins`],
+  ]);
   return [
     `📊 **Daily digest** · ${day}`,
     `**Signups:** ${d.signups} → ${d.signupsScored} posted a score`,
     `**Never scored:** ${d.recentNeverScored} of ${d.recentSignups} signups in the last 30 days${neverPct}`,
     `**HighScore:** ${d.activeUsers} active (7-day avg ${d.activeUsersWeekAvg.toFixed(1)}) · ${plural(d.scores, "score")}`,
     social ? `**Activity:** ${social}` : null,
+    crewActivity ? `**Crews:** ${crewActivity}` : null,
     listActivity ? `**Lists:** ${listActivity}` : null,
   ]
     .filter((line) => line !== null)

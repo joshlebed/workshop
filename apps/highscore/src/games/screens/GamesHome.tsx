@@ -66,7 +66,7 @@ import { usePostedScoreNotice } from "../hooks/usePostedScoreNotice";
 import { useReturnToPaste } from "../hooks/useReturnToPaste";
 import { askScoreDirection } from "../lib/askScoreDirection";
 import { writePostedScore } from "../lib/postedScore";
-import { prewarmGameShareCard } from "../lib/prewarmShareCard";
+import { prewarmShareCard } from "../lib/prewarmShareCard";
 import { neighborsForOrderedReorder } from "../lib/reorder";
 import { scoreLineLabel } from "../lib/scoreCheck";
 import { isGameReteachable, specForGame } from "../lib/scoreSpecs";
@@ -251,7 +251,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
         const link = await createGameShareLink(token);
         url = link.url;
         setScoreShareUrl(url);
-        prewarmGameShareCard(url);
+        prewarmShareCard(url);
       }
       const summary = buildTodaysGameScoresSummary({
         shareUrl: url,

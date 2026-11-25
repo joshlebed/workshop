@@ -200,7 +200,8 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   score pastes (400 `OBJECTIONABLE_CONTENT`); `POST /v1/reports` and
   `POST /v1/users/:id/block` (`routes/v1/moderation.ts`) ping `#workshop-admin`; a
   block drops the friendship + pending requests and every friend-forming path checks
-  `blockedEitherWay`. **If you add a new way for two users to connect or see each
+  `blockedEitherWay` (or `blockedIdsFor` for a batch: a crew join skips the blocked pair and
+  the crew board hides them from each other, `lib/crews.ts`). **If you add a new way for two users to connect or see each
   other's content, add the block check there too.** Operator SLA (24h, `admin:eject`) is
   in `docs/moderation-runbook.md`. HighScore's Sign in with Apple button must stay the
   system `AppleAuthenticationButton` (`src/components/AppleSignInButton`) — Apple

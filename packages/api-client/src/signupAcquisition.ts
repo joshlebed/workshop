@@ -93,6 +93,7 @@ export interface PendingLinkKeys {
   friendInvite?: string;
   gameShare?: string;
   listInvite?: string;
+  crewInvite?: string;
 }
 
 async function read(key: string | undefined): Promise<string | undefined> {
@@ -103,15 +104,18 @@ async function read(key: string | undefined): Promise<string | undefined> {
 
 /** Build the sign-in body's `acquisition`. Always an object (empty = nothing known). */
 export async function collectSignupAcquisition(keys: PendingLinkKeys): Promise<SignupAcquisition> {
-  const [friendInviteToken, gameShareToken, listInviteToken, landingRaw] = await Promise.all([
-    read(keys.friendInvite),
-    read(keys.gameShare),
-    read(keys.listInvite),
-    getItem(SIGNUP_LANDING_KEY).catch(() => null),
-  ]);
+  const [friendInviteToken, gameShareToken, listInviteToken, crewInviteToken, landingRaw] =
+    await Promise.all([
+      read(keys.friendInvite),
+      read(keys.gameShare),
+      read(keys.listInvite),
+      read(keys.crewInvite),
+      getItem(SIGNUP_LANDING_KEY).catch(() => null),
+    ]);
   const acquisition: SignupAcquisition = { ...parseLanding(landingRaw) };
   if (friendInviteToken) acquisition.friendInviteToken = friendInviteToken;
   if (gameShareToken) acquisition.gameShareToken = gameShareToken;
   if (listInviteToken) acquisition.listInviteToken = listInviteToken;
+  if (crewInviteToken) acquisition.crewInviteToken = crewInviteToken;
   return acquisition;
 }

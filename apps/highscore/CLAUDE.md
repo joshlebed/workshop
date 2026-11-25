@@ -124,6 +124,25 @@ Dismiss/complete state is the server-side
 `games.share-sheet-announcement` user flag — never a local storage key, so reinstalls and second
 devices don't re-blast. **Merging the announcement PR is the blast** — OTA ships ~60s after merge.
 
+## Crews (`/crew/:token`, `/crews/:id`) — onboarding spike #8
+
+One group link instead of 1:1 invites: everyone who joins becomes friends with everyone already in
+the crew (backend rules: `apps/backend/CLAUDE.md` → "Crews"). Screens:
+
+- **Friends tab → "Start a crew"** (`src/games/screens/CrewsSection.tsx`): name (≤40) → `POST
+/v1/crews` → pre-warm the card → share sheet / copy → the crew screen. Lists "Your crews" below.
+- **Landing `/crew/:token`** (`CrewJoin.tsx`): stashes the token (`PENDING_CREW_TOKEN_KEY`, also
+  sent as `crewInviteToken` signup attribution); `AuthGate` lets `/crew/*` render signed out so the
+  visitor sees a context card from the public preview (crew name, "Josh's crew", member count and
+  first names) with **Sign in to join**, not a bare sign-in wall. After sign-in the stash brings
+  them back; **Join** → `POST /v1/crews/:token/join` → `CrewGamesPicker` (the games step of
+  `friendAccept/PostAcceptPicker.tsx`, ranked across the crew members via
+  `GET /v1/games/discovery?users=…`, ≤20) → the crew screen. A member is sent straight to the crew.
+- **Crew screen `/crews/:id`** (`CrewScreen.tsx`): share link again, today's crew board (per game,
+  crew members ranked; Add for games not on your home), members (unfriended = "Not friends —
+  scores hidden"), Leave. It draws what `GET /v1/crews/:id/board` returns and never re-judges
+  visibility. Copy helpers live in the pure `src/games/lib/crews.ts`.
+
 ## Public pages (`/support`, `/privacy`, `/terms`)
 
 All three routes render with no session. `src/lib/publicRoutes.ts` is the single source of truth, and
@@ -134,8 +153,8 @@ URL) and `/terms` is the EULA the sign-in screen links to (Guideline 1.2), so re
 a metadata change, not a refactor. Copy lives in `src/lib/legal.ts` and
 is pinned by `legal.test.ts`: every claim there about what HighScore stores, how long it keeps it,
 and what it never does must stay literally true of the shipped app. The screens are thin wrappers
-over `src/screens/legal/LegalScreen.tsx`. The AASA (`functions/.well-known/`) only claims `/g/*` and
-`/friends/accept/*`, so iOS leaves these in the browser where a reviewer expects them.
+over `src/screens/legal/LegalScreen.tsx`. The AASA (`functions/.well-known/`) only claims `/g/*`,
+`/friends/accept/*` and `/crew/*`, so iOS leaves these in the browser where a reviewer expects them.
 
 ## App Review 1.0 (9) rejection fixes — don't regress
 
@@ -315,8 +334,11 @@ and keep the native long-press and the web `TouchSensor` delay equal.
 
 ## Open Graph cards (`functions/og/**`)
 
-Three cards — default, `/og/g/:token` (play link), `/og/friend/:token` — share one renderer in
-`functions/_lib/og.ts`. Two things are deliberately **not** done at request time:
+Four cards — default, `/og/g/:token` (play link), `/og/friend/:token`, `/og/crew/:token` — share
+one renderer in `functions/_lib/og.ts`. **Card text goes through `ogText`, not `escapeXml`:**
+workers-og hands Satori each text node's raw source (HTMLRewriter chunks aren't entity-decoded),
+so `&#39;` / `&amp;` printed literally ("Join Ava&#39;s crew"); `ogText` swaps only `<` `>` for
+look-alikes. Attributes and meta tags still use `escapeXml`. Two things are deliberately **not** done at request time:
 
 - **The background is a pre-rendered raster**, `public/og-bg.png`, from
   `pnpm --filter highscore-app run og:background` (`scripts/build-og-background.mjs`, zero deps).
@@ -333,7 +355,7 @@ Three cards — default, `/og/g/:token` (play link), `/og/friend/:token` — sha
 The remaining cold cost (~0.6s) is resvg PNG-encoding a full-entropy 1200x630 image and is not
 tunable from workers-og. So the cards carry a 1-day `s-maxage` + 30-day `stale-while-revalidate`
 (`OG_CARD_CACHE_CONTROL`), and the app **pre-warms** the play card the moment a link is minted
-(`prewarmGameShareCard` in `src/games/lib/prewarmShareCard.ts`). iMessage builds the preview on the sender's
+(`prewarmShareCard` in `src/games/lib/prewarmShareCard.ts`; it maps `/g/:token` and `/crew/:token`). iMessage builds the preview on the sender's
 device, so that fetch lands the crawler on the same colo's warm cache. If you add a new share
 surface, pre-warm its card the same way.
 

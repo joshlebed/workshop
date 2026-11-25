@@ -240,6 +240,7 @@ const SIGNUP_LINK_LABEL: Record<string, string> = {
   friend_invite: "friend invite link",
   play_link: "play link",
   list_invite: "list invite",
+  crew_invite: "crew invite link",
 };
 
 /**
