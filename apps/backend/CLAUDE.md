@@ -745,6 +745,36 @@ friend request (`lib/friendRequestPush.ts`: best-effort, 3s fetch cap, never fai
 shape, `data: { kind: "nudge", userId, gameId, url }` where `url` opens the board); its endpoint is `EXPO_PUSH_URL` (config,
 default Expo's). Never send to Expo with production tokens from a sandbox — point it at a stub.
 
+## Activation milestones (`user_milestones`, `lib/milestones.ts`)
+
+One row per (user, key) for the first time a user reached a day-1 milestone; the admin "2-3-1"
+cohort table (`lib/adminActivation.ts`) reads it. Keys are `MILESTONE_KEYS`
+(`@workshop/shared/constants`). Insert-only: every writer is one `INSERT … SELECT … ON CONFLICT
+DO NOTHING`, so `reached_at` is the first time and a repeat is free of side effects; writers
+swallow and log (`milestone write failed`) so instrumentation never fails the action. `context`
+is `{ signup_source, client, platform, app_version, by_self }` from the request (`by_self:
+false` = the other side of a new friendship, client unknown) or `{ …, backfilled: true }`.
+
+| Key                                           | Written by                                                                               |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `first_friend` / `second_friend`              | `addFriendship` (`lib/friends.ts`), for both people, from their current edge count       |
+| `first_game` / `third_game`                   | `addToMyGames` (`lib/userGames.ts`) on a new row, from the current game count            |
+| `first_score` / `first_share_extension_score` | `recordScoreMilestones` in both score upserts (legacy `games.ts`, `handleScoreUpsertV2`) |
+| `push_granted`                                | `POST /v1/me/push-token`                                                                 |
+| `reminders_enabled`                           | `PUT /v1/me/notification-prefs` with `playReminderEnabled: true`                         |
+| `share_setup_completed`                       | `PUT /v1/users/me/flags/games.share-sheet-announcement` with a `completedAt`             |
+
+**If you add a new way to reach a milestone, write the row there** (a new friendship path that
+skips `addFriendship`, a new score write, a new token or prefs writer), or the cohort table
+undercounts silently. A new key goes in `MILESTONE_KEYS`, a writer, and a backfill. Migration
+`0066` backfilled history from `friendships`, `user_games`, `game_scores`, `user_flags`,
+`push_tokens` and `notification_prefs`; second friend / third game come from edges and games
+that still exist, `push_granted` from unpruned tokens, `reminders_enabled` from the pre-prompt's
+`turn_on` time else the first token. `push_prompt_events` (same migration) is the HighScore
+push-permission funnel: `POST /v1/telemetry/push-prompt` (`{ stage, trigger }`,
+`PUSH_PROMPT_STAGES` / `PUSH_PROMPT_TRIGGERS`) logs `client_push_prompt` and inserts a row
+(not while impersonating).
+
 ## Lists and items are soft-deleted via `archived_at`
 
 `DELETE /v1/lists/:id` (owner-only) and `DELETE /v1/items/:id` set the row's

@@ -463,6 +463,13 @@
       "when": 1795488147406,
       "tag": "0065_ops_alert_marks",
       "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1795606101023,
+      "tag": "0066_activation_milestones",
+      "breakpoints": true
     }
   ]
 }

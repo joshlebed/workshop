@@ -45,6 +45,12 @@ import {
   userActivityDays,
   userGames,
 } from "../db/schema.js";
+import {
+  buildActivationCohorts,
+  loadActivationInputs,
+  loadPushFunnel,
+  pushGrantedByDay,
+} from "./adminActivation.js";
 import { utcDay } from "./userActivity.js";
 
 const MAU_WINDOW = 30;
@@ -401,9 +407,12 @@ async function activeUserSeries(db: Db, client: WorkshopClient, buckets: Bucket[
   // "New" = first day this user ever took an action in this app, computed
   // over the whole history so returning users never re-count.
   const firstDayByUser = new Map<string, string>();
+  const lastDayByUser = new Map<string, string>();
   for (const row of actions) {
     const prev = firstDayByUser.get(row.userId);
     if (!prev || row.day < prev) firstDayByUser.set(row.userId, row.day);
+    const latest = lastDayByUser.get(row.userId);
+    if (!latest || row.day > latest) lastDayByUser.set(row.userId, row.day);
   }
   const newByDay = new Map<string, number>();
   for (const day of firstDayByUser.values()) newByDay.set(day, (newByDay.get(day) ?? 0) + 1);
@@ -435,6 +444,7 @@ async function activeUserSeries(db: Db, client: WorkshopClient, buckets: Bucket[
     active7: activeWithin(7),
     active30: activeWithin(30),
     totalUsers: firstDayByUser.size,
+    lastDayByUser,
   };
 }
 
@@ -645,8 +655,20 @@ export async function buildAdminAnalytics(
     },
   ];
 
+  let activation: AdminAnalyticsResponse["activation"];
+  let pushFunnel: AdminAnalyticsResponse["pushFunnel"];
   if (client === "highscore") {
     const hs = await highscoreSeries(db, buckets);
+    const inputs = await loadActivationInputs(db, now);
+    activation = buildActivationCohorts(
+      inputs.members,
+      inputs.milestones,
+      active.lastDayByUser,
+      now,
+    );
+    const rangeStart = new Date(`${days[0] ?? today}T00:00:00Z`);
+    pushFunnel = await loadPushFunnel(db, rangeStart);
+    const granted = usersByDayOf(await pushGrantedByDay(db, rangeStart));
     stats.push({
       key: "scores_7d",
       label: "Scores posted, last 7 days",
@@ -666,6 +688,12 @@ export async function buildAdminAnalytics(
         label: "Players posting a score",
         description: `Distinct users who posted at least one score that ${per}.`,
         points: hs.scorers,
+      },
+      {
+        key: "push_os_granted",
+        label: `Push permission granted per ${per}`,
+        description: `Distinct users who answered Allow on the iOS notification dialog that ${per}, from any trigger (the funnel below splits it).`,
+        points: distinctSeries(buckets, granted),
       },
     );
   } else {
@@ -744,5 +772,7 @@ export async function buildAdminAnalytics(
       segments: active.versions,
     },
     requestsThrough: req.through,
+    ...(activation ? { activation } : {}),
+    ...(pushFunnel ? { pushFunnel } : {}),
   };
 }

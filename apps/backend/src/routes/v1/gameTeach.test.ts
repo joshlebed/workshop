@@ -660,6 +660,24 @@ describe("the entry surface — share-panel observability", () => {
     await post(josh, gameId, day(2), krillion(82, 416), { entrySource: "paste" });
     expect(await entrySource(gameId, day(2))).toBe("paste");
     expect(await firstShare()).toBe(firstAt);
+
+    // Both first-score milestones are written once and never move.
+    const milestones = async () =>
+      (
+        await rows<{ key: string; reached_at: Date }>(
+          `SELECT key, reached_at FROM user_milestones
+           WHERE user_id = $1 AND key IN ('first_score', 'first_share_extension_score')
+           ORDER BY key`,
+          [josh],
+        )
+      ).map((r) => `${r.key}@${new Date(r.reached_at).toISOString()}`);
+    const recorded = await milestones();
+    expect(recorded.map((r) => r.split("@")[0])).toEqual([
+      "first_score",
+      "first_share_extension_score",
+    ]);
+    await post(josh, gameId, day(2), krillion(83, 417), { entrySource: "share_extension" });
+    expect(await milestones()).toEqual(recorded);
   });
 
   it("stores NULL for a post without it and 400s an unknown value", async () => {

@@ -399,7 +399,7 @@ friendRoutes.post(
     // `responded_at` columns are left untouched (see schema comment), but any
     // pending *directed* request between the pair is consumed — the link
     // accept satisfied it.
-    await addFriendship(request.inviterId, userId);
+    await addFriendship(request.inviterId, userId, userId);
     await deleteDirectedPending(request.inviterId, userId);
 
     const pair = canonicalPair(request.inviterId, userId);
@@ -525,7 +525,7 @@ friendRoutes.post(
       isValidShareSlug(via) &&
       (await resolveGameShareLink(via))?.userId === targetId;
     if (vouched) {
-      await addFriendship(userId, targetId);
+      await addFriendship(userId, targetId, userId);
       await deleteDirectedPending(userId, targetId);
       await deleteDirectedPending(targetId, userId);
       const edge = await friendshipEdge(userId, targetId);
@@ -549,7 +549,7 @@ friendRoutes.post(
       )
       .limit(1);
     if (inbound) {
-      await addFriendship(userId, targetId);
+      await addFriendship(userId, targetId, userId);
       await deleteDirectedPending(userId, targetId);
       const edge = await friendshipEdge(userId, targetId);
       if (!edge) return err(c, "INTERNAL", "friendship lookup failed");
@@ -611,7 +611,7 @@ friendRoutes.post(
     if (!pending) return err(c, "NOT_FOUND", "request not found");
     if (await blockedEitherWay(userId, senderId)) return err(c, "NOT_FOUND", "request not found");
 
-    await addFriendship(senderId, userId);
+    await addFriendship(senderId, userId, userId);
     await deleteDirectedPending(userId, senderId);
 
     const [edge, [sender]] = await Promise.all([

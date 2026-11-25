@@ -274,7 +274,7 @@ export default function GameBoard() {
       const board = queryClient.getQueryData<GameLeaderboardResponse>(key);
       if (board?.nudges && !board.nudges.canSend) {
         const readiness =
-          token && user ? await ensurePushRegistered(token, user.id) : "unsupported";
+          token && user ? await ensurePushRegistered(token, user.id, "poke") : "unsupported";
         if (readiness !== "ready") {
           // No push on this device: on web that means "get the app", in an
           // installed app it means the binary predates notifications.

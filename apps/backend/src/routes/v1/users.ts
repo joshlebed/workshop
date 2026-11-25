@@ -1,3 +1,4 @@
+import { USER_FLAG_KEYS } from "@workshop/shared/constants";
 import { and, eq, isNotNull, ne, sql } from "drizzle-orm";
 import { type Context, Hono } from "hono";
 import { z } from "zod";
@@ -15,6 +16,7 @@ import {
   resolveImageWrite,
 } from "../../lib/images.js";
 import { logger } from "../../lib/logger.js";
+import { recordMilestones } from "../../lib/milestones.js";
 import { notifySessionsRevoked } from "../../lib/opsNotifications.js";
 import {
   loadRevocableIdentities,
@@ -222,6 +224,10 @@ userRoutes.get("/me/flags", async (c) => {
 
 const putFlagSchema = z.object({ value: userFlagValueSchema });
 
+function hasCompletedAt(value: unknown): boolean {
+  return typeof value === "object" && value !== null && "completedAt" in value;
+}
+
 /** Set (upsert) one flag. Client-owned flags only carry client-authored state;
  * server-authored markers (e.g. `games.share-extension-score`) are also
  * writable here by their owner — harmless, since flags are self-scoped and
@@ -250,6 +256,10 @@ userRoutes.put(
         target: [userFlags.userId, userFlags.key],
         set: { value: parsed.data.value, updatedAt: now },
       });
+    // Finishing the share-sheet walkthrough is the share-setup milestone.
+    if (key.data === USER_FLAG_KEYS.shareSheetAnnouncement && hasCompletedAt(parsed.data.value)) {
+      await recordMilestones(userId, ["share_setup_completed"], db);
+    }
     return ok(c, { key: key.data, value: parsed.data.value });
   },
 );

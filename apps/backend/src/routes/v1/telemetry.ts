@@ -1,7 +1,11 @@
+import { PUSH_PROMPT_STAGES, PUSH_PROMPT_TRIGGERS } from "@workshop/shared/constants";
 import { Hono } from "hono";
 import { z } from "zod";
+import { getDb } from "../../db/client.js";
+import { pushPromptEvents } from "../../db/schema.js";
 import { logger } from "../../lib/logger.js";
 import { parseJsonBody } from "../../lib/request.js";
+import { requestOriginColumns } from "../../lib/requestContext.js";
 import { ok } from "../../lib/response.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { rateLimit } from "../../middleware/rate-limit.js";
@@ -52,6 +56,51 @@ telemetryRoutes.post(
       user_id: c.get("userId"),
       ...parsed.data,
     });
+    return ok(c, { ok: true });
+  },
+);
+
+// HighScore push-permission funnel: one report per stage (pre-prompt shown,
+// accepted / declined, the OS dialog's answer), with what asked. Logged like
+// the share-intent report (filter `client_push_prompt`) and also kept as a
+// `push_prompt_events` row, which the admin dashboard's funnel reads.
+export const pushPromptSchema = z.object({
+  stage: z.enum(PUSH_PROMPT_STAGES),
+  trigger: z.enum(PUSH_PROMPT_TRIGGERS),
+});
+
+telemetryRoutes.post(
+  "/push-prompt",
+  rateLimit({
+    family: "v1.telemetry.pushPrompt",
+    limit: 30,
+    windowSec: 60,
+    key: (c) => c.get("userId") ?? null,
+  }),
+  async (c) => {
+    const parsed = await parseJsonBody(c, pushPromptSchema);
+    if (!parsed.ok) return parsed.response;
+    const userId = c.get("userId");
+    const origin = requestOriginColumns();
+    logger.info("client_push_prompt", {
+      kind: "push_prompt",
+      user_id: userId,
+      stage: parsed.data.stage,
+      trigger: parsed.data.trigger,
+      platform: origin.platform,
+      app_version: origin.appVersion,
+    });
+    // Impersonated sessions are the operator, not the user: log, don't count.
+    if (!c.get("impersonatorUserId")) {
+      await getDb()
+        .insert(pushPromptEvents)
+        .values({
+          userId,
+          ...parsed.data,
+          platform: origin.platform,
+          appVersion: origin.appVersion,
+        });
+    }
     return ok(c, { ok: true });
   },
 );

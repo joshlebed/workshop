@@ -11,6 +11,7 @@ import type {
   AdminAnalyticsPlatform,
   AdminAnalyticsRange,
   ClientReleasePlatform,
+  PushPromptStage,
   WorkshopClient,
 } from "./constants.js";
 import type { ItemContent, ItemKind } from "./itemKinds.js";
@@ -299,6 +300,51 @@ export interface AdminClientReleaseResponse extends ClientReleaseResponse {
   updatedBy: { id: string; displayName: string | null } | null;
 }
 
+/** Users in a cohort who reached a milestone, out of those old enough to have had the chance. */
+export interface AdminActivationCell {
+  reached: number;
+  /** Members whose window has fully elapsed (24h for day-1 cells, 7 days for `backAfterDay7`). */
+  eligible: number;
+}
+
+/** One row of the "2-3-1" activation table: a signup week, or a signup source. */
+export interface AdminActivationRow {
+  /** `YYYY-MM-DD` (Monday of the UTC week) for week rows; the source key for source rows. */
+  key: string;
+  label: string;
+  signups: number;
+  firstScore: AdminActivationCell;
+  twoFriends: AdminActivationCell;
+  threeGames: AdminActivationCell;
+  /** First score + 2 friends + 3 games, all within 24h of signup ("2-3-1"). */
+  all: AdminActivationCell;
+  /** Took a HighScore action on a UTC day at least 7 days after the signup day. */
+  backAfterDay7: AdminActivationCell;
+}
+
+export interface AdminActivationCohorts {
+  label: string;
+  description: string;
+  /** Newest week first. */
+  weeks: AdminActivationRow[];
+  /** The same weeks pooled, split by `users.signup_source`. */
+  bySource: AdminActivationRow[];
+}
+
+/** Push-permission funnel counts for one trigger over the selected range. */
+export interface AdminPushFunnelRow {
+  trigger: string;
+  label: string;
+  /** Distinct users per stage (`PUSH_PROMPT_STAGES`); missing stage = 0. */
+  stages: Partial<Record<PushPromptStage, number>>;
+}
+
+export interface AdminPushFunnel {
+  label: string;
+  description: string;
+  rows: AdminPushFunnelRow[];
+}
+
 export interface AdminAnalyticsResponse {
   client: WorkshopClient;
   rangeDays: AdminAnalyticsRange;
@@ -313,6 +359,10 @@ export interface AdminAnalyticsResponse {
   versionAdoption?: AdminAnalyticsVersionAdoption;
   /** ISO hour the request rollups are complete through; null = no rollups yet. */
   requestsThrough: string | null;
+  /** HighScore only. Optional for the same persisted-cache reason as `versionAdoption`. */
+  activation?: AdminActivationCohorts;
+  /** HighScore only; optional like `activation`. */
+  pushFunnel?: AdminPushFunnel;
 }
 
 /**

@@ -1004,6 +1004,55 @@ export const userFlags = pgTable(
 );
 
 /**
+ * First-time milestones (activation funnel): one row per (user, key), the
+ * moment the user first reached it. Insert-only — every writer is
+ * `ON CONFLICT DO NOTHING` through `lib/milestones.ts`, so `reached_at` is the
+ * first time, never the latest. Keys are `MILESTONE_KEYS` in
+ * `@workshop/shared/constants`. `context` is the entry context at that moment:
+ * `{ signup_source, client, platform, app_version, by_self }` (live writes) or
+ * `{ signup_source, client, platform, backfilled: true }` (migration 0066).
+ * Cascades with the user like `user_flags`.
+ */
+export const userMilestones = pgTable(
+  "user_milestones",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    reachedAt: timestamp("reached_at", { withTimezone: true }).notNull().default(sql`now()`),
+    context: jsonb("context").notNull().default(sql`'{}'::jsonb`),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.key] }),
+    keyReachedIdx: index("user_milestones_key_reached_idx").on(t.key, t.reachedAt),
+  }),
+);
+
+/**
+ * HighScore push-permission funnel events (`POST /v1/telemetry/push-prompt`):
+ * one row per reported stage. Also logged (`client_push_prompt`) for
+ * CloudWatch; the row is what the admin dashboard's funnel reads.
+ */
+export const pushPromptEvents = pgTable(
+  "push_prompt_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    stage: text("stage").notNull(),
+    trigger: text("trigger").notNull(),
+    platform: text("platform"),
+    appVersion: text("app_version"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => ({
+    createdIdx: index("push_prompt_events_created_idx").on(t.createdAt),
+  }),
+);
+
+/**
  * Emoji reactions on a daily-game score (G2c). A reaction targets one score —
  * identified by `(game_id, score_user_id, period_key)`, the `game_scores` PK —
  * and carries the `reactor_user_id` plus their chosen `emoji`. The composite PK

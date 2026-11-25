@@ -14,6 +14,7 @@ import type { UserFlagsResponse } from "@workshop/shared/games";
 import { createContext, type ReactNode, useCallback, useContext, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { fetchUserFlags, putUserFlag } from "../api/release";
+import { reportPushPrompt } from "../api/telemetry";
 import { useAuth } from "../hooks/useAuth";
 import { getPermissionStatus, isPushSupported } from "../lib/pushNotifications";
 import { enablePlayReminder, formatReminderHour } from "../lib/pushRegistration";
@@ -54,7 +55,10 @@ export function PlayReminderPromptProvider({ children }: { children: ReactNode }
           staleTime: 60_000,
         });
         if (flags.flags[USER_FLAG_KEYS.playReminderPrompted] !== undefined) return;
-        setTimeout(() => setVisible(true), OFFER_DELAY_MS);
+        setTimeout(() => {
+          setVisible(true);
+          void reportPushPrompt(token, "shown", "post_score");
+        }, OFFER_DELAY_MS);
       } catch {
         /* no prompt is better than a wrong one */
       }
@@ -65,6 +69,7 @@ export function PlayReminderPromptProvider({ children }: { children: ReactNode }
     (choice: Choice) => {
       choiceRef.current = choice;
       setVisible(false);
+      void reportPushPrompt(token, choice === "turn_on" ? "accepted" : "declined", "post_score");
       const value = { choice, at: new Date().toISOString() };
       queryClient.setQueryData<UserFlagsResponse>(queryKeys.users.flags, (prev) => ({
         flags: { ...(prev?.flags ?? {}), [USER_FLAG_KEYS.playReminderPrompted]: value },
@@ -81,7 +86,7 @@ export function PlayReminderPromptProvider({ children }: { children: ReactNode }
     if (choice !== "turn_on" || !token || !user) return;
     void (async () => {
       try {
-        const result = await enablePlayReminder(token, user.id);
+        const result = await enablePlayReminder(token, user.id, "post_score");
         if (result.ok) {
           void queryClient.invalidateQueries({ queryKey: queryKeys.users.notificationPrefs });
           const hour = result.prefs.playReminderHour;

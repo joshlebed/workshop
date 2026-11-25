@@ -27,6 +27,39 @@ export const ADMIN_ANALYTICS_PLATFORMS = ["ios", "web", "other"] as const;
 export type AdminAnalyticsPlatform = (typeof ADMIN_ANALYTICS_PLATFORMS)[number];
 export type AdminAnalyticsRange = (typeof ADMIN_ANALYTICS_RANGES)[number];
 
+// First-time milestones (`user_milestones`, apps/backend/src/lib/milestones.ts).
+// One row per (user, key), written once at the moment the user first reached
+// it; the admin "2-3-1" activation cohorts read them. Adding a key means a
+// write at every code path that can reach it (see apps/backend/CLAUDE.md).
+export const MILESTONE_KEYS = [
+  "first_friend",
+  "second_friend",
+  "first_game",
+  "third_game",
+  "first_score",
+  "first_share_extension_score",
+  "push_granted",
+  "reminders_enabled",
+  "share_setup_completed",
+] as const;
+export type MilestoneKey = (typeof MILESTONE_KEYS)[number];
+
+// HighScore push-permission funnel (`POST /v1/telemetry/push-prompt`). `shown`
+// = our pre-prompt sheet appeared; `accepted` / `declined` = the answer to it
+// (or the tap that asks directly, for triggers with no pre-prompt); `os_*` =
+// the iOS system dialog's answer, reported only when that dialog was shown.
+export const PUSH_PROMPT_STAGES = [
+  "shown",
+  "accepted",
+  "declined",
+  "os_granted",
+  "os_denied",
+] as const;
+export type PushPromptStage = (typeof PUSH_PROMPT_STAGES)[number];
+/** What asked: the post-score pre-prompt, a poke tap, or the Notifications screen. */
+export const PUSH_PROMPT_TRIGGERS = ["post_score", "poke", "settings"] as const;
+export type PushPromptTrigger = (typeof PUSH_PROMPT_TRIGGERS)[number];
+
 // Which surface a game-score write arrived from at PUT /v1/games/:id/scores
 // (`entrySource`). Optional on the wire (older clients omit it → NULL in
 // `game_scores.entry_source`). Not to be confused with `score_source`
