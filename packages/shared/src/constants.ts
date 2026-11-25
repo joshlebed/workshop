@@ -34,6 +34,29 @@ export type AdminAnalyticsRange = (typeof ADMIN_ANALYTICS_RANGES)[number];
 export const GAME_SCORE_ENTRY_SOURCES = ["share_extension", "paste"] as const;
 export type GameScoreEntrySource = (typeof GAME_SCORE_ENTRY_SOURCES)[number];
 
+// Where a nudge was sent from (`game_nudges.surface`): `board` = the poke hand
+// on a friend's row of a board (friend already played); `post_notice` = the
+// one-tap "Nudge Sam, Riley — they haven't played yet" row after posting.
+export const GAME_NUDGE_SURFACES = ["board", "post_notice"] as const;
+export type GameNudgeSurface = (typeof GAME_NUDGE_SURFACES)[number];
+
+// HighScore's push permission pre-prompts, for the funnel log
+// (`POST /v1/telemetry/push-prompt`, CloudWatch filter `client_push_prompt`).
+// `first_score` = the daily-reminder sheet after a session's first post;
+// `nudge` = the "want to know when they post back?" sheet after a first nudge.
+export const PUSH_PROMPT_TRIGGERS = ["first_score", "nudge"] as const;
+export type PushPromptTrigger = (typeof PUSH_PROMPT_TRIGGERS)[number];
+// shown → turn_on | not_now → (after turn_on) granted | denied | failed.
+export const PUSH_PROMPT_STEPS = [
+  "shown",
+  "turn_on",
+  "not_now",
+  "granted",
+  "denied",
+  "failed",
+] as const;
+export type PushPromptStep = (typeof PUSH_PROMPT_STEPS)[number];
+
 // `users.signup_source` — how a new account found the app, recorded once at
 // signup (apps/backend/src/lib/signupAttribution.ts). `none` = the client sent
 // attribution and it was empty (App Store / direct / typed URL). NULL in the
@@ -61,6 +84,12 @@ export const USER_FLAG_KEYS = {
   appUpdateDismissed: "app.update-banner-dismissed",
   /** HighScore's one-time "daily nudge?" pre-prompt was answered (`{ choice, at }`). */
   playReminderPrompted: "games.play-reminder-prompted",
+  /**
+   * HighScore's one-time "want to know when they post back?" push pre-prompt,
+   * shown after the first one-tap nudge (spike 4), was answered (`{ choice, at }`).
+   * Separate from `playReminderPrompted` so each trigger's opt-in is measured alone.
+   */
+  nudgePushPrompted: "games.nudge-push-prompted",
   // One-time share-sheet announcement on HighScore's Games home. Client-
   // authored: `{ dismissedAt }` when X'd away, `{ completedAt }` when the
   // walkthrough finished. Server-side so a reinstall/second device never

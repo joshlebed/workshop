@@ -1,3 +1,4 @@
+import { PUSH_PROMPT_STEPS, PUSH_PROMPT_TRIGGERS } from "@workshop/shared/constants";
 import { Hono } from "hono";
 import { z } from "zod";
 import { logger } from "../../lib/logger.js";
@@ -49,6 +50,39 @@ telemetryRoutes.post(
     logger.info("client_share_intent", {
       kind: "client_telemetry",
       event: "share_intent",
+      user_id: c.get("userId"),
+      ...parsed.data,
+    });
+    return ok(c, { ok: true });
+  },
+);
+
+// HighScore's push permission pre-prompt funnel, by trigger (spike 4): one log
+// line per step, CloudWatch filter `client_push_prompt`. `first_score` = the
+// daily-reminder sheet, `nudge` = the "want to know when they post back?"
+// sheet after a first nudge. The answer itself is also durable in `user_flags`
+// (`games.play-reminder-prompted` / `games.nudge-push-prompted`); the OS
+// outcome (`granted` / `denied`) only exists here.
+const pushPromptSchema = z.object({
+  trigger: z.enum(PUSH_PROMPT_TRIGGERS),
+  step: z.enum(PUSH_PROMPT_STEPS),
+  platform: z.string().max(16).optional(),
+});
+
+telemetryRoutes.post(
+  "/push-prompt",
+  rateLimit({
+    family: "v1.telemetry.pushPrompt",
+    limit: 30,
+    windowSec: 60,
+    key: (c) => c.get("userId") ?? null,
+  }),
+  async (c) => {
+    const parsed = await parseJsonBody(c, pushPromptSchema);
+    if (!parsed.ok) return parsed.response;
+    logger.info("client_push_prompt", {
+      kind: "client_telemetry",
+      event: "push_prompt",
       user_id: c.get("userId"),
       ...parsed.data,
     });

@@ -72,6 +72,7 @@ import { scoreLineLabel } from "../lib/scoreCheck";
 import { isGameReteachable, specForGame } from "../lib/scoreSpecs";
 import { buildTodaysGameScoresSummary, summarizeGameScoreBody } from "../lib/scoresSummary";
 import { copyToClipboard, shareOrCopyLink } from "../lib/share";
+import { friendsWaitingLine } from "../lib/stalledNudges";
 import { teachAfterPost, teachOutcomeMessage } from "../lib/teachAfterPost";
 import { type ScorePostExtras, useTeachAvailable } from "../lib/useScoreCheck";
 import { useGamesRuntime } from "../runtime";
@@ -313,7 +314,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
       myGames.find((g) => g.gameId === gameId)?.standings.viewerHasPlayed ?? false,
     [myGames],
   );
-  const { promptItemId, markPlaying, dismiss } = useReturnToPaste({
+  const { promptItemId, markPlaying, openPasteFor, dismiss } = useReturnToPaste({
     todayKey,
     hasScoreForItem: hasMyScore,
     scope: "games",
@@ -435,9 +436,23 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
             : {}),
         };
       });
+      // Spike 4: friends posted today and you haven't — "Sam & Riley played —
+      // your turn", tap to paste.
+      const waitingLabel =
+        viewingToday && !mg.standings.viewerHasPlayed
+          ? friendsWaitingLine(entries, user?.id ?? null)
+          : null;
       return (
         <StandingsCard
           key={mg.gameId}
+          waiting={
+            waitingLabel
+              ? {
+                  label: waitingLabel,
+                  onPress: () => openPasteFor({ id: mg.gameId, url: mg.game.url }),
+                }
+              : undefined
+          }
           cardId={mg.gameId}
           title={mg.game.title}
           coverImageUrl={mg.game.iconUrl}
@@ -469,6 +484,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
       teachAvailable,
       router,
       markPlaying,
+      openPasteFor,
       viewStandings,
       viewDate,
       viewingToday,

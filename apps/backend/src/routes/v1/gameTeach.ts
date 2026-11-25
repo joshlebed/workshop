@@ -45,6 +45,7 @@ import { loadGameStandings } from "../../lib/gameStandings.js";
 import { logger } from "../../lib/logger.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
+import { afterScorePosted } from "../../lib/stalledNudges.js";
 import { claimTeachLlmCall } from "../../lib/teach/budget.js";
 import { requestDirection } from "../../lib/teach/direction.js";
 import { FIND_TARGETS_TIMEOUT_MS, findTargets } from "../../lib/teach/findTargets.js";
@@ -224,11 +225,15 @@ export async function handleScoreUpsertV2(c: Context, gameId: string): Promise<R
       ? null
       : await postedScoreCheck({ userId, game, periodKey, scoreRaw, context });
 
+  // Spike 4: answer bookkeeping + the one-tap nudge row (same as the legacy path).
+  const stalledFriends = await afterScorePosted(userId, game, periodKey);
+
   const response: UpsertGameScoreResponse = {
     score: toScoreShape(saved.row),
     ...(saved.teach ? { teach: saved.teach } : {}),
     standings,
     ...(check ? { check } : {}),
+    ...(stalledFriends ? { stalledFriends } : {}),
   };
   return ok(c, response);
 }

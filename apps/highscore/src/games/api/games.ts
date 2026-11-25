@@ -14,6 +14,8 @@ import type {
   GameShareLinkResponse,
   GamesResponse,
   SendGameNudgeResponse,
+  SendStalledNudgesRequest,
+  SendStalledNudgesResponse,
   SetGameScoreSpecResponse,
   UpsertGameScoreRequest,
   UpsertGameScoreResponse,
@@ -105,6 +107,24 @@ export function sendGameNudge(
   return apiRequest<SendGameNudgeResponse>({
     method: "POST",
     path: `/v1/games/${gameId}/nudges`,
+    body,
+    token,
+  });
+}
+
+/**
+ * `POST /v1/games/:id/nudges/stalled` — the one-tap "Nudge Sam, Riley — they
+ * haven't played yet" row after posting. 200 with who was nudged and who
+ * was refused; each friend is judged alone.
+ */
+export function sendStalledNudges(
+  gameId: string,
+  body: SendStalledNudgesRequest,
+  token: string | null,
+): Promise<SendStalledNudgesResponse> {
+  return apiRequest<SendStalledNudgesResponse>({
+    method: "POST",
+    path: `/v1/games/${gameId}/nudges/stalled`,
     body,
     token,
   });

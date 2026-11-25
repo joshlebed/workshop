@@ -1062,6 +1062,13 @@ export const gameNudges = pgTable(
       .references(() => games.id, { onDelete: "cascade" }),
     periodKey: text("period_key").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+    // Where it was sent from (`GAME_NUDGE_SURFACES`): `board` (the poke hand on
+    // a friend who played) or `post_notice` (the one-tap "they haven't played
+    // yet" row after posting). Rows before spike 4 are all `board`.
+    surface: text("surface").notNull().default("board"),
+    // `post_notice` only: when the nudged friend posted this game within 24h
+    // (stamped once by `recordNudgeAnswers`, which also tells the sender).
+    answeredAt: timestamp("answered_at", { withTimezone: true }),
     // Request origin (see `requestOriginColumns`); NULL = no client headers.
     client: text("client"),
     platform: text("platform"),
@@ -1069,7 +1076,35 @@ export const gameNudges = pgTable(
   },
   (t) => ({
     pk: primaryKey({ columns: [t.senderId, t.periodKey, t.gameId, t.recipientId] }),
+    surfaceCheck: check("game_nudges_surface_check", sql`${t.surface} IN ('board', 'post_notice')`),
     recipientIdx: index("game_nudges_recipient_idx").on(t.recipientId, t.createdAt),
+  }),
+);
+
+/**
+ * Automatic "your friends played, you haven't" pushes (spike 4), sent by the
+ * `{ "job": "play-reminders" }` invocation in place of the plain reminder.
+ * One row per user per local day (`period_key` = the recipient's local date
+ * in their reminder timezone) — the primary key is the once-a-day cap.
+ * `friend_ids` are the friends named/counted; whether the recipient then
+ * posted `game_id` within 24h is a join on `game_scores.created_at`.
+ */
+export const autoNudges = pgTable(
+  "auto_nudges",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    periodKey: text("period_key").notNull(),
+    gameId: uuid("game_id")
+      .notNull()
+      .references(() => games.id, { onDelete: "cascade" }),
+    friendIds: uuid("friend_ids").array().notNull(),
+    sentAt: timestamp("sent_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.periodKey] }),
+    sentAtIdx: index("auto_nudges_sent_at_idx").on(t.sentAt),
   }),
 );
 

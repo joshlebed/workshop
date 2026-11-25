@@ -286,7 +286,41 @@ export type GameNudgeRefusal =
   | "unreachable"
   | "push_failed"
   | "already_nudged"
-  | "daily_limit";
+  | "daily_limit"
+  /** A "haven't played yet" nudge to a friend who has since posted. */
+  | "friend_already_played"
+  /** A "haven't played yet" nudge about a game the friend doesn't have. */
+  | "friend_lacks_game";
+
+/**
+ * Friends who have this game in their list, haven't posted it for the post's
+ * day, can receive a push, and haven't been nudged by the poster on this game
+ * today — the one-tap "Nudge Sam, Riley — they haven't played yet" row in the
+ * posted-score notice (spike 4). Present on a score post only when there is at
+ * least one such friend and the poster has nudges left; absent on older
+ * servers.
+ */
+export interface StalledFriendsNudge {
+  friends: { userId: string; displayName: string | null }[];
+  /** Nudges left today across every game and surface; null = unlimited. */
+  remaining: number | null;
+  limit: number | null;
+}
+
+/** `POST /v1/games/:id/nudges/stalled` — nudge friends who haven't played yet. */
+export interface SendStalledNudgesRequest {
+  periodKey: string;
+  userIds: string[];
+}
+
+export interface SendStalledNudgesResponse {
+  /** Friends a push went to, in request order. */
+  nudged: string[];
+  /** Everyone else, with why. `not_found` = not a friend (or blocked). */
+  refused: { userId: string; reason: GameNudgeRefusal | "not_found" }[];
+  remaining: number | null;
+  limit: number | null;
+}
 
 /** `POST /v1/games` / `PUT /v1/games/:id/scores` responses. */
 export interface AddGameResponse {
@@ -311,6 +345,8 @@ export interface UpsertGameScoreResponse {
    * fact. Absent when the client already saw the preview for this text.
    */
   check?: PostedScoreCheck;
+  /** Friends the poster can nudge in one tap (spike 4); absent = nothing to offer. */
+  stalledFriends?: StalledFriendsNudge;
 }
 
 /** Post-hoc advice about a score that was posted before its preview arrived. */

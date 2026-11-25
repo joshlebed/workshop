@@ -231,9 +231,26 @@ any other file under `src/` or `app/` mentions the package). Web is always unsup
   OS dialog (after the Sheet's `onClosed`) → token → `PUT` prefs at the stored hour else the
   server's `suggestedHour`. The sheet opens 1.2s after the post so it never stacks on the
   closing paste sheet.
+- **Second trigger: the nudge (spike 4).** `PlayReminderPromptProvider` serves two pre-prompts,
+  one sheet a session at most, each with its own flag so their opt-in is measured apart:
+  `first_score` (`usePlayReminderOffer`, flag `games.play-reminder-prompted`, Turn on = push +
+  daily reminder) and `nudge` (`useNudgePushOffer`, flag `games.nudge-push-prompted`, "Want to
+  know when they post back?", Turn on = push only via `ensurePushRegistered`). Every step goes
+  to the log-only `POST /v1/telemetry/push-prompt` (`shown`, `turn_on` / `not_now`, then
+  `granted` / `denied` / `failed`; CloudWatch `client_push_prompt`). A post whose response
+  carries `stalledFriends` skips the `first_score` offer so the nudge trigger gets the moment.
+- **One-tap nudge after posting** (`usePostedScoreNotice`, copy in `src/games/lib/stalledNudges.ts`):
+  with no `check` advice and a `stalledFriends` block on the post, the toast reads "Score
+  posted. Nudge Sam, Riley — they haven't played yet · 5 nudges left today" with **Nudge**,
+  which `POST`s `/v1/games/:id/nudges/stalled` for everyone offered (cut to the allowance), then
+  offers the `nudge` pre-prompt. The server picks who is offered; the client never filters.
+- **Home "friends waiting" line**: a game friends posted today that you haven't shows "Sam &
+  Riley played — your turn" under the card header (`StandingsCard` `waiting` prop,
+  `friendsWaitingLine`); a tap opens that game's paste sheet (`openPasteFor`). Today only.
 - **Settings**: `/settings/notifications` (ProfileMenu → Notifications). Unsupported builds show
-  the App Store message instead of controls. Taps route `data.url` (`highscore:///`, set by
-  `apps/backend/src/jobs/playReminders.ts`) through `notificationPath`, cold start included.
+  the App Store message instead of controls. Taps route `data.url` through `notificationPath`, cold start included: `highscore:///`
+  (plain reminder) or `highscore:///games/<id>?date=<day>` (auto nudge, "waiting" nudge,
+  "posted back" push, pokes) — every push the backend sends carries one.
 - **Delivery needs a push key**: the operator runs `eas credentials --platform ios` → Push
   Notifications → set up a key once; until then Expo can't deliver to iOS.
 
