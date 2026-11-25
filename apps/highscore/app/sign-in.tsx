@@ -1,14 +1,22 @@
+import { userAvatarImageUrl } from "@workshop/api-client/avatar";
 import { useAppleSignIn } from "@workshop/api-client/oauth/apple";
 import { GoogleSignInButton } from "@workshop/ui";
-import { useRouter } from "expo-router";
-import { useState } from "react";
+import { type Href, useRouter } from "expo-router";
+import { useEffect, useState } from "react";
 import { Platform, StyleSheet, View } from "react-native";
 import { AppleSignInButton } from "../src/components/AppleSignInButton";
 import { AppStoreBadge } from "../src/components/AppStoreBadge";
 import { Wordmark } from "../src/components/Wordmark";
+import {
+  invitePath,
+  type PreloginInviteContext,
+  type PreloginScoreDraft,
+  signInContextCopy,
+} from "../src/games/lib/preloginDraft";
+import { loadLiveInviteContext, loadPreloginDraft } from "../src/games/lib/preloginDraftStore";
 import { useAuth } from "../src/hooks/useAuth";
 import { PRIVACY_ROUTE, TERMS_ROUTE } from "../src/lib/publicRoutes";
-import { Button, Text, tokens, uiType } from "../src/theme";
+import { Avatar, Button, Text, tokens, uiType } from "../src/theme";
 
 const DEV_AUTH_ENABLED = process.env.EXPO_PUBLIC_DEV_AUTH === "1";
 // The "get the app" card only makes sense from the web app; inside the iOS
@@ -25,6 +33,7 @@ export default function SignIn() {
   const router = useRouter();
   const [busy, setBusy] = useState<"apple" | "google" | "dev" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const invite = useInviteContext();
 
   async function handleApple() {
     try {
@@ -71,6 +80,16 @@ export default function SignIn() {
         <Wordmark size="lg" />
         <Text tone="secondary">Compete in daily games</Text>
       </View>
+
+      {invite ? (
+        <InviteContextHeader
+          context={invite.context}
+          draft={invite.draft}
+          onBack={() =>
+            router.replace(invitePath(invite.context.linkKind, invite.context.linkToken) as Href)
+          }
+        />
+      ) : null}
 
       <View style={styles.actions}>
         {/* Apple's own button artwork (Guideline 4) — see AppleSignInButton. */}
@@ -175,7 +194,88 @@ export default function SignIn() {
   );
 }
 
+/**
+ * Score before sign-in: who invited this visitor (and the score they pasted),
+ * read from the stash the invite landing wrote. Null when they came any other
+ * way, or the stash is stale (its pending link is gone or a day old).
+ */
+function useInviteContext(): {
+  context: PreloginInviteContext;
+  draft: PreloginScoreDraft | null;
+} | null {
+  const [state, setState] = useState<{
+    context: PreloginInviteContext;
+    draft: PreloginScoreDraft | null;
+  } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const context = await loadLiveInviteContext(Date.now());
+      if (!context) return;
+      const draft = await loadPreloginDraft();
+      if (!cancelled) setState({ context, draft });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return state;
+}
+
+function InviteContextHeader({
+  context,
+  draft,
+  onBack,
+}: {
+  context: PreloginInviteContext;
+  draft: PreloginScoreDraft | null;
+  onBack: () => void;
+}) {
+  const copy = signInContextCopy(context, draft);
+  return (
+    <View style={styles.invite} testID="sign-in-invite-context">
+      <Avatar
+        name={context.inviterName}
+        imageUrl={userAvatarImageUrl(context.inviterId)}
+        size="md"
+      />
+      <View style={styles.inviteCopy}>
+        <Text variant="heading" testID="sign-in-invite-title">
+          {copy.title}
+        </Text>
+        <Text tone="secondary" testID="sign-in-invite-caption">
+          {copy.caption}
+        </Text>
+        <Text
+          variant="caption"
+          tone="link"
+          style={styles.legalLink}
+          onPress={onBack}
+          accessibilityRole="link"
+          testID="sign-in-invite-back"
+        >
+          Back to the invite
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  invite: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space.md,
+    maxWidth: 420,
+    width: "100%",
+    alignSelf: "center",
+    padding: tokens.space.md,
+    borderRadius: tokens.radius.sm,
+    backgroundColor: tokens.bg.surface,
+    borderWidth: tokens.bezel,
+    borderColor: tokens.border.default,
+  },
+  inviteCopy: { flex: 1, gap: tokens.space.xs },
   root: {
     flex: 1,
     backgroundColor: tokens.bg.canvas,

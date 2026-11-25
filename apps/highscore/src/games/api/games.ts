@@ -27,6 +27,8 @@ const gameShareLinkResponseSchema = z.object({ token: z.string(), url: z.string(
 const gameShareLinkPreviewSchema = z.object({
   user: z.object({ userId: z.string(), displayName: z.string().nullable() }),
   viewer: z.object({ isSelf: z.boolean(), isFriend: z.boolean() }).optional(),
+  // Titles of the sharer's games that day; older servers omit it.
+  games: z.array(z.object({ title: z.string() })).optional(),
 });
 
 /**

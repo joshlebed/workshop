@@ -67,6 +67,33 @@ requested, which is the only form that reports `friendGameCount`), one-tap add /
 hand off to home. A play-link recipient never lands on a pending request anymore; the profile route keeps
 its `?via=` vouch for the avatar tap and also passes `via` on its Add button.
 
+**Score before sign-in (onboarding spike 1, `docs/onboarding-spikes-2026-11.md`).** Signed out,
+neither landing bounces to `/sign-in` any more: both resolve publicly (`GET /v1/game-share/:token`
+now also returns `games: [{ title }]`, the sharer's games on the link's day — titles only, the
+link's UTC day else the day before; `GET /v1/friends/requests/:token`) and render
+`inviteLanding/SignedOutInviteLanding.tsx`: inviter card, "<name> played today" chips, and a paste
+box read **locally** by `readDraftText` (`lib/preloginDraft.ts`: registry detection + the game's
+`spec` / `formatShareBody`). There is no unauthenticated write: a recognised paste is stashed as
+it's typed (`PRELOGIN_SCORE_DRAFT_KEY`), and the sign-in button stashes `PENDING_INVITE_CONTEXT_KEY`
+(inviter name/id + link) so `/sign-in` shows "<name> invited you — Sign in to save your MapTap
+score." (only while the matching pending token is still stashed, ≤24h). Back on the link signed in,
+`usePreloginDraftPost` loads the draft (only for that link and today — another day's is dropped as
+`expired`); the accept card shows it and reads "Add <name> & save score" / "Just save my score",
+and either posts it (`addGame` find-or-create + the normal upsert, `entrySource: "paste"`) and
+`router.replace`s to `routes.game(gameId, periodKey)` — the board with the new friend's row —
+instead of the picker. Already friends with a draft → same post → board. A failed post toasts,
+drops the draft and falls back to the old flow. **Keep `posted` frozen**: the accept invalidates the
+preview, whose refetch says "already friends", and without the `posting || posted` spinner (and the
+`acceptingHere` guard in `FriendAccept`) its profile redirect lands over the board. Funnel telemetry
+is `POST /v1/telemetry/prelogin-score` (public, per-IP limited; logged `kind: "prelogin_score"`,
+events in `PRELOGIN_SCORE_EVENTS`: `landing_viewed`, `draft_created`, `signin_opened`,
+`draft_posted`, `draft_abandoned` with `reason` `discarded` | `expired` | `replaced` |
+`post_failed` | `left_page`), joined across sign-in by the draft's random `draftId`; never score
+text. `left_page` (web `pagehide`, keepalive fetch) can precede a `draft_posted` for the same id
+if the visitor comes back — count a draft as abandoned only without a `draft_posted`. Dev web
+auto-signs-in: set localStorage `highscore.disable-auto-dev=1` and clear cookies to see the
+signed-out landing.
+
 HighScore has no Workshop-style `/share` chooser — there is nothing to choose between, so
 `_layout.tsx` sends the iOS share intent straight to `/share/pick-game` and `app/share/index.tsx`
 renders the same `PickGame` screen. Every share affordance Workshop puts on its chooser has to live

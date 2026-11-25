@@ -43,6 +43,7 @@ async function mint(asUser: string) {
 type ResolvePayload = {
   user: { userId: string; displayName: string | null };
   viewer?: { isSelf: boolean; isFriend: boolean };
+  games?: { title: string }[];
 };
 
 async function resolve(token: string, asUser?: string) {
@@ -132,6 +133,59 @@ describe("GET /v1/game-share/:token (resolve)", () => {
   it("404s an unknown token", async () => {
     const { status } = await resolve("doesnotexist");
     expect(status).toBe(404);
+  });
+});
+
+describe("GET /v1/game-share/:token — the sharer's games that day (titles only)", () => {
+  const otherSharer = "00000000-0000-4000-8000-000000000004";
+  const mapTap = "00000000-0000-4000-8000-0000000000a1";
+  const tens = "00000000-0000-4000-8000-0000000000a2";
+  const krillion = "00000000-0000-4000-8000-0000000000a3";
+
+  beforeAll(async () => {
+    await rows(
+      `INSERT INTO users (id, email, display_name) VALUES ($1, 'titles@example.com', 'Titles Tia')`,
+      [otherSharer],
+    );
+    await rows(
+      `INSERT INTO games (id, normalized_url, url, title) VALUES
+         ($1, 'test-maptap.example', 'https://test-maptap.example', 'MapTap'),
+         ($2, 'test-tens.example', 'https://test-tens.example', 'Daily Tens'),
+         ($3, 'test-krillion.example', 'https://test-krillion.example', 'Krillion')`,
+      [mapTap, tens, krillion],
+    );
+    // Links on 2026-11-20 and 2026-11-22; scores on 11-20 (two games), 11-19
+    // (Krillion: the day before), and 11-21 (the day before 11-22).
+    await rows(
+      `INSERT INTO game_share_links (user_id, date_key, token) VALUES
+         ($1, '2026-11-20', 'TitlesA1'), ($1, '2026-11-22', 'TitlesB2'), ($1, '2026-11-25', 'TitlesC3')`,
+      [otherSharer],
+    );
+    await rows(
+      `INSERT INTO game_scores (game_id, user_id, period_key, score_raw, score_value) VALUES
+         ($1, $4, '2026-11-20', 'Final score: 937', 937),
+         ($2, $4, '2026-11-20', '🏆🏆❌', 2),
+         ($3, $4, '2026-11-19', 'Krillion 12', 12),
+         ($3, $4, '2026-11-21', 'Krillion 9', 9)`,
+      [mapTap, tens, krillion, otherSharer],
+    );
+  });
+
+  it("lists the titles of the games posted on the link's day, never a score", async () => {
+    const { status, body } = await resolve("TitlesA1");
+    expect(status).toBe(200);
+    expect(body.games?.map((g) => g.title).sort()).toEqual(["Daily Tens", "MapTap"]);
+    expect(JSON.stringify(body)).not.toMatch(/937|Final score/);
+  });
+
+  it("falls back to the day before when the link's own day has no scores", async () => {
+    const { body } = await resolve("TitlesB2");
+    expect(body.games).toEqual([{ title: "Krillion" }]);
+  });
+
+  it("is empty when the sharer posted nothing around the link's day", async () => {
+    const { body } = await resolve("TitlesC3");
+    expect(body.games).toEqual([]);
   });
 });
 

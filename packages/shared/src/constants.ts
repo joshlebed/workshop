@@ -95,3 +95,18 @@ export const HIGHSCORE_APP_SCHEME = "highscore";
 export const ADMIN_PUSH_MAX_RECIPIENTS = 500;
 export const ADMIN_PUSH_TITLE_MAX = 100;
 export const ADMIN_PUSH_BODY_MAX = 500;
+
+/**
+ * Score-before-sign-in funnel steps (`POST /v1/telemetry/prelogin-score`,
+ * logged as `kind: "prelogin_score"`): a signed-out visitor saw an invite
+ * landing, pasted a score into a local draft, the draft was posted after
+ * sign-in, or the draft was abandoned.
+ */
+export const PRELOGIN_SCORE_EVENTS = [
+  "landing_viewed",
+  "draft_created",
+  "signin_opened",
+  "draft_posted",
+  "draft_abandoned",
+] as const;
+export type PreloginScoreEvent = (typeof PRELOGIN_SCORE_EVENTS)[number];
