@@ -77,13 +77,14 @@ export default function AcceptFriendInvite() {
     onSuccess: async (data) => {
       haptics.medium();
       await removeItem(PENDING_FRIEND_INVITE_TOKEN_KEY).catch(() => {});
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.friends.all }),
-        // Friendship gates score visibility — refresh the social board.
-        queryClient.invalidateQueries({ queryKey: ["games"] }),
-      ]);
-      // Hand off to the post-accept picker instead of bouncing to /friends.
+      // Hand off to the post-accept picker instead of bouncing to /friends —
+      // before invalidating: the invite preview sits under `["friends"]`, and
+      // refetching it while still enabled returned `viewerIsFriend: true`,
+      // which redirected to the profile and skipped the picker entirely.
       setAcceptedFriend(data.friend);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.friends.all });
+      // Friendship gates score visibility — refresh the social board.
+      void queryClient.invalidateQueries({ queryKey: ["games"] });
     },
     onError: (e) => {
       // Drop the stash on a hard failure so re-opening doesn't loop back here.
