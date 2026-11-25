@@ -6,6 +6,10 @@
 // `loadNudgeState` is the same rules read-only, for the board. Delivery goes
 // through the shared `sendExpoPushMessages`; if Expo does not accept it the
 // nudge is taken back and the request fails (`push_failed`).
+//
+// The other direction — nudging friends who have NOT played yet, from the
+// posted-score notice — lives in `lib/stalledNudges.ts` and shares this
+// module's allowance (`nudgesSentOn`) and table (`surface = 'post_notice'`).
 
 import type { GameNudgeRefusal, GameNudgeState } from "@workshop/shared/games";
 import { NUDGE_DAILY_LIMIT } from "@workshop/shared/games";
@@ -21,7 +25,7 @@ import { logger } from "./logger.js";
 import { requestOriginColumns } from "./requestContext.js";
 
 /** Upper bound on the Expo request so a slow push can't hold the response. */
-const NUDGE_PUSH_TIMEOUT_MS = 3000;
+export const NUDGE_PUSH_TIMEOUT_MS = 3000;
 const DAY_MS = 86_400_000;
 
 /**
@@ -56,7 +60,7 @@ function buildNudgePushMessages(
   }));
 }
 
-async function senderIsAdmin(senderId: string): Promise<boolean> {
+export async function senderIsAdmin(senderId: string): Promise<boolean> {
   const [actor] = await getDb()
     .select({ email: users.email })
     .from(users)
@@ -65,7 +69,8 @@ async function senderIsAdmin(senderId: string): Promise<boolean> {
   return actor ? isAdminUser(actor) : false;
 }
 
-async function nudgesSentOn(senderId: string, periodKey: string): Promise<number> {
+/** Nudges `senderId` spent on `periodKey`, across every game and surface. */
+export async function nudgesSentOn(senderId: string, periodKey: string): Promise<number> {
   const [row] = await getDb()
     .select({ count: sql<number>`count(*)::int` })
     .from(gameNudges)

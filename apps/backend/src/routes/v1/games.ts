@@ -19,6 +19,7 @@ import type {
   RecognizeGameResponse,
   ScoreReactionSummary,
   SendGameNudgeResponse,
+  SendStalledNudgesResponse,
   SetGameScoreSpecResponse,
   SetScoreReactionResponse,
   UpsertGameScoreResponse,
@@ -84,6 +85,7 @@ import { requestOriginColumns } from "../../lib/requestContext.js";
 import { err, ok } from "../../lib/response.js";
 import { periodKeySchema, scoreRawSchema, upsertScoreSchema } from "../../lib/scoreSchemas.js";
 import { parseAndValidateUrl } from "../../lib/ssrf-guard.js";
+import { afterScorePosted, sendStalledNudges } from "../../lib/stalledNudges.js";
 import { teachModeFor } from "../../lib/teach/gate.js";
 import { recordShareExtensionScore } from "../../lib/userFlags.js";
 import { addToMyGames } from "../../lib/userGames.js";
@@ -667,7 +669,14 @@ gameRoutes.put(
       scoreRaw: parsed.data.scoreRaw,
     });
 
-    const response: UpsertGameScoreResponse = { score: toScoreShape(row) };
+    // Spike 4: answer bookkeeping for nudges this poster got, and the
+    // friends they can nudge in one tap. Never fails the post.
+    const stalledFriends = await afterScorePosted(userId, game, parsed.data.periodKey);
+
+    const response: UpsertGameScoreResponse = {
+      score: toScoreShape(row),
+      ...(stalledFriends ? { stalledFriends } : {}),
+    };
     return ok(c, response);
   },
 );
@@ -793,6 +802,8 @@ const NUDGE_REFUSALS: Record<GameNudgeRefusal, string> = {
   push_failed: "Failed to send poke",
   already_nudged: "You already poked them on this game today.",
   daily_limit: "You're out of pokes for today.",
+  friend_already_played: "They've already played this one today.",
+  friend_lacks_game: "They don't play this one.",
 };
 
 /**
@@ -832,6 +843,49 @@ gameRoutes.post("/:id/nudges", async (c) => {
   };
   return ok(c, response, 201);
 });
+
+const sendStalledNudgesSchema = z.object({
+  periodKey: periodKeySchema,
+  userIds: z.array(uuidSchema).min(1).max(50),
+});
+
+/**
+ * POST /v1/games/:id/nudges/stalled — the one-tap "Nudge Sam, Riley — they
+ * haven't played yet" row after posting (spike 4). Each friend is judged
+ * alone (`lib/stalledNudges.ts`): 200 with who was nudged and who was refused
+ * and why, never a whole-request failure for one friend's state.
+ */
+gameRoutes.post(
+  "/:id/nudges/stalled",
+  rateLimit({
+    family: "v1.games.nudges.stalled",
+    limit: 20,
+    windowSec: 60,
+    key: (c) => c.get("userId") ?? null,
+  }),
+  async (c) => {
+    const userId = c.get("userId");
+    const gameId = uuidSchema.safeParse(c.req.param("id"));
+    if (!gameId.success) return err(c, "NOT_FOUND", "game not found");
+    const parsed = await parseJsonBody(c, sendStalledNudgesSchema);
+    if (!parsed.ok) return parsed.response;
+    const { periodKey, userIds } = parsed.data;
+    if (!isNudgeablePeriod(periodKey)) return err(c, "VALIDATION", "nudges are for today only");
+    const [game] = await getDb()
+      .select({ id: games.id, title: games.title })
+      .from(games)
+      .where(eq(games.id, gameId.data))
+      .limit(1);
+    if (!game) return err(c, "NOT_FOUND", "game not found");
+    const response: SendStalledNudgesResponse = await sendStalledNudges(
+      userId,
+      userIds,
+      game,
+      periodKey,
+    );
+    return ok(c, response);
+  },
+);
 
 /** Viewer-relative reaction summary for one score (drives the PUT/DELETE echo). */
 async function reactionsForOneScore(

@@ -744,6 +744,34 @@ friend request (`lib/friendRequestPush.ts`: best-effort, 3s fetch cap, never fai
 `data: { kind: "friend_request", userId }`) and the nudge push (`lib/nudges.ts`, same best-effort
 shape, `data: { kind: "nudge", userId, gameId, url }` where `url` opens the board); its endpoint is `EXPO_PUSH_URL` (config,
 default Expo's). Never send to Expo with production tokens from a sandbox — point it at a stub.
+In the Niteshift sandbox `.niteshift/files/backend.sh` already defaults `EXPO_PUSH_URL` to the
+`expo-push-stub` service (:8790, every message appended to `/tmp/expo-push-stub.jsonl`).
+
+**The job's first pass is the automatic nudge (spike 4).** Among the users due this hour (reminders
+on, a push token, reminder hour = now in their zone, not reminded in 20h, no score today), anyone
+whose friends posted a game they have on their local date — **≥2 friends**, blocks excluded, no
+`auto_nudges` row for that day — gets one push in place of "Time to play": "You're the only one
+who hasn't played MapTap today / Sam and Riley are waiting" when every friend with the game has
+posted, else "Sam and Riley played MapTap today / Your turn — post your score";
+`data: { kind: "auto_nudge", gameId, url }` opens that day's board. The game is the one most
+friends posted (then "only one left", then home order). It rides the reminder's own hour on
+purpose: same quiet rule, still one push a day, and no extra Neon wake (the hourly tick still
+skips the DB through `reminderSlots`). `auto_nudges` (PK user + local day) is claimed before
+sending and released for a user Expo never answered; `last_reminded_at` advances as for a
+reminder. Pure pieces: `pickAutoNudge` / `autoNudgeMessage`.
+
+**"They haven't played yet" nudges** (`lib/stalledNudges.ts`) are the other direction from the
+board poke: the score post (both write paths, via `afterScorePosted`) returns `stalledFriends` —
+friends who have the game in `user_games`, no score for the day, a push token, not nudged by the
+poster on it today — and `POST /v1/games/:id/nudges/stalled { periodKey, userIds }` nudges each
+(200 with `nudged` + per-friend `refused` reasons). Same `game_nudges` key and the same
+`NUDGE_DAILY_LIMIT` as pokes, stored with `surface = 'post_notice'` (pokes are `board`); the
+sender needs no push token. Push: "<name> is waiting for your <game> score",
+`data: { kind: "nudge_waiting", userId, gameId, url }`. When a nudged friend posts that game
+within 24h, `recordNudgeAnswers` stamps `answered_at` once and pushes the sender "<name> posted
+<game>" (`kind: "nudge_answered"`, best-effort, 3s cap, never fails the post). The daily digest's
+**Nudges** line counts pokes / after-posting / auto, and how many of the day before's were
+answered within 24h.
 
 ## Lists and items are soft-deleted via `archived_at`
 

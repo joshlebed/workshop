@@ -112,6 +112,12 @@ export interface StandingsCardProps {
   onLongPressBody?: () => void;
   /** Open the game externally + arm the paste-on-return prompt. */
   onPlay: () => void;
+  /**
+   * Friends posted this game today and the viewer hasn't (spike 4): one line
+   * under the header, "Sam & Riley played — your turn", that opens the paste
+   * sheet. Caller gates on viewing today.
+   */
+  waiting?: { label: string; onPress: () => void } | undefined;
 }
 
 export const StandingsCard = memo(function StandingsCard({
@@ -131,6 +137,7 @@ export const StandingsCard = memo(function StandingsCard({
   onPressBody,
   onLongPressBody,
   onPlay,
+  waiting,
 }: StandingsCardProps) {
   const scored = rows;
   const playedCount = scored.length;
@@ -238,6 +245,25 @@ export const StandingsCard = memo(function StandingsCard({
           </Pressable>
         ) : null}
       </View>
+
+      {waiting && !loading ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityHint="Opens the paste sheet for this game"
+          onPress={waiting.onPress}
+          hitSlop={4}
+          testID={`game-card-waiting-${cardId}`}
+          style={({ pressed, hovered }) => [
+            styles.waiting,
+            (pressed || hovered) && styles.playBtnHover,
+          ]}
+        >
+          <Text style={styles.waitingText} numberOfLines={1}>
+            {waiting.label}
+          </Text>
+          <PixelIcon name="chevron-right" size={16} color={tokens.neon.pink} />
+        </Pressable>
+      ) : null}
 
       {/* Standings — only when there's something to show; an empty game
           stays one header row tall. Rows are plain views: the card's own
@@ -468,6 +494,21 @@ const styles = StyleSheet.create({
   },
   playBtnHover: { opacity: 0.7 },
   standings: { gap: tokens.space.sm },
+  // "Sam & Riley played — your turn": a pink link line, the card's own CTA
+  // for a game friends are waiting on.
+  waiting: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: tokens.space.xs,
+    paddingVertical: 2,
+  },
+  waitingText: {
+    ...bodyType("semibold"),
+    fontSize: tokens.font.size.sm,
+    color: tokens.neon.pink,
+    flexShrink: 1,
+  },
   playerRow: {
     flexDirection: "row",
     alignItems: "center",

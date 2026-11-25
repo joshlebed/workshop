@@ -189,6 +189,8 @@ export async function applyGameMerge(
       UPDATE game_nudges p SET game_id = ${t}
       WHERE p.game_id = ${f}
         AND NOT EXISTS (SELECT 1 FROM game_nudges x WHERE x.game_id = ${t} AND x.sender_id = p.sender_id AND x.recipient_id = p.recipient_id AND x.period_key = p.period_key)`);
+    // One auto nudge per user per day (PK has no game), so every row moves.
+    await tx.execute(sql`UPDATE auto_nudges SET game_id = ${t} WHERE game_id = ${f}`);
     await tx.execute(sql`UPDATE items SET game_id = ${t} WHERE game_id = ${f}`);
     await tx.execute(sql`UPDATE content_reports SET game_id = ${t} WHERE game_id = ${f}`);
     // Everything left on the extra row (dropped scores, its code history,

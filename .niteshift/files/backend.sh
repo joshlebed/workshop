@@ -11,4 +11,8 @@ set -a
 # shellcheck disable=SC1091
 source apps/backend/.env
 set +a
+# The sandbox DB is a prod copy with real push tokens: never let a local send
+# reach Expo. Default to the local stub service (`expo-push-stub`, :8790);
+# with the stub down a send fails to connect, which is just as safe.
+export EXPO_PUSH_URL="${EXPO_PUSH_URL:-http://127.0.0.1:8790/--/api/v2/push/send}"
 exec pnpm --filter @workshop/backend run dev

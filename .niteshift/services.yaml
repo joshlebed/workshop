@@ -34,6 +34,13 @@ services:
     command: .niteshift/files/backend.sh
     port: 8787
 
+  # Stand-in for Expo's push endpoint. backend.sh points EXPO_PUSH_URL here so
+  # a push sent from the sandbox (prod-copy tokens) never reaches exp.host.
+  # Every message lands in /tmp/expo-push-stub.jsonl.
+  - name: expo-push-stub
+    command: node .niteshift/files/expo-push-stub.mjs
+    port: 8790
+
   # Local Postgres 17 (matches prod's major so pg_dump/pg_restore from the
   # same image work). Seeded with a copy of prod by .niteshift/setup.
   # Started by .niteshift/setup / .niteshift/resume, not by `ns services up`.

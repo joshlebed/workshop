@@ -415,7 +415,10 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   is: a user who later switches notifications off in iOS Settings keeps their row and silently
   receives nothing. Like every push path it goes through `sendExpoPushMessages`, so **stub
   `EXPO_PUSH_URL` before tapping the hand in a sandbox** — the DB is a prod copy with real
-  tokens. `game_nudges` is in `actionRows`.
+  tokens (the Niteshift `backend` service now defaults it to the `expo-push-stub` service).
+  `game_nudges` is in `actionRows`. The same table also holds the one-tap "they haven't played
+  yet" nudges sent after posting (`surface = 'post_notice'`, same allowance; rules in
+  `lib/stalledNudges.ts`, see `apps/backend/CLAUDE.md`).
 
 - **Head to head (`/friends/:userId/versus` in HighScore) is one endpoint and one rule set.**
   `GET /v1/friends/users/:userId/head-to-head?range=7|30|all&today=<viewer's local date>`
@@ -1338,12 +1341,13 @@ once per fresh sandbox; `.niteshift/resume` runs on every resume; `.niteshift/se
 declares the supervised processes. `ns services status` shows them; `ns services up`
 re-applies the manifest after you edit it; `ns services validate` checks it.
 
-| Service     | Port | Autostart | Notes                                                                         |
-| ----------- | ---- | --------- | ----------------------------------------------------------------------------- |
-| `highscore` | 8081 | yes       | HighScore Expo web. Primary preview (listed first). `EXPO_PUBLIC_DEV_AUTH=1`. |
-| `workshop`  | 8082 | yes       | Workshop.dev Expo web against the same backend.                               |
-| `backend`   | 8787 | yes       | Hono API. Sources `apps/backend/.env` (written by setup).                     |
-| `postgres`  | —    | no        | Docker PG17, host networking, prod copy. Started by setup/resume.             |
+| Service          | Port | Autostart | Notes                                                                            |
+| ---------------- | ---- | --------- | -------------------------------------------------------------------------------- |
+| `highscore`      | 8081 | yes       | HighScore Expo web. Primary preview (listed first). `EXPO_PUBLIC_DEV_AUTH=1`.    |
+| `workshop`       | 8082 | yes       | Workshop.dev Expo web against the same backend.                                  |
+| `backend`        | 8787 | yes       | Hono API. Sources `apps/backend/.env` (written by setup).                        |
+| `expo-push-stub` | 8790 | yes       | Fake Expo push endpoint; `backend` sends here. Log: `/tmp/expo-push-stub.jsonl`. |
+| `postgres`       | —    | no        | Docker PG17, host networking, prod copy. Started by setup/resume.                |
 
 If a backend change seems ignored in the sandbox (the API answers with old behaviour),
 `ns services restart backend`: its `tsx watch` did not pick up edits once in UX pass phase 2.

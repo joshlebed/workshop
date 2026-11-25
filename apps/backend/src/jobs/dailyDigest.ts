@@ -43,6 +43,18 @@ export interface DailyDigest {
   listsArchived: number;
   listsJoined: number;
   letterboxdConnected: number;
+  /** Pokes from a board's poke hand (`game_nudges.surface = 'board'`). */
+  nudgesBoard: number;
+  /** One-tap "they haven't played yet" nudges after posting (spike 4). */
+  nudgesPostNotice: number;
+  /** Automatic friends-played pushes from the reminder job (spike 4). */
+  autoNudges: number;
+  /** The day before the window (so 24h have passed): post-notice nudges sent / answered. */
+  priorPostNotice: number;
+  priorPostNoticeAnswered: number;
+  /** The day before the window: auto nudges sent / recipient posted that game within 24h. */
+  priorAutoNudges: number;
+  priorAutoNudgesAnswered: number;
 }
 
 type DigestRow = Record<
@@ -141,7 +153,28 @@ export async function loadDailyDigest(db: DbClient, now: Date): Promise<DailyDig
       (SELECT count(*)::int FROM list_members
         WHERE role <> 'owner' AND joined_at >= b.start_at AND joined_at < b.end_at) AS "listsJoined",
       (SELECT count(*)::int FROM users
-        WHERE letterboxd_connected_at >= b.start_at AND letterboxd_connected_at < b.end_at) AS "letterboxdConnected"
+        WHERE letterboxd_connected_at >= b.start_at AND letterboxd_connected_at < b.end_at) AS "letterboxdConnected",
+      (SELECT count(*)::int FROM game_nudges
+        WHERE surface = 'board' AND created_at >= b.start_at AND created_at < b.end_at) AS "nudgesBoard",
+      (SELECT count(*)::int FROM game_nudges
+        WHERE surface = 'post_notice' AND created_at >= b.start_at AND created_at < b.end_at) AS "nudgesPostNotice",
+      (SELECT count(*)::int FROM auto_nudges
+        WHERE sent_at >= b.start_at AND sent_at < b.end_at) AS "autoNudges",
+      (SELECT count(*)::int FROM game_nudges
+        WHERE surface = 'post_notice'
+          AND created_at >= b.start_at - interval '1 day' AND created_at < b.start_at) AS "priorPostNotice",
+      (SELECT count(*)::int FROM game_nudges
+        WHERE surface = 'post_notice' AND answered_at IS NOT NULL
+          AND created_at >= b.start_at - interval '1 day' AND created_at < b.start_at) AS "priorPostNoticeAnswered",
+      (SELECT count(*)::int FROM auto_nudges
+        WHERE sent_at >= b.start_at - interval '1 day' AND sent_at < b.start_at) AS "priorAutoNudges",
+      (SELECT count(*)::int FROM auto_nudges a
+        WHERE a.sent_at >= b.start_at - interval '1 day' AND a.sent_at < b.start_at
+          AND EXISTS (
+            SELECT 1 FROM game_scores gs
+            WHERE gs.user_id = a.user_id AND gs.game_id = a.game_id
+              AND gs.created_at > a.sent_at AND gs.created_at <= a.sent_at + interval '24 hours'
+          )) AS "priorAutoNudgesAnswered"
     FROM bounds b, funnel f
   `,
   );
@@ -165,6 +198,13 @@ export async function loadDailyDigest(db: DbClient, now: Date): Promise<DailyDig
     listsArchived: n(row.listsArchived),
     listsJoined: n(row.listsJoined),
     letterboxdConnected: n(row.letterboxdConnected),
+    nudgesBoard: n(row.nudgesBoard),
+    nudgesPostNotice: n(row.nudgesPostNotice),
+    autoNudges: n(row.autoNudges),
+    priorPostNotice: n(row.priorPostNotice),
+    priorPostNoticeAnswered: n(row.priorPostNoticeAnswered),
+    priorAutoNudges: n(row.priorAutoNudges),
+    priorAutoNudgesAnswered: n(row.priorAutoNudgesAnswered),
   };
 }
 
@@ -202,12 +242,26 @@ export function buildDailyDigestMessage(d: DailyDigest): string {
     [d.listsJoined, `${d.listsJoined} joined`],
     [d.letterboxdConnected, `${d.letterboxdConnected} Letterboxd connected`],
   ]);
+  const nudges = nonZero([
+    [d.nudgesBoard, plural(d.nudgesBoard, "poke")],
+    [d.nudgesPostNotice, `${d.nudgesPostNotice} after posting`],
+    [d.autoNudges, `${d.autoNudges} auto`],
+    [
+      d.priorPostNotice,
+      `${d.priorPostNoticeAnswered}/${d.priorPostNotice} after-posting nudges from the day before answered in 24h`,
+    ],
+    [
+      d.priorAutoNudges,
+      `${d.priorAutoNudgesAnswered}/${d.priorAutoNudges} auto nudges from the day before answered in 24h`,
+    ],
+  ]);
   return [
     `📊 **Daily digest** · ${day}`,
     `**Signups:** ${d.signups} → ${d.signupsScored} posted a score`,
     `**Never scored:** ${d.recentNeverScored} of ${d.recentSignups} signups in the last 30 days${neverPct}`,
     `**HighScore:** ${d.activeUsers} active (7-day avg ${d.activeUsersWeekAvg.toFixed(1)}) · ${plural(d.scores, "score")}`,
     social ? `**Activity:** ${social}` : null,
+    nudges ? `**Nudges:** ${nudges}` : null,
     listActivity ? `**Lists:** ${listActivity}` : null,
   ]
     .filter((line) => line !== null)

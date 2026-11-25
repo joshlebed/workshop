@@ -37,6 +37,13 @@ const base: DailyDigest = {
   listsArchived: 0,
   listsJoined: 0,
   letterboxdConnected: 0,
+  nudgesBoard: 0,
+  nudgesPostNotice: 0,
+  autoNudges: 0,
+  priorPostNotice: 0,
+  priorPostNoticeAnswered: 0,
+  priorAutoNudges: 0,
+  priorAutoNudgesAnswered: 0,
 };
 
 describe("buildDailyDigestMessage", () => {
@@ -50,6 +57,22 @@ describe("buildDailyDigestMessage", () => {
         "**Activity:** 12 games added · 3 friendships · 2 first scores · 1 first friend after signup",
         "**Lists:** 1 new",
       ].join("\n"),
+    );
+  });
+
+  it("reports nudges by surface and how many were answered within 24h", () => {
+    const message = buildDailyDigestMessage({
+      ...base,
+      nudgesBoard: 1,
+      nudgesPostNotice: 4,
+      autoNudges: 2,
+      priorPostNotice: 3,
+      priorPostNoticeAnswered: 2,
+      priorAutoNudges: 1,
+      priorAutoNudgesAnswered: 0,
+    });
+    expect(message).toContain(
+      "**Nudges:** 1 poke · 4 after posting · 2 auto · 2/3 after-posting nudges from the day before answered in 24h · 0/1 auto nudges from the day before answered in 24h",
     );
   });
 
@@ -164,6 +187,9 @@ describe("daily digest job", () => {
       listsArchived: 1,
       listsJoined: 1, // the owner row is not a join
       letterboxdConnected: 1,
+      nudgesBoard: 0,
+      nudgesPostNotice: 0,
+      autoNudges: 0,
     });
   });
 
