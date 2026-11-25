@@ -198,6 +198,16 @@ export function escapeXml(input: string): string {
     .replace(/'/g, "&#39;");
 }
 
+/**
+ * Text for a card's text node. workers-og feeds Satori the raw source text of
+ * each node (HTMLRewriter text chunks are not entity-decoded), so `escapeXml`
+ * would print `&#39;` / `&amp;` literally. Only `<` and `>` can break the
+ * markup; they become look-alike angle quotes. Attributes still use `escapeXml`.
+ */
+export function ogText(input: string): string {
+  return input.replace(/</g, "‹").replace(/>/g, "›");
+}
+
 export function truncate(input: string, max: number): string {
   const chars = Array.from(input);
   if (chars.length <= max) return input;
@@ -370,13 +380,13 @@ function fitTitleSize(text: string): number {
 }
 
 function renderImageHtml(variant: ImageVariant, assets: OgAssets): string {
-  const title = escapeXml(truncate(variant.title, variant.titleMax ?? 28));
+  const title = ogText(truncate(variant.title, variant.titleMax ?? 28));
   // A two-line card has to leave room for the subtitle under a 300px icon.
   const titleSize = Math.min(fitTitleSize(title), variant.subtitle === undefined ? Infinity : 92);
   const subtitle =
     variant.subtitle === undefined
       ? ""
-      : `\n    <div style="display: flex; flex-shrink: 0; margin-top: 14px; font-size: 40px; font-weight: 500; color: #C9C4BF; line-height: 1.2;">${escapeXml(variant.subtitle)}</div>`;
+      : `\n    <div style="display: flex; flex-shrink: 0; margin-top: 14px; font-size: 40px; font-weight: 500; color: #C9C4BF; line-height: 1.2;">${ogText(variant.subtitle)}</div>`;
 
   // The background is a pre-rendered raster (OKLab-blended, dithered) rather
   // than CSS gradients: Satori/resvg interpolate gradients in sRGB with no

@@ -113,8 +113,12 @@ describe("HighScore Open Graph helpers", () => {
     expect(tags).toContain('content="Join Josh&#39;s crew: Sunday Puzzlers · 4 members"');
     expect(tags).toContain('content="https://highscore.live/og/crew/example.png"');
     const image = buildCrewOgImageHtml(preview, ASSETS);
-    expect(image).toContain(">Join Josh&#39;s crew<");
+    // Card text is raw (Satori never decodes entities); only < and > are swapped.
+    expect(image).toContain(">Join Josh's crew<");
     expect(image).toContain(">Sunday Puzzlers · 4 members<");
+    expect(buildCrewOgImageHtml({ ...preview, crewName: "Tom & Jerry <3>" }, ASSETS)).toContain(
+      ">Tom & Jerry ‹3› · 4 members<",
+    );
     expect(buildCrewOgTitle({ ...preview, creatorName: null, memberCount: 1 })).toBe(
       "Join the crew: Sunday Puzzlers · 1 member",
     );

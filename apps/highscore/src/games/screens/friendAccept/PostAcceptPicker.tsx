@@ -415,6 +415,10 @@ function GamesStep({
               />
             )}
           </>
+        ) : crewName !== undefined ? (
+          <Text tone="secondary" style={styles.inviterCaption} testID="crew-join-picker-empty">
+            You're friends with everyone in the crew now. Their scores show on the crew board.
+          </Text>
         ) : friendHasGames ? null : ( // have-them-all → nothing looks missing; explaining is noise
           <Text tone="secondary" style={styles.inviterCaption}>
             {name} hasn't added any games yet. Add games anytime from the Games tab.
@@ -427,7 +431,15 @@ function GamesStep({
             loads so the label can't flicker between the two meanings. */}
         {discoveryQuery.isLoading ? null : (
           <Button
-            label={games.length === 0 ? "Go to Games" : addedAny ? "Done" : "Maybe later"}
+            label={
+              games.length === 0
+                ? crewName !== undefined
+                  ? "See the crew board"
+                  : "Go to Games"
+                : addedAny
+                  ? "Done"
+                  : "Maybe later"
+            }
             onPress={onDone}
             testID="friend-accept-picker-done"
           />
