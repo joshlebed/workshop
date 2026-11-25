@@ -99,6 +99,9 @@ export function useSetupChecklist({ games }: { games: MyGame[] | undefined }): S
     queryKey: queryKeys.friends.all,
     queryFn: () => fetchFriends(token),
     enabled: active,
+    // Coming back from the share sheet (or from the friend's reply) is the
+    // moment a friend row can tick: re-check on every focus, not every 30s.
+    staleTime: 0,
     refetchInterval: active ? livePoll : false,
   });
 
@@ -213,6 +216,11 @@ export function useSetupChecklist({ games }: { games: MyGame[] | undefined }): S
     const fresh = newlyDone.filter((r) => !latestRef.current.rows?.[r.id]);
     if (fresh.length === 0) return;
     writeFlag({ rows: Object.fromEntries(fresh.map((r) => [r.id, r.at])) });
+    // A new friend brings their games: the Add-game list ("Friends only"),
+    // where the next row sends them, must not show the friendless answer.
+    if (fresh.some((r) => r.id === "friend" || r.id === "friend2")) {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.games.discovery() });
+    }
     for (const r of fresh) {
       report(
         { event: "row_completed", row: r.id, minutesSinceSignup: minutes(r.at) },

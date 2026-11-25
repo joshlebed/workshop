@@ -124,6 +124,45 @@ Dismiss/complete state is the server-side
 `games.share-sheet-announcement` user flag — never a local storage key, so reinstalls and second
 devices don't re-blast. **Merging the announcement PR is the blast** — OTA ships ~60s after merge.
 
+## Day-1 "Get set up" card (onboarding spike 6)
+
+`SetupChecklistCard` sits at the top of the Games home (empty or not) for the first **48h after
+`user.createdAt`**, or until every row is done, whichever comes first. Rules are the pure
+`src/lib/setupChecklist.ts` (unit-tested); data + writes + telemetry are
+`src/hooks/useSetupChecklist.ts`; the card only draws. Rows in fixed priority order, the first
+open one is the live target (pink box, hint line): **Add a friend** (≥1) · **Add one more
+friend** (≥2) · **Add 3 games** (counter) · **Post your first score** · **Turn on the share
+sheet** (only where `SHARE_SETUP_SUPPORTED`) · **Turn on a daily reminder** (only where
+`isPushSupported()`; drops out when iOS permission is `denied` and reminders are off, since the
+app can't finish it). Taps: friend rows mint + share the invite link (the home's
+`inviteMutation`), games → `/games/add`, score → the paste sheet for the first game not played
+today (`openPasteFor`; `/share` with no games), share sheet → `/share-setup`, reminder →
+`/settings/notifications`. State comes from data the client already has — `GET /v1/games`
+(`addedAt`, today's `viewerHasPlayed` / `viewerStreak`), `GET /v1/friends` (`friendsSince`),
+`GET /v1/users/me/flags`, notification prefs, OS permission — **no endpoint of its own**.
+
+Everything durable is the `games.setup-checklist` user flag (`USER_FLAG_KEYS.setupChecklist`,
+never localStorage): `shownAt`, `dismissedAt` (X — gone for good), `rows` (row id → first time
+done; the data's own timestamp for friends/games, first-seen otherwise), `completedAt`,
+`retiredAt` + `retiredReason` (`completed` | `expired`). **A row once recorded stays ticked**
+(unfriending, removing a game, or tomorrow's `GET /v1/games` not showing yesterday's score never
+un-ticks it). All rows done → one-time **"You're set"** with today's board (one line per game,
+`todayBoardLines`) until "Got it" or 12h after `completedAt` (`SETUP_CELEBRATE_MS`), then retired.
+Expiry stamps `retiredAt: expired` only for a card that was actually shown. Hidden while flags or
+any signal load (no flash), and entirely off while impersonating (no writes, no telemetry).
+Events go to the log-only `POST /v1/telemetry/setup-checklist` (CloudWatch filter
+`client_setup_checklist`): `shown` (once per launch), `row_tapped`, `row_completed` (with
+`minutesSinceSignup`), `dismissed`, `completed`, `retired`. Signup time is the shared `users`
+row's `createdAt`, so a long-time Workshop user signing into HighScore for the first time never
+sees the card — known, accepted for the spike.
+
+Interplay: the card **never opens a Sheet by itself** (only the score row's tap opens the paste
+sheet), so it can't stack on the share-setup walkthrough's auto-open or the reminder pre-prompt,
+which both keep working unchanged (the pre-prompt still fires 1.2s after the first score, inline
+with the card). While the card is up, `ShareAnnouncementCard` renders with `suppressCard` — its
+auto-open still fires, but its pitch yields to the checklist's share-sheet row. Spike 5's
+suggestions rail (sibling branch) also lands on this home; stack it below the card.
+
 ## Public pages (`/support`, `/privacy`, `/terms`)
 
 All three routes render with no session. `src/lib/publicRoutes.ts` is the single source of truth, and
