@@ -43,6 +43,15 @@ export interface DailyDigest {
   listsArchived: number;
   listsJoined: number;
   letterboxdConnected: number;
+  /** Friend pairs whose both-posted run (spike #10) reached the digest day at ≥2 days. */
+  friendStreakPairs: number;
+  /** Distinct players in those pairs. */
+  friendStreakPlayers: number;
+  /** Weekly cooperative quests generated / completed in the window. */
+  questsGenerated: number;
+  questsCompleted: number;
+  /** Posts made while a "keep it alive" line waited on the poster. */
+  keepalivePosts: number;
 }
 
 type DigestRow = Record<
@@ -98,6 +107,30 @@ export async function loadDailyDigest(db: DbClient, now: Date): Promise<DailyDig
       FROM users u, bounds b
       WHERE u.created_at >= b.end_at - interval '30 days' AND u.created_at < b.end_at
     ),
+    friend_days AS (
+      SELECT DISTINCT s.user_id, s.period_key::date AS d
+      FROM game_scores s, bounds b
+      WHERE s.period_key ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+        AND s.period_key >= to_char((b.start_at AT TIME ZONE ${tz})::date - 120, 'YYYY-MM-DD')
+        AND s.period_key <= to_char((b.start_at AT TIME ZONE ${tz})::date, 'YYYY-MM-DD')
+    ),
+    pair_runs AS (
+      SELECT f.user_low, f.user_high, a.d,
+        a.d - (row_number() OVER (PARTITION BY f.user_low, f.user_high ORDER BY a.d))::int AS grp
+      FROM friendships f
+      JOIN friend_days a ON a.user_id = f.user_low
+      JOIN friend_days c ON c.user_id = f.user_high AND c.d = a.d
+    ),
+    live_streaks AS (
+      SELECT r.user_low, r.user_high
+      FROM pair_runs r
+      JOIN pair_runs last ON last.user_low = r.user_low AND last.user_high = r.user_high
+        AND last.grp = r.grp
+      CROSS JOIN bounds b
+      WHERE last.d = (b.start_at AT TIME ZONE ${tz})::date
+      GROUP BY r.user_low, r.user_high
+      HAVING count(DISTINCT r.d) >= 2
+    ),
     funnel AS (
       SELECT
         count(*) FILTER (WHERE in_window)::int AS signups,
@@ -141,7 +174,17 @@ export async function loadDailyDigest(db: DbClient, now: Date): Promise<DailyDig
       (SELECT count(*)::int FROM list_members
         WHERE role <> 'owner' AND joined_at >= b.start_at AND joined_at < b.end_at) AS "listsJoined",
       (SELECT count(*)::int FROM users
-        WHERE letterboxd_connected_at >= b.start_at AND letterboxd_connected_at < b.end_at) AS "letterboxdConnected"
+        WHERE letterboxd_connected_at >= b.start_at AND letterboxd_connected_at < b.end_at) AS "letterboxdConnected",
+      (SELECT count(*)::int FROM live_streaks) AS "friendStreakPairs",
+      (SELECT count(DISTINCT p)::int FROM (
+        SELECT user_low AS p FROM live_streaks UNION ALL SELECT user_high FROM live_streaks
+      ) players) AS "friendStreakPlayers",
+      (SELECT count(*)::int FROM friend_quests
+        WHERE created_at >= b.start_at AND created_at < b.end_at) AS "questsGenerated",
+      (SELECT count(*)::int FROM friend_quest_completions
+        WHERE completed_at >= b.start_at AND completed_at < b.end_at) AS "questsCompleted",
+      (SELECT count(*)::int FROM friend_streak_keepalive_posts
+        WHERE created_at >= b.start_at AND created_at < b.end_at) AS "keepalivePosts"
     FROM bounds b, funnel f
   `,
   );
@@ -165,6 +208,11 @@ export async function loadDailyDigest(db: DbClient, now: Date): Promise<DailyDig
     listsArchived: n(row.listsArchived),
     listsJoined: n(row.listsJoined),
     letterboxdConnected: n(row.letterboxdConnected),
+    friendStreakPairs: n(row.friendStreakPairs),
+    friendStreakPlayers: n(row.friendStreakPlayers),
+    questsGenerated: n(row.questsGenerated),
+    questsCompleted: n(row.questsCompleted),
+    keepalivePosts: n(row.keepalivePosts),
   };
 }
 
@@ -202,12 +250,22 @@ export function buildDailyDigestMessage(d: DailyDigest): string {
     [d.listsJoined, `${d.listsJoined} joined`],
     [d.letterboxdConnected, `${d.letterboxdConnected} Letterboxd connected`],
   ]);
+  const together = nonZero([
+    [
+      d.friendStreakPairs,
+      `${plural(d.friendStreakPairs, "friend streak")} ≥2 days (${plural(d.friendStreakPlayers, "player")})`,
+    ],
+    [d.keepalivePosts, plural(d.keepalivePosts, "streak-saving post")],
+    [d.questsGenerated, plural(d.questsGenerated, "quest started", "quests started")],
+    [d.questsCompleted, plural(d.questsCompleted, "quest completed", "quests completed")],
+  ]);
   return [
     `📊 **Daily digest** · ${day}`,
     `**Signups:** ${d.signups} → ${d.signupsScored} posted a score`,
     `**Never scored:** ${d.recentNeverScored} of ${d.recentSignups} signups in the last 30 days${neverPct}`,
     `**HighScore:** ${d.activeUsers} active (7-day avg ${d.activeUsersWeekAvg.toFixed(1)}) · ${plural(d.scores, "score")}`,
     social ? `**Activity:** ${social}` : null,
+    together ? `**Together:** ${together}` : null,
     listActivity ? `**Lists:** ${listActivity}` : null,
   ]
     .filter((line) => line !== null)

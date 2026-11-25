@@ -725,6 +725,42 @@ a nudge). The client shows a 🔥 flame next to the title once it hits `STREAK_M
 you add a new path that builds `GameStandings`, set `viewerStreak` (it's required) — usually
 `loadViewerStreaksByGame(...).get(gameId) ?? 0`.
 
+## Friend streaks and weekly quests (spike #10)
+
+**Pair streak** = consecutive calendar days on which **both** friends posted ≥1 score (any game),
+as of the viewer's `today`. The rule is the pure `computeFriendStreak` in `@workshop/shared/games`
+(= `computeGameStreak` over the intersection of the two players' score-days), so "live" is the
+same as `viewerStreak`: a run ending yesterday still counts, a day either player missed resets it.
+A day is a `period_key`, i.e. each player's own local date; the viewer's `?today=` anchors it and a
+friend's day after it (ahead in time) is ignored, so two sides in different zones can briefly
+disagree by one. `lib/friendStreaks.ts` reads it in one query that keeps only the latest run of
+shared days per friend (gaps-and-islands, bounded by `FRIEND_STREAK_LOOKBACK_DAYS` = 120) and hands
+that run to the pure function — **don't restate the rule in SQL**. Carried as `streak` on every
+`GET /v1/friends?today=` row and on the friend profile (`GET /v1/friends/users/:id?period=`, friends
+only, else null). `friendStreakAtRisk` says who still has to post today (≥ `STREAK_MIN_DAYS` and not
+both posted) — the home's "keep it alive" line.
+
+**Weekly quest** (`lib/friendQuests.ts`): one per friend pair per ISO week (Monday–Sunday of period
+keys), "post N scores together", N = `friendQuestTarget(combined scores of both in the two weeks
+before) = clamp(ceil(1.1 × that / 2), 6, 20)`. Generated lazily by the first
+`GET /v1/friends/quests?today=` a player makes that week: friends where both posted in the last 14
+days (today inclusive), most recently active pair first (the pair is as recent as the _less_ recent
+of the two last posts; then the friend's 14-day count), at most `FRIEND_QUEST_MAX_PER_USER` (5) per
+player — a friend whose five are taken is skipped. A row in `friend_quests` is the pair's quest for
+both players; progress is counted from `game_scores` (every row dated in the week), never stored.
+Completion is one insert into `friend_quest_completions` by whichever read or score post first sees
+the count reach the target; only the request whose insert lands logs `friend_quest_completed` and
+pushes both players (`sendExpoPushMessages`, best-effort, 3s cap, `data.kind: "friend_quest"`). A
+quest disappears when the friendship does. `celebrations` on the response = completed and not yet
+acknowledged by this player (`low_seen_at` / `high_seen_at`, set by `POST /v1/friends/quests/seen`),
+this week or last.
+
+Both score write paths call `afterFriendScorePost` (`lib/friendActivity.ts`) after the row is saved:
+it records `friend_streak_keepalive_posts` (the poster's first score of a current day while a ≥2-day
+pair streak reached yesterday without them — exactly when the home line shows) and completes any
+quest the post pushed over. **Thread it through any new score write path.** The daily digest's
+"Together" line counts live pair streaks ≥2, keep-alive posts, quests started and completed.
+
 ## Daily-play reminders use the latest token's timezone
 
 Push installations live in `push_tokens`; account-level settings live in `notification_prefs`.

@@ -1123,6 +1123,88 @@ export const friendships = pgTable(
 );
 
 /**
+ * Weekly cooperative quests (spike #10): one row per friend pair per ISO week,
+ * generated the first time either player reads `GET /v1/friends/quests` that
+ * week (`lib/friendQuests.ts`). The pair is canonical like `friendships`
+ * (`user_low < user_high`); `week_start` is the Monday period key. `target` is
+ * fixed at generation (`friendQuestTarget`); progress is counted from
+ * `game_scores` on read, never stored. A row is also the "quest generated"
+ * instrumentation.
+ */
+export const friendQuests = pgTable(
+  "friend_quests",
+  {
+    weekStart: text("week_start").notNull(),
+    userLow: uuid("user_low")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    userHigh: uuid("user_high")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    target: integer("target").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.weekStart, t.userLow, t.userHigh] }),
+    lowIdx: index("friend_quests_low_idx").on(t.userLow, t.weekStart),
+    highIdx: index("friend_quests_high_idx").on(t.userHigh, t.weekStart),
+  }),
+);
+
+/**
+ * A quest that reached its target — written once, by whichever read or score
+ * post first saw the combined count reach it, and that write is what sends the
+ * completion push. `low_seen_at` / `high_seen_at` record each player
+ * acknowledging the home celebration (`POST /v1/friends/quests/seen`).
+ */
+export const friendQuestCompletions = pgTable(
+  "friend_quest_completions",
+  {
+    weekStart: text("week_start").notNull(),
+    userLow: uuid("user_low")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    userHigh: uuid("user_high")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    target: integer("target").notNull(),
+    /** Combined count when completion was recorded (≥ target). */
+    scoreCount: integer("score_count").notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }).notNull().default(sql`now()`),
+    lowSeenAt: timestamp("low_seen_at", { withTimezone: true }),
+    highSeenAt: timestamp("high_seen_at", { withTimezone: true }),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.weekStart, t.userLow, t.userHigh] }),
+  }),
+);
+
+/**
+ * Instrumentation for spike #10: a score post that kept a pair streak alive —
+ * the poster's first score of `period_key`, made while a pair streak of
+ * ≥ `STREAK_MIN_DAYS` reached yesterday without them (the state in which the
+ * home shows "You and Sam: 5 days — post to keep it"). One row per poster,
+ * friend and day; `streak_days` is the run before this post.
+ */
+export const friendStreakKeepalivePosts = pgTable(
+  "friend_streak_keepalive_posts",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    friendId: uuid("friend_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    periodKey: text("period_key").notNull(),
+    streakDays: integer("streak_days").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.userId, t.friendId, t.periodKey] }),
+  }),
+);
+
+/**
  * Friend invites — two row shapes share this table, discriminated by
  * `invitee_id`:
  *

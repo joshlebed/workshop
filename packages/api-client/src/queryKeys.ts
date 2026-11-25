@@ -117,6 +117,8 @@ export const queryKeys = {
     /** `GET /v1/friends/users/:userId?period=` — viewer-relative profile. */
     profile: (userId: string, periodKey: string) =>
       ["friends", "profile", userId, periodKey] as const,
+    /** `GET /v1/friends/quests?today=` — this week's cooperative quests. */
+    quests: (today: string) => ["friends", "quests", today] as const,
     /** `GET /v1/friends/users/:userId/head-to-head?range=&today=`. */
     headToHead: (userId: string, range: string, today: string) =>
       ["friends", "headToHead", userId, range, today] as const,

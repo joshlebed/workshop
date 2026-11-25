@@ -34,6 +34,7 @@ export function GameCardList({
   refreshing,
   onRefresh,
   bottomInset = 0,
+  header = null,
 }: GameCardListProps) {
   return (
     <PullToRefresh refreshing={refreshing} onRefresh={onRefresh}>
@@ -51,6 +52,7 @@ export function GameCardList({
           { paddingBottom: tokens.space.lg + bottomInset },
         ]}
         testID="games-home-list"
+        ListHeaderComponent={header ?? undefined}
         autoscrollThreshold={REORDER_AUTOSCROLL.threshold}
         autoscrollSpeedScale={REORDER_AUTOSCROLL.speedScale}
         shouldUpdateActiveItem
