@@ -9,6 +9,7 @@ import {
   type FriendInviteResponse,
   type FriendProfileGame,
   type FriendProfileResponse,
+  type FriendQuestsResponse,
   type FriendRequestPreview,
   type FriendRequestStatus,
   type FriendRequestSummary,
@@ -40,7 +41,9 @@ import { blockedEitherWay, blockedIdsFor } from "../../lib/blocks.js";
 import { callerIpKey } from "../../lib/clientIp.js";
 import { getConfig } from "../../lib/config.js";
 import { toIsoString } from "../../lib/dates.js";
+import { loadFriendQuests, markQuestSeen } from "../../lib/friendQuests.js";
 import { sendFriendRequestPush } from "../../lib/friendRequestPush.js";
+import { loadFriendStreaks } from "../../lib/friendStreaks.js";
 import { addFriendship, canonicalPair, friendsOf, removeFriendship } from "../../lib/friends.js";
 import { scoreCodeFields } from "../../lib/gameCodeService.js";
 import { gameShapeColumns, todayPeriodKey, toGameShape } from "../../lib/gameShapes.js";
@@ -54,6 +57,9 @@ import { periodKeySchema } from "../../lib/scoreSchemas.js";
 import { generateShareSlug, isValidShareSlug } from "../../lib/shareSlug.js";
 import { optionalAuth, requireAuth } from "../../middleware/auth.js";
 import { rateLimit } from "../../middleware/rate-limit.js";
+
+/** A viewer's local calendar date (`?today=`): strict, unlike stored period keys. */
+const dayKeySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -149,8 +155,13 @@ friendRoutes.use("*", async (c, next) => {
 
 // --- GET /v1/friends — my friends, newest edge first ---
 
+// `?today=` is the viewer's local date (period keys are client-local); it
+// anchors each friend's pair streak. Old clients omit it: UTC today.
 friendRoutes.get("/", requireAuth, async (c) => {
   const userId = c.get("userId");
+  const todayParsed = dayKeySchema.optional().safeParse(c.req.query("today"));
+  if (!todayParsed.success) return err(c, "VALIDATION", "invalid today");
+  const today = todayParsed.data ?? todayPeriodKey();
   const db = getDb();
   const edges = await db
     .select({
@@ -165,19 +176,22 @@ friendRoutes.get("/", requireAuth, async (c) => {
     edges.map((e) => [e.userLow === userId ? e.userHigh : e.userLow, e.createdAt]),
   );
   const friendIds = [...byFriendId.keys()];
-  const userRows =
+  const [userRows, streaks] = await Promise.all([
     friendIds.length === 0
-      ? []
-      : await db
+      ? Promise.resolve([])
+      : db
           .select({ id: users.id, displayName: users.displayName })
           .from(users)
-          .where(inArray(users.id, friendIds));
+          .where(inArray(users.id, friendIds)),
+    loadFriendStreaks(userId, friendIds, today),
+  ]);
 
-  const friends = userRows
+  const friends: FriendSummary[] = userRows
     .map((u) => ({
       userId: u.id,
       displayName: u.displayName,
       friendsSince: toIsoString(byFriendId.get(u.id) ?? new Date(0)),
+      streak: streaks.get(u.id) ?? { days: 0, viewerPostedToday: false, friendPostedToday: false },
     }))
     .sort((a, b) => b.friendsSince.localeCompare(a.friendsSince));
 
@@ -858,6 +872,11 @@ friendRoutes.get("/users/:userId", requireAuth, async (c) => {
     });
   }
 
+  const streak =
+    relationship === "friends" && dayKeySchema.safeParse(periodKey).success
+      ? ((await loadFriendStreaks(viewerId, [targetId], periodKey)).get(targetId) ?? null)
+      : null;
+
   const response: FriendProfileResponse = {
     user: { userId: target.id, displayName: target.displayName },
     relationship,
@@ -865,6 +884,7 @@ friendRoutes.get("/users/:userId", requireAuth, async (c) => {
     mutualFriends,
     periodKey,
     games: profileGames,
+    streak,
   };
   return ok(c, response);
 });
@@ -918,6 +938,38 @@ friendRoutes.get("/users/:userId/head-to-head", requireAuth, async (c) => {
     games: h2hGames,
   };
   return ok(c, response);
+});
+
+// --- GET /v1/friends/quests — this week's cooperative quests (spike #10) ---
+// Generates the viewer's quests for the ISO week containing `?today=` (their
+// local date) on first read, then returns them with live progress plus any
+// completed quest whose celebration they haven't acknowledged. Rules in
+// `lib/friendQuests.ts`.
+
+friendRoutes.get("/quests", requireAuth, async (c) => {
+  const userId = c.get("userId");
+  const todayParsed = dayKeySchema.optional().safeParse(c.req.query("today"));
+  if (!todayParsed.success) return err(c, "VALIDATION", "invalid today");
+  const response: FriendQuestsResponse = await loadFriendQuests(
+    userId,
+    todayParsed.data ?? todayPeriodKey(),
+  );
+  return ok(c, response);
+});
+
+const questSeenSchema = z.object({
+  friendId: z.string().uuid(),
+  weekStart: dayKeySchema,
+});
+
+// --- POST /v1/friends/quests/seen — the home celebration was shown ---
+friendRoutes.post("/quests/seen", requireAuth, async (c) => {
+  const userId = c.get("userId");
+  const parsed = await parseJsonBody(c, questSeenSchema);
+  if (!parsed.ok) return parsed.response;
+  const updated = await markQuestSeen(userId, parsed.data.friendId, parsed.data.weekStart);
+  if (!updated) return err(c, "NOT_FOUND", "quest not found");
+  return ok(c, { ok: true });
 });
 
 // --- DELETE /v1/friends/:userId — unfriend (scores stay, visibility stops) ---

@@ -47,6 +47,7 @@ import {
   OBJECTIONABLE_CONTENT_MESSAGE,
 } from "../../lib/contentFilter.js";
 import { toIsoString } from "../../lib/dates.js";
+import { afterFriendScorePost } from "../../lib/friendActivity.js";
 import { friendsOf, friendsOfFriends } from "../../lib/friends.js";
 import {
   catalogEntryForKey,
@@ -654,6 +655,9 @@ gameRoutes.put(
     // Posting a score auto-adds the game to My Games (spec §3.5) — no
     // membership prerequisite, idempotent if it's already there.
     await addToMyGames(userId, game.id);
+    // Spike #10: a post that kept a pair streak alive, and any weekly quest it
+    // completed (writes the completion + pushes both players once).
+    await afterFriendScorePost(userId, parsed.data.periodKey);
     // Shadow-mode recognition: logs what it would have detected for this
     // paste. No-op unless the flag is `shadow` (with it `on`, the preview the
     // client showed already logged the real decision, and a post should not

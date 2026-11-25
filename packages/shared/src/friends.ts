@@ -3,7 +3,7 @@
 // subpath (like `./games`): the barrel's `.js` re-exports don't resolve under
 // Metro, so the client imports this file directly.
 
-import type { Game, ScoreCodeFields } from "./games.js";
+import type { FriendStreak, Game, ScoreCodeFields } from "./games.js";
 
 /** One friend edge as seen from the viewer's side. */
 export interface FriendSummary {
@@ -11,6 +11,12 @@ export interface FriendSummary {
   displayName: string | null;
   /** When the friendship edge was created (ISO). */
   friendsSince: string;
+  /**
+   * The pair streak as of the `?today=` the list was asked for (see
+   * `computeFriendStreak`). Optional: absent from backends before spike #10
+   * and from the accept/request responses that reuse this shape.
+   */
+  streak?: FriendStreak;
 }
 
 /** `GET /v1/friends` */
@@ -120,6 +126,11 @@ export interface FriendProfileResponse {
    * from before games went public.
    */
   games: FriendProfileGame[] | null;
+  /**
+   * The pair streak as of `periodKey`, for a friend; null for anyone else.
+   * Optional: absent from backends before spike #10.
+   */
+  streak?: FriendStreak | null;
 }
 
 /** Ranges the head-to-head screen offers. `all` = every day on record. */
@@ -172,4 +183,42 @@ export interface HeadToHeadResponse {
    * A game only one of them played is not a head-to-head and is left out.
    */
   games: HeadToHeadGame[];
+}
+
+/** One weekly cooperative quest, from the viewer's side (spike #10). */
+export interface FriendQuest {
+  friend: FriendUser;
+  /** Monday of the quest's ISO week (`YYYY-MM-DD`). */
+  weekStart: string;
+  /** Sunday of the quest's week. */
+  weekEnd: string;
+  /** Combined scores both players need to post in the week. */
+  target: number;
+  /** Scores posted so far this week, both players combined. */
+  count: number;
+  viewerCount: number;
+  friendCount: number;
+  /** When the combined count first reached the target (ISO); null while open. */
+  completedAt: string | null;
+  /** Completed and the viewer hasn't acknowledged the celebration yet. */
+  celebrate: boolean;
+}
+
+/** `GET /v1/friends/quests?today=` — this week's quests, generated on first read. */
+export interface FriendQuestsResponse {
+  weekStart: string;
+  weekEnd: string;
+  /** This week's quests, open first, then by progress. */
+  quests: FriendQuest[];
+  /**
+   * Completed quests the viewer hasn't acknowledged — this week's and last
+   * week's (a quest finished late on Sunday is celebrated on Monday).
+   */
+  celebrations: FriendQuest[];
+}
+
+/** `POST /v1/friends/quests/seen` — acknowledge one completed quest's celebration. */
+export interface FriendQuestSeenRequest {
+  friendId: string;
+  weekStart: string;
 }

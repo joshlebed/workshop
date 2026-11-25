@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  computeFriendStreak,
   computeGameStreak,
+  FRIEND_QUEST_MAX_TARGET,
+  FRIEND_QUEST_MIN_TARGET,
   formatScoreValue,
+  friendQuestTarget,
+  friendStreakAtRisk,
+  isoWeekStart,
   isReactionEmoji,
   normalizeGameUrl,
   REACTION_QUICK_EMOJIS,
@@ -308,5 +314,103 @@ describe("computeGameStreak", () => {
 
   it("accepts a Set as well as an array", () => {
     expect(computeGameStreak(new Set(["2026-06-17", "2026-06-18"]), today)).toBe(2);
+  });
+});
+
+describe("computeFriendStreak", () => {
+  const today = "2026-06-18";
+
+  it("counts only the days both players posted", () => {
+    const me = ["2026-06-15", "2026-06-16", "2026-06-17", "2026-06-18"];
+    const sam = ["2026-06-16", "2026-06-17", "2026-06-18"];
+    expect(computeFriendStreak(me, sam, today)).toEqual({
+      days: 3,
+      viewerPostedToday: true,
+      friendPostedToday: true,
+    });
+  });
+
+  it("is broken by a day only one of them posted", () => {
+    // 06-16: Sam played, I didn't — the shared run restarts on 06-17.
+    const me = ["2026-06-14", "2026-06-15", "2026-06-17", "2026-06-18"];
+    const sam = ["2026-06-14", "2026-06-15", "2026-06-16", "2026-06-17", "2026-06-18"];
+    expect(computeFriendStreak(me, sam, today).days).toBe(2);
+  });
+
+  it("stays live through yesterday while either side hasn't posted today", () => {
+    const me = ["2026-06-15", "2026-06-16", "2026-06-17"];
+    const sam = ["2026-06-15", "2026-06-16", "2026-06-17", "2026-06-18"];
+    const streak = computeFriendStreak(me, sam, today);
+    expect(streak).toEqual({ days: 3, viewerPostedToday: false, friendPostedToday: true });
+    expect(friendStreakAtRisk(streak)).toBe("viewer");
+  });
+
+  it("lapses to 0 after a full day neither (or only one) of them covered", () => {
+    const me = ["2026-06-14", "2026-06-15", "2026-06-16", "2026-06-18"];
+    const sam = ["2026-06-14", "2026-06-15", "2026-06-16"];
+    expect(computeFriendStreak(me, sam, today).days).toBe(0);
+  });
+
+  it("ignores a friend's day after the viewer's today (they are ahead in time)", () => {
+    // Sam is a timezone ahead and already posted 06-19; the viewer's today is 06-18.
+    const me = ["2026-06-17", "2026-06-18"];
+    const sam = ["2026-06-17", "2026-06-18", "2026-06-19"];
+    expect(computeFriendStreak(me, sam, today)).toEqual({
+      days: 2,
+      viewerPostedToday: true,
+      friendPostedToday: true,
+    });
+  });
+
+  it("is symmetric in its day count", () => {
+    const a = ["2026-06-16", "2026-06-17", "2026-06-18"];
+    const b = ["2026-06-17", "2026-06-18"];
+    expect(computeFriendStreak(a, b, today).days).toBe(computeFriendStreak(b, a, today).days);
+  });
+});
+
+describe("friendStreakAtRisk", () => {
+  const s = (days: number, viewerPostedToday: boolean, friendPostedToday: boolean) => ({
+    days,
+    viewerPostedToday,
+    friendPostedToday,
+  });
+
+  it("is null below STREAK_MIN_DAYS or once both posted today", () => {
+    expect(friendStreakAtRisk(s(1, false, false))).toBeNull();
+    expect(friendStreakAtRisk(s(5, true, true))).toBeNull();
+  });
+
+  it("names who still has to post", () => {
+    expect(friendStreakAtRisk(s(5, false, true))).toBe("viewer");
+    expect(friendStreakAtRisk(s(5, true, false))).toBe("friend");
+    expect(friendStreakAtRisk(s(5, false, false))).toBe("both");
+  });
+});
+
+describe("isoWeekStart", () => {
+  it("returns the Monday of the week", () => {
+    expect(isoWeekStart("2026-11-23")).toBe("2026-11-23"); // Monday
+    expect(isoWeekStart("2026-11-25")).toBe("2026-11-23"); // Wednesday
+    expect(isoWeekStart("2026-11-29")).toBe("2026-11-23"); // Sunday
+    expect(isoWeekStart("2026-11-30")).toBe("2026-11-30"); // next Monday
+  });
+
+  it("crosses month and year boundaries", () => {
+    expect(isoWeekStart("2027-01-01")).toBe("2026-12-28");
+  });
+});
+
+describe("friendQuestTarget", () => {
+  it("is 10% above the trailing weekly average, rounded up", () => {
+    // 20 scores over two weeks = 10 a week → 11.
+    expect(friendQuestTarget(20)).toBe(11);
+    expect(friendQuestTarget(25)).toBe(14); // 12.5 × 1.1 = 13.75
+  });
+
+  it("never goes below the minimum or above the maximum", () => {
+    expect(friendQuestTarget(0)).toBe(FRIEND_QUEST_MIN_TARGET);
+    expect(friendQuestTarget(4)).toBe(FRIEND_QUEST_MIN_TARGET);
+    expect(friendQuestTarget(200)).toBe(FRIEND_QUEST_MAX_TARGET);
   });
 });

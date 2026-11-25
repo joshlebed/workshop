@@ -38,6 +38,7 @@ import {
   containsObjectionableContent,
   OBJECTIONABLE_CONTENT_MESSAGE,
 } from "../../lib/contentFilter.js";
+import { afterFriendScorePost } from "../../lib/friendActivity.js";
 import { RECOGNITION_SURFACE_THRESHOLD } from "../../lib/gameRecognition.js";
 import { recognitionModeFor, recognizeGameForUser } from "../../lib/gameRecognitionService.js";
 import { todayPeriodKey, toGameShape } from "../../lib/gameShapes.js";
@@ -202,6 +203,9 @@ export async function handleScoreUpsertV2(c: Context, gameId: string): Promise<R
   }
 
   await addToMyGames(userId, game.id);
+  // Spike #10: a post that kept a pair streak alive, and any weekly quest it
+  // completed (writes the completion + pushes both players once).
+  await afterFriendScorePost(userId, periodKey);
   if (parsed.data.wrongGame) {
     logTeachEvent("game_recognition", context, {
       warned_game_id: parsed.data.wrongGame.gameId,

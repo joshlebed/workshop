@@ -758,3 +758,97 @@ export function computeGameStreak(playedPeriodKeys: Iterable<string>, today: str
   }
   return streak;
 }
+
+/**
+ * How far back a friend (pair) streak looks. A longer real run reports as the
+ * window length — fine for a nudge, and it bounds the per-request read.
+ */
+export const FRIEND_STREAK_LOOKBACK_DAYS = 120;
+
+/**
+ * A friend pair's streak, from one side: the number of consecutive calendar
+ * days on which **both** players posted at least one score (any game), as of
+ * the viewer's `today`, plus who has posted today.
+ */
+export interface FriendStreak {
+  /** Consecutive shared days, "live" like `computeGameStreak` (0 = none). */
+  days: number;
+  viewerPostedToday: boolean;
+  friendPostedToday: boolean;
+}
+
+/**
+ * The pair streak between two players as of `today` (the viewer's local
+ * date): `computeGameStreak` over the days **both** posted. Each player's
+ * day is their own `period_key` (their local calendar date when they
+ * posted), so a day counts when both have a score dated that day. Same
+ * "live" rule as the per-game flame: a run ending yesterday still counts (the
+ * "post today to keep it" moment), a full day both missed resets it to 0.
+ * Days after `today` are never reached.
+ */
+export function computeFriendStreak(
+  viewerDays: Iterable<string>,
+  friendDays: Iterable<string>,
+  today: string,
+): FriendStreak {
+  const mine = new Set(viewerDays);
+  const shared: string[] = [];
+  let friendPostedToday = false;
+  for (const day of friendDays) {
+    if (day === today) friendPostedToday = true;
+    if (mine.has(day)) shared.push(day);
+  }
+  return {
+    days: computeGameStreak(shared, today),
+    viewerPostedToday: mine.has(today),
+    friendPostedToday,
+  };
+}
+
+/**
+ * Who still has to post today for a pair streak to carry on, or null when
+ * there is nothing at stake: the streak is below `STREAK_MIN_DAYS`, or both
+ * already posted today. A live streak that hasn't reached today means the
+ * last shared day was yesterday — exactly the "keep it alive" moment.
+ */
+export function friendStreakAtRisk(streak: FriendStreak): "viewer" | "friend" | "both" | null {
+  if (streak.days < STREAK_MIN_DAYS) return null;
+  if (streak.viewerPostedToday && streak.friendPostedToday) return null;
+  if (!streak.viewerPostedToday && !streak.friendPostedToday) return "both";
+  return streak.viewerPostedToday ? "friend" : "viewer";
+}
+
+/** Weekly cooperative quest bounds (spike #10). */
+export const FRIEND_QUEST_MIN_TARGET = 6;
+export const FRIEND_QUEST_MAX_TARGET = 20;
+/** A player is in at most this many quests a week. */
+export const FRIEND_QUEST_MAX_PER_USER = 5;
+/** Both players must have posted within this many days (today inclusive) to get a quest. */
+export const FRIEND_QUEST_ACTIVE_DAYS = 14;
+/** The target is this much above the pair's trailing weekly average. */
+export const FRIEND_QUEST_STRETCH = 1.1;
+
+/**
+ * Monday of the ISO week containing `periodKey` (a `YYYY-MM-DD` calendar
+ * date). Quests run Monday–Sunday over period keys, so the week is a range
+ * of each player's local dates — no clock or timezone is involved.
+ */
+export function isoWeekStart(periodKey: string): string {
+  const [y, m, d] = periodKey.split("-").map(Number);
+  if (!y || !m || !d) return periodKey;
+  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // 0 = Sunday
+  return shiftPeriodKey(periodKey, -((dow + 6) % 7));
+}
+
+/**
+ * A pair's weekly quest target from the combined number of scores both
+ * players posted in the two ISO weeks before the quest's week:
+ * `clamp(ceil(1.1 × count / 2), 6, 20)` — a little above their usual week,
+ * never below 6 (a pair that barely plays still gets a reachable goal) or
+ * above 20.
+ */
+export function friendQuestTarget(trailingTwoWeekCount: number): number {
+  const weeklyAverage = Math.max(0, trailingTwoWeekCount) / 2;
+  const target = Math.ceil(FRIEND_QUEST_STRETCH * weeklyAverage - 1e-9);
+  return Math.min(FRIEND_QUEST_MAX_TARGET, Math.max(FRIEND_QUEST_MIN_TARGET, target));
+}

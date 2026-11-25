@@ -59,6 +59,7 @@ import {
 } from "../api/games";
 import { DayPicker } from "../components/DayPicker";
 import { FixScoreSheet, type FixScoreTarget } from "../components/FixScoreSheet";
+import { FriendsTogetherPanel } from "../components/FriendsTogetherPanel";
 import { HomeActionBar, homeActionBarListInset } from "../components/HomeActionBar";
 import { ShareAnnouncementCard } from "../components/ShareAnnouncementCard";
 import { StandingsCard, type StandingsRow } from "../components/StandingsCard";
@@ -162,7 +163,8 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
   // empty — the Add-game screen fetches its own.
   const friendsQuery = useQuery({
     queryKey: queryKeys.friends.all,
-    queryFn: () => fetchFriends(token),
+    // Same key as the friends panel and the Friends screen, so the same `today`.
+    queryFn: () => fetchFriends(token, todayKey),
     enabled: !!token && isEmpty,
     refetchInterval: livePoll,
   });
@@ -553,6 +555,7 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
             refreshing={gamesQuery.isRefetching && !gamesQuery.isPending}
             onRefresh={() => gamesQuery.refetch()}
             bottomInset={listInset}
+            header={<FriendsTogetherPanel />}
           />
         )}
       </View>

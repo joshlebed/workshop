@@ -1,5 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
+import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { UpsertGameScoreResponse } from "@workshop/shared/games";
 import { useCallback } from "react";
 import { usePlayReminderOffer } from "../../components/PlayReminderPrompt";
@@ -41,6 +42,10 @@ export function usePostedScoreNotice(): (input: PostedScoreInput) => void {
   return useCallback(
     ({ result, gameId, periodKey, scoreRaw, today, posted }: PostedScoreInput) => {
       offerReminder();
+      // A post can keep a pair streak alive or move a weekly quest (spike #10):
+      // refresh the friends list (exact — not every nested friends key) and quests.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.friends.all, exact: true });
+      void queryClient.invalidateQueries({ queryKey: ["friends", "quests"] });
       const notice = postedCheckNotice(result.check, today);
       if (!notice) {
         showToast({ message: posted, tone: "success" });

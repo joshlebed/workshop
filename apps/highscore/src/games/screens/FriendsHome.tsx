@@ -30,10 +30,13 @@ import {
   tokens,
   useToast,
 } from "../../theme";
+import { PairFlame } from "../components/PairFlame";
 import { useOpenProfile } from "../hooks/useOpenProfile";
+import { pairFlame, pairStreakLabel } from "../lib/friendStreaks";
 import { goBack } from "../lib/navigation";
 import { shareOrCopyLink } from "../lib/share";
 import { useGamesRuntime } from "../runtime";
+import { useToday } from "../state/viewDay";
 
 /**
  * Friends screen (G2b, issue #286; directed requests + mutuals added with the
@@ -68,9 +71,11 @@ export default function FriendsScreen() {
   const [answeringIds, setAnsweringIds] = useState<string[]>([]);
 
   const enabled = !!token;
+  // My local date anchors each friend's pair streak (period keys are local).
+  const today = useToday();
   const friendsQuery = useQuery({
     queryKey: queryKeys.friends.all,
-    queryFn: () => fetchFriends(token),
+    queryFn: () => fetchFriends(token, today),
     enabled,
     refetchInterval: livePoll,
   });
@@ -442,11 +447,16 @@ export default function FriendsScreen() {
                   size="md"
                 />
                 <View style={styles.friendText}>
-                  <Text variant="label" numberOfLines={1} style={styles.friendName}>
-                    {friend.displayName?.trim() || "Someone"}
-                  </Text>
+                  <View style={styles.friendNameRow}>
+                    <Text variant="label" numberOfLines={1} style={styles.friendNameFlex}>
+                      {friend.displayName?.trim() || "Someone"}
+                    </Text>
+                    <PairFlame streak={friend.streak} testID={`friend-flame-${friend.userId}`} />
+                  </View>
                   <Text variant="caption" tone="muted" numberOfLines={1}>
-                    Friends since {formatRelative(friend.friendsSince)}
+                    {pairFlame(friend.streak) !== null
+                      ? pairStreakLabel(friend.streak?.days ?? 0)
+                      : `Friends since ${formatRelative(friend.friendsSince)}`}
                   </Text>
                 </View>
                 <Pressable
@@ -614,6 +624,14 @@ const styles = StyleSheet.create({
   friendText: { flex: 1, minWidth: 0, gap: 2 },
   friendName: {
     ...bodyType("medium"),
+    fontSize: tokens.font.size.md,
+    lineHeight: 22,
+    color: tokens.text.primary,
+  },
+  friendNameRow: { flexDirection: "row", alignItems: "center", gap: tokens.space.sm },
+  friendNameFlex: {
+    ...bodyType("medium"),
+    flexShrink: 1,
     fontSize: tokens.font.size.md,
     lineHeight: 22,
     color: tokens.text.primary,

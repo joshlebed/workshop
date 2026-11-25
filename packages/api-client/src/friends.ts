@@ -12,6 +12,7 @@ import type {
   AcceptFriendRequestResponse,
   FriendInviteResponse,
   FriendProfileResponse,
+  FriendQuestsResponse,
   FriendRequestPreview,
   FriendRequestsResponse,
   FriendsResponse,
@@ -25,10 +26,18 @@ import { safeParseSummarySpec } from "@workshop/shared/summarySpec";
 import { z } from "zod";
 import { apiRequest } from "./api";
 
+const friendStreakSchema = z.object({
+  days: z.number(),
+  viewerPostedToday: z.boolean(),
+  friendPostedToday: z.boolean(),
+});
+
 const friendSummarySchema = z.object({
   userId: z.string(),
   displayName: z.string().nullable(),
   friendsSince: z.string(),
+  // Absent from backends before spike #10 (and from accept/request replies).
+  streak: friendStreakSchema.optional(),
 });
 
 const friendsResponseSchema = z.object({
@@ -54,9 +63,13 @@ const acceptFriendRequestResponseSchema = z.object({
   friend: friendSummarySchema,
 });
 
-/** `GET /v1/friends` — my accepted friends, newest edge first. */
-export async function fetchFriends(token: string | null): Promise<FriendsResponse> {
-  const raw = await apiRequest<unknown>({ method: "GET", path: "/v1/friends", token });
+/**
+ * `GET /v1/friends` — my accepted friends, newest edge first. `today` (my local
+ * date) anchors each friend's pair streak; without it the server uses UTC.
+ */
+export async function fetchFriends(token: string | null, today?: string): Promise<FriendsResponse> {
+  const path = today ? `/v1/friends?today=${encodeURIComponent(today)}` : "/v1/friends";
+  const raw = await apiRequest<unknown>({ method: "GET", path, token });
   return friendsResponseSchema.parse(raw);
 }
 
@@ -180,6 +193,7 @@ const friendProfileResponseSchema = z.object({
   mutualFriends: z.array(friendUserSchema),
   periodKey: z.string(),
   games: z.array(profileGameSchema).nullable(),
+  streak: friendStreakSchema.nullable().optional(),
 });
 
 /** `GET /v1/friends/requests` — my pending directed requests, both sides. */
@@ -316,4 +330,53 @@ export async function fetchHeadToHead(
     token,
   });
   return headToHeadResponseSchema.parse(raw);
+}
+
+const friendQuestSchema = z.object({
+  friend: friendUserSchema,
+  weekStart: z.string(),
+  weekEnd: z.string(),
+  target: z.number(),
+  count: z.number(),
+  viewerCount: z.number(),
+  friendCount: z.number(),
+  completedAt: z.string().nullable(),
+  celebrate: z.boolean(),
+});
+
+const friendQuestsResponseSchema = z.object({
+  weekStart: z.string(),
+  weekEnd: z.string(),
+  quests: z.array(friendQuestSchema),
+  celebrations: z.array(friendQuestSchema),
+});
+
+/**
+ * `GET /v1/friends/quests?today=` — this week's cooperative quests (generated
+ * on the first read of the week) plus completed ones still to celebrate.
+ */
+export async function fetchFriendQuests(
+  today: string,
+  token: string | null,
+): Promise<FriendQuestsResponse> {
+  const raw = await apiRequest<unknown>({
+    method: "GET",
+    path: `/v1/friends/quests?today=${encodeURIComponent(today)}`,
+    token,
+  });
+  return friendQuestsResponseSchema.parse(raw);
+}
+
+/** `POST /v1/friends/quests/seen` — the viewer has seen one quest's celebration. */
+export function markFriendQuestSeen(
+  friendId: string,
+  weekStart: string,
+  token: string | null,
+): Promise<{ ok: true }> {
+  return apiRequest<{ ok: true }>({
+    method: "POST",
+    path: "/v1/friends/quests/seen",
+    token,
+    body: { friendId, weekStart },
+  });
 }

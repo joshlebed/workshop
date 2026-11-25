@@ -4,6 +4,7 @@ import { userAvatarImageUrl } from "@workshop/api-client/avatar";
 import {
   acceptFriendRequestFrom,
   fetchFriendProfile,
+  fetchFriendQuests,
   fetchHeadToHead,
   removeFriendRequest,
   sendFriendRequest,
@@ -12,7 +13,7 @@ import {
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import { useLivePollingInterval } from "@workshop/api-client/useLivePollingInterval";
 import type { FriendProfileGame, FriendProfileResponse } from "@workshop/shared/friends";
-import { formatScoreValue } from "@workshop/shared/games";
+import { formatScoreValue, friendStreakAtRisk } from "@workshop/shared/games";
 import { confirm, haptics } from "@workshop/ui";
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
@@ -33,7 +34,10 @@ import {
   useToast,
 } from "../../theme";
 import { addGame } from "../api/games";
+import { FriendQuestRow } from "../components/FriendQuestRow";
+import { PairFlame } from "../components/PairFlame";
 import { RECORD_COLOR, RecordBar } from "../components/RecordBar";
+import { pairFlame, pairStreakLabel } from "../lib/friendStreaks";
 import { friendsSinceLabel, mutualFriendsLabel, shortName, totals } from "../lib/headToHead";
 import { goBack } from "../lib/navigation";
 import { useGamesRuntime } from "../runtime";
@@ -237,6 +241,16 @@ export default function FriendProfileScreen() {
     enabled: !!token && !!userId && isFriend,
   });
   const versus = versusQuery.data ? totals(versusQuery.data.games) : null;
+  // This week's quest with them, if they're one of my (up to five) pairs. Same
+  // key as the home panel's, so it's usually already cached.
+  const questsQuery = useQuery({
+    queryKey: queryKeys.friends.quests(todayKey),
+    queryFn: () => fetchFriendQuests(todayKey, token),
+    enabled: !!token && isFriend,
+  });
+  const quest = questsQuery.data?.quests.find((q) => q.friend.userId === userId) ?? null;
+  const streak = isFriend ? (profile?.streak ?? null) : null;
+  const streakRisk = streak ? friendStreakAtRisk(streak) : null;
   const isSelf = profile?.relationship === "self" || (!!user?.id && user.id === userId);
   const scoresVisible = isSelf || profile?.relationship === "friends";
 
@@ -300,6 +314,25 @@ export default function FriendProfileScreen() {
                 ) : null}
               </View>
             </View>
+
+            {/* The pair streak: days in a row you both posted (spike #10). */}
+            {streak && pairFlame(streak) !== null ? (
+              <View style={styles.pairStreak} testID="friend-profile-streak">
+                <PairFlame streak={streak} size="md" />
+                <View style={styles.pairStreakText}>
+                  <Text variant="label" style={styles.pairStreakLabel}>
+                    {pairStreakLabel(streak.days)}
+                  </Text>
+                  {streakRisk ? (
+                    <Text variant="caption" tone="secondary" testID="friend-profile-streak-risk">
+                      {streakRisk === "friend"
+                        ? `Waiting on ${firstName} today`
+                        : "Post today to keep it going"}
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
+            ) : null}
 
             {/* Not friends yet: the one thing to do about it. */}
             {profile.relationship === "none" ? (
@@ -389,6 +422,17 @@ export default function FriendProfileScreen() {
                   <PixelIcon name="chevron-right" size={16} color={tokens.neon.pink} />
                 </View>
               </Pressable>
+            ) : null}
+
+            {/* This week's cooperative quest with them, when there is one. */}
+            {quest ? (
+              <View style={styles.group} testID="friend-profile-quest">
+                <View style={styles.groupHead}>
+                  <Text style={styles.sectionLabel}>Weekly quest</Text>
+                  <Text style={styles.sectionLabel}>Ends Sunday</Text>
+                </View>
+                <FriendQuestRow quest={quest} showTitle={false} />
+              </View>
             ) : null}
 
             {/* Games. Public to every viewer; today's score is only sent for
@@ -614,6 +658,9 @@ const styles = StyleSheet.create({
     paddingVertical: tokens.space.sm,
   },
   identityText: { flex: 1, minWidth: 0, gap: tokens.space.xs },
+  pairStreak: { flexDirection: "row", alignItems: "center", gap: tokens.space.md },
+  pairStreakText: { flex: 1, minWidth: 0, gap: 2 },
+  pairStreakLabel: { color: tokens.text.primary },
   actionRow: { flexDirection: "row", gap: tokens.space.md },
   actionFlex: { flex: 1 },
 
