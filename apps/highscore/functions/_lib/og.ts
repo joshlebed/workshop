@@ -191,6 +191,16 @@ export function escapeXml(input: string): string {
     .replace(/'/g, "&#39;");
 }
 
+/**
+ * Escape text that sits between tags in a card. Satori's HTML parser (via
+ * workers-og) decodes `&amp;` / `&lt;` / `&gt;` but prints numeric entities
+ * like `&#39;` literally, so an apostrophe ("Beat Ava's 937", "O'Brien") must
+ * stay a raw `'` here. Quotes are harmless outside attributes.
+ */
+function escapeCardText(input: string): string {
+  return input.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 export function truncate(input: string, max: number): string {
   const chars = Array.from(input);
   if (chars.length <= max) return input;
@@ -320,13 +330,13 @@ function fitTitleSize(text: string): number {
 }
 
 function renderImageHtml(variant: ImageVariant, assets: OgAssets): string {
-  const title = escapeXml(truncate(variant.title, variant.titleMax ?? 28));
+  const title = escapeCardText(truncate(variant.title, variant.titleMax ?? 28));
   // A two-line card has to leave room for the subtitle under a 300px icon.
   const titleSize = Math.min(fitTitleSize(title), variant.subtitle === undefined ? Infinity : 92);
   const subtitle =
     variant.subtitle === undefined
       ? ""
-      : `\n    <div style="display: flex; flex-shrink: 0; margin-top: 14px; font-size: 40px; font-weight: 500; color: #C9C4BF; line-height: 1.2;">${escapeXml(variant.subtitle)}</div>`;
+      : `\n    <div style="display: flex; flex-shrink: 0; margin-top: 14px; font-size: 40px; font-weight: 500; color: #C9C4BF; line-height: 1.2;">${escapeCardText(variant.subtitle)}</div>`;
 
   // The background is a pre-rendered raster (OKLab-blended, dithered) rather
   // than CSS gradients: Satori/resvg interpolate gradients in sRGB with no
@@ -412,6 +422,109 @@ export async function fetchGameSharePreview(
     const body = (await response.json()) as { user?: { displayName?: unknown } };
     const displayName = body.user?.displayName;
     return { sharerName: typeof displayName === "string" ? displayName : null };
+  } catch {
+    return null;
+  }
+}
+
+// --- Challenge links (`/c/:token`, onboarding spike #2) ---
+
+export interface ChallengePreview {
+  challengerName: string | null;
+  gameTitle: string;
+  /** Server-formatted score to beat (`937`, `0:42`). */
+  scoreDisplay: string;
+  expired: boolean;
+}
+
+/** The fallback line when the challenge can't be resolved (API down, bad token). */
+const CHALLENGE_OG_FALLBACK_TITLE = "Take the challenge on HighScore";
+const CHALLENGE_GAME_MAX = 28;
+
+function challengerFirstName(preview: ChallengePreview | null): string | null {
+  return gameSharerFirstName(preview ? { sharerName: preview.challengerName } : null);
+}
+
+/** Link title under the thumbnail — name-free like the play link's. */
+export function buildChallengeOgTitle(preview: ChallengePreview | null): string {
+  if (!preview) return CHALLENGE_OG_FALLBACK_TITLE;
+  const game = truncate(preview.gameTitle, CHALLENGE_GAME_MAX);
+  return preview.expired
+    ? `A ${game} challenge on HighScore`
+    : `Can you beat ${preview.scoreDisplay} on today's ${game}?`;
+}
+
+export function buildChallengeOgDescription(preview: ChallengePreview | null): string {
+  if (!preview) return "Play today's daily game and compare scores with friends on HighScore.";
+  const name = challengerFirstName(preview) ?? "A friend";
+  return preview.expired
+    ? `${name}'s challenge is over. Play today's ${preview.gameTitle} on HighScore.`
+    : `${name} challenged you on HighScore. Beat their score before the day ends.`;
+}
+
+export function buildChallengeMetaTags(
+  preview: ChallengePreview | null,
+  opts: { pageUrl: string; imageUrl: string },
+): string {
+  return buildMetaTagsRaw({
+    title: buildChallengeOgTitle(preview),
+    description: buildChallengeOgDescription(preview),
+    url: opts.pageUrl,
+    image: opts.imageUrl,
+  });
+}
+
+/** The two thumbnail lines: "Beat Josh's 937" / "MapTap · today". */
+export function buildChallengeThumbnail(preview: ChallengePreview | null): {
+  title: string;
+  subtitle: string;
+} {
+  if (!preview) return { title: CHALLENGE_OG_FALLBACK_TITLE, subtitle: HIGH_SCORE_OG_DESCRIPTION };
+  const first = challengerFirstName(preview);
+  const game = truncate(preview.gameTitle, CHALLENGE_GAME_MAX);
+  return {
+    title: first ? `Beat ${first}'s ${preview.scoreDisplay}` : `Beat ${preview.scoreDisplay}`,
+    subtitle: preview.expired ? `${game} · challenge over` : `${game} · today`,
+  };
+}
+
+export function buildChallengeOgImageHtml(
+  preview: ChallengePreview | null,
+  assets: OgAssets,
+): string {
+  const { title, subtitle } = buildChallengeThumbnail(preview);
+  return renderImageHtml({ title, subtitle, titleMax: 40 }, assets);
+}
+
+export async function fetchChallengePreview(
+  token: string,
+  env: PagesEnv,
+): Promise<ChallengePreview | null> {
+  const apiUrl = env.EXPO_PUBLIC_API_URL;
+  if (!apiUrl) return null;
+  try {
+    // `src=card` tags the backend's `challenge resolved` funnel line.
+    const response = await fetch(
+      `${apiUrl.replace(/\/$/, "")}/v1/challenges/${encodeURIComponent(token)}?src=card`,
+      { headers: { Accept: "application/json" }, cf: { cacheTtl: 60 } } as RequestInit,
+    );
+    if (!response.ok) return null;
+    const body = (await response.json()) as {
+      challenger?: { displayName?: unknown };
+      game?: { title?: unknown };
+      score?: { display?: unknown };
+      expired?: unknown;
+    };
+    const gameTitle = body.game?.title;
+    const scoreDisplay = body.score?.display;
+    if (typeof gameTitle !== "string" || typeof scoreDisplay !== "string") return null;
+    const displayName = body.challenger?.displayName;
+    return {
+      challengerName: typeof displayName === "string" ? displayName : null,
+      gameTitle,
+      scoreDisplay,
+      expired: body.expired === true,
+    };
   } catch {
     return null;
   }

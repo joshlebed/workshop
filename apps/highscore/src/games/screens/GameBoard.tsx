@@ -44,6 +44,7 @@ import {
 import { setScoreDirection } from "../api/teach";
 import { DAY_PICKER_LENGTH, DayPicker } from "../components/DayPicker";
 import { ScoreCheckPanel } from "../components/ScoreCheckPanel";
+import { useChallengeFriend } from "../hooks/useChallengeFriend";
 import { useOpenProfile } from "../hooks/useOpenProfile";
 import { usePostedScoreNotice } from "../hooks/usePostedScoreNotice";
 import { askScoreDirection } from "../lib/askScoreDirection";
@@ -89,6 +90,7 @@ export default function GameBoard() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const notifyPosted = usePostedScoreNotice();
+  const challengeFriend = useChallengeFriend();
 
   const { today, viewDate: date, setViewDate } = useViewDay();
   // The selected day lives in the shared view-day state (state/viewDay.tsx),
@@ -607,18 +609,38 @@ export default function GameBoard() {
                   if (!myScore) return null;
                   if (editingScore) return <View key={entry.userId}>{composer}</View>;
                   return (
-                    <EntryRow
-                      key={entry.userId}
-                      entry={entry}
-                      game={game}
-                      teachAvailable={teachAvailable}
-                      isMe
-                      onPressPlayer={openProfile}
-                      onEdit={() => {
-                        setDraft(entry.scoreRaw ?? "");
-                        setEditingScore(true);
-                      }}
-                    />
+                    <View key={entry.userId}>
+                      <EntryRow
+                        entry={entry}
+                        game={game}
+                        teachAvailable={teachAvailable}
+                        isMe
+                        onPressPlayer={openProfile}
+                        onEdit={() => {
+                          setDraft(entry.scoreRaw ?? "");
+                          setEditingScore(true);
+                        }}
+                      />
+                      {/* Today's score is challengeable: mint a /c/ link and
+                          share "Beat me" (useChallengeFriend). */}
+                      {isToday && gameId ? (
+                        <Pressable
+                          accessibilityRole="button"
+                          onPress={() => void challengeFriend(gameId, date)}
+                          hitSlop={6}
+                          style={({ pressed }) => [
+                            styles.challengeLink,
+                            pressed && styles.navButtonPressed,
+                          ]}
+                          testID="game-board-challenge"
+                        >
+                          <PixelIcon name="zap" size={16} color={tokens.neon.pink} />
+                          <Text variant="caption" style={styles.challengeLabel}>
+                            Challenge a friend to beat it
+                          </Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
                   );
                 }
                 return (
@@ -1159,6 +1181,15 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.sm,
   },
   editBtnHover: { backgroundColor: tokens.bg.elevated },
+  challengeLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-end",
+    gap: tokens.space.xs,
+    paddingVertical: tokens.space.xs,
+    paddingHorizontal: tokens.space.sm,
+  },
+  challengeLabel: { color: tokens.neon.pink },
   nudgeAllowance: {
     flexDirection: "row",
     alignItems: "center",

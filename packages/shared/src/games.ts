@@ -593,6 +593,80 @@ export interface GameShareLinkPreview {
   viewer?: { isSelf: boolean; isFriend: boolean };
 }
 
+/**
+ * A challenge's score to beat, as the challenger's row showed it when the link
+ * was (re)minted. `display` is server-formatted (`formatScoreValue`, else the
+ * summary) so the OG card — which can't import this package — prints the
+ * same thing the app does.
+ */
+export interface GameChallengeScore {
+  value: number | null;
+  summary: string | null;
+  display: string;
+}
+
+/** `POST /v1/games/:id/challenges` — mint/reuse my challenge for one day. */
+export interface GameChallengeResponse {
+  token: string;
+  url: string;
+  gameTitle: string;
+  periodKey: string;
+  expiresAt: string;
+  score: GameChallengeScore;
+}
+
+/**
+ * `GET /v1/challenges/:token` — resolve a challenge link. Everything but
+ * `viewer` is public (the challenger chose to share the score): it drives the
+ * OG card and the signed-out landing. `viewer` is attached only for a
+ * signed-in request.
+ */
+export interface GameChallengePreview {
+  token: string;
+  challenger: { userId: string; displayName: string | null };
+  game: {
+    id: string;
+    title: string;
+    url: string;
+    iconUrl: string | null;
+    scoreDirection: GameScoreDirection;
+    scoreUnit: GameScoreUnit | null;
+  };
+  periodKey: string;
+  score: GameChallengeScore;
+  expiresAt: string;
+  /** Past `expiresAt`: still resolves, but accept answers 410. */
+  expired: boolean;
+  viewer?: {
+    isSelf: boolean;
+    isFriend: boolean;
+    /** The game is already in the viewer's My Games. */
+    hasGame: boolean;
+    /** The viewer has accepted this challenge before. */
+    accepted: boolean;
+    /** The viewer's own score for the challenge's game and day, if posted. */
+    score: GameChallengeScore | null;
+  };
+}
+
+/** `POST /v1/challenges/:token/accept` — friendship formed + game added. */
+export interface AcceptGameChallengeResponse {
+  friend: { userId: string; displayName: string | null };
+  game: Game;
+  periodKey: string;
+  /** False when the two were already friends. */
+  friendshipCreated: boolean;
+  /** False when the game was already in the viewer's My Games. */
+  gameAdded: boolean;
+}
+
+/** `details` on the 410 an expired challenge's accept answers with. */
+export interface ExpiredGameChallengeDetails {
+  code: "CHALLENGE_EXPIRED";
+  game: GameChallengePreview["game"];
+  challenger: GameChallengePreview["challenger"];
+}
+
 // Meta's outbound-link shims (`l.facebook.com/l.php?u=<target>`): a link
 // tapped inside Facebook / Instagram / Messenger is rewritten to one of these,
 // with the real destination in the `u` query param.

@@ -4,7 +4,7 @@
 
 import { and, eq, inArray, or } from "drizzle-orm";
 import { getDb } from "../db/client.js";
-import { friendships } from "../db/schema.js";
+import { friendRequests, friendships } from "../db/schema.js";
 
 /** Order a pair canonically (`user_low < user_high`). Throws on self-pairs. */
 export function canonicalPair(a: string, b: string): { userLow: string; userHigh: string } {
@@ -40,6 +40,26 @@ export async function addFriendship(a: string, b: string): Promise<boolean> {
     .onConflictDoNothing()
     .returning({ userLow: friendships.userLow });
   return inserted.length > 0;
+}
+
+/**
+ * Drop every pending directed request between two users (both directions).
+ * Used by accept (the request is consumed), deny/cancel (silent delete —
+ * re-requesting is allowed), the cross-request auto-accept, and a challenge
+ * accept (the friendship it forms satisfies any request either way).
+ */
+export async function deletePendingBetween(a: string, b: string): Promise<void> {
+  await getDb()
+    .delete(friendRequests)
+    .where(
+      and(
+        eq(friendRequests.status, "pending"),
+        or(
+          and(eq(friendRequests.inviterId, a), eq(friendRequests.inviteeId, b)),
+          and(eq(friendRequests.inviterId, b), eq(friendRequests.inviteeId, a)),
+        ),
+      ),
+    );
 }
 
 /** Remove the edge between two users (no-op when it doesn't exist). */

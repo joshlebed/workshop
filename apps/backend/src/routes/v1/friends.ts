@@ -37,14 +37,20 @@ import {
   users,
 } from "../../db/schema.js";
 import { blockedEitherWay, blockedIdsFor } from "../../lib/blocks.js";
+import { resolveVouchOwner } from "../../lib/challenges.js";
 import { callerIpKey } from "../../lib/clientIp.js";
 import { getConfig } from "../../lib/config.js";
 import { toIsoString } from "../../lib/dates.js";
 import { sendFriendRequestPush } from "../../lib/friendRequestPush.js";
-import { addFriendship, canonicalPair, friendsOf, removeFriendship } from "../../lib/friends.js";
+import {
+  addFriendship,
+  canonicalPair,
+  deletePendingBetween,
+  friendsOf,
+  removeFriendship,
+} from "../../lib/friends.js";
 import { scoreCodeFields } from "../../lib/gameCodeService.js";
 import { gameShapeColumns, todayPeriodKey, toGameShape } from "../../lib/gameShapes.js";
-import { resolveGameShareLink } from "../../lib/gameShareLinks.js";
 import { loadHeadToHead } from "../../lib/headToHead.js";
 import { logger } from "../../lib/logger.js";
 import { isUniqueViolation } from "../../lib/pgErrors.js";
@@ -82,25 +88,6 @@ const FRIEND_INVITE_BASE_URLS = {
     production: "https://highscore.live",
   },
 } as const satisfies Record<WorkshopClient, { local: string; production: string }>;
-
-/**
- * Drop every pending directed request between two users (both directions).
- * Used by accept (the request is consumed), deny/cancel (silent delete —
- * re-requesting is allowed), and the cross-request auto-accept.
- */
-async function deleteDirectedPending(a: string, b: string): Promise<void> {
-  await getDb()
-    .delete(friendRequests)
-    .where(
-      and(
-        eq(friendRequests.status, "pending"),
-        or(
-          and(eq(friendRequests.inviterId, a), eq(friendRequests.inviteeId, b)),
-          and(eq(friendRequests.inviterId, b), eq(friendRequests.inviteeId, a)),
-        ),
-      ),
-    );
-}
 
 /** The `friendships` edge between two users, or undefined. */
 async function friendshipEdge(a: string, b: string): Promise<{ createdAt: Date } | undefined> {
@@ -400,7 +387,7 @@ friendRoutes.post(
     // pending *directed* request between the pair is consumed — the link
     // accept satisfied it.
     await addFriendship(request.inviterId, userId);
-    await deleteDirectedPending(request.inviterId, userId);
+    await deletePendingBetween(request.inviterId, userId);
 
     const pair = canonicalPair(request.inviterId, userId);
     const [edge] = await db
@@ -516,18 +503,16 @@ friendRoutes.post(
       return ok(c, response);
     }
 
-    // A play link the target minted vouches the sender in: they were handed
+    // A play link or challenge link the target minted vouches the sender in
+    // (`resolveVouchOwner`): they were handed
     // it by the target (the same trust an invite link carries), so form the
     // edge now rather than parking a pending request the target has to find.
     const via = parsed.data.via;
-    const vouched =
-      via !== undefined &&
-      isValidShareSlug(via) &&
-      (await resolveGameShareLink(via))?.userId === targetId;
+    const vouched = (await resolveVouchOwner(via)) === targetId;
     if (vouched) {
       await addFriendship(userId, targetId);
-      await deleteDirectedPending(userId, targetId);
-      await deleteDirectedPending(targetId, userId);
+      await deletePendingBetween(userId, targetId);
+      await deletePendingBetween(targetId, userId);
       const edge = await friendshipEdge(userId, targetId);
       if (!edge) return err(c, "INTERNAL", "friendship lookup failed");
       const response: SendFriendRequestResponse = {
@@ -550,7 +535,7 @@ friendRoutes.post(
       .limit(1);
     if (inbound) {
       await addFriendship(userId, targetId);
-      await deleteDirectedPending(userId, targetId);
+      await deletePendingBetween(userId, targetId);
       const edge = await friendshipEdge(userId, targetId);
       if (!edge) return err(c, "INTERNAL", "friendship lookup failed");
       const response: SendFriendRequestResponse = {
@@ -612,7 +597,7 @@ friendRoutes.post(
     if (await blockedEitherWay(userId, senderId)) return err(c, "NOT_FOUND", "request not found");
 
     await addFriendship(senderId, userId);
-    await deleteDirectedPending(userId, senderId);
+    await deletePendingBetween(userId, senderId);
 
     const [edge, [sender]] = await Promise.all([
       friendshipEdge(userId, senderId),
@@ -646,7 +631,7 @@ friendRoutes.delete("/requests/user/:userId", requireAuth, async (c) => {
   if (!UUID_RE.test(otherId)) return err(c, "NOT_FOUND", "request not found");
   if (otherId === userId) return err(c, "VALIDATION", "you can't request yourself");
 
-  await deleteDirectedPending(userId, otherId);
+  await deletePendingBetween(userId, otherId);
   return ok(c, { ok: true });
 });
 
@@ -793,15 +778,13 @@ friendRoutes.get("/users/:userId", requireAuth, async (c) => {
   }
 
   if (relationship === "none" && mutualFriends.length === 0) {
-    // A valid game-share link (`/g/:token`) for this target vouches the viewer
+    // A valid play link (`/g/:token`) or challenge link (`/c/:token`) for this
+    // target vouches the viewer
     // in: the sharer handed out the link, so showing their minimal profile (so
     // the recipient can add them) is exactly the intended flow. Without this a
     // stranger who opens a play link would 404 here and couldn't add the sharer.
     const via = c.req.query("via");
-    const vouched =
-      via !== undefined &&
-      isValidShareSlug(via) &&
-      (await resolveGameShareLink(via))?.userId === targetId;
+    const vouched = (await resolveVouchOwner(via)) === targetId;
     if (!vouched) return err(c, "NOT_FOUND", "user not found");
   }
 

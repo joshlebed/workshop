@@ -634,6 +634,43 @@ their invite link. A `via` for anyone else is ignored and the request stays `pen
 (`findOrCreateGameShareLink` / `resolveGameShareLink`); same games flag gate; OG card +
 `/g/:token` Pages function live in `functions/`. Tests: `gameShare.test.ts` (PGlite).
 
+**Challenge links (`game_challenges` + `challenge_accepts`, `routes/v1/challenges.ts`,
+`lib/challenges.ts`)** are onboarding spike #2: "I got 937 on today's MapTap. Beat me:
+highscore.live/c/<token>". One row per (challenger, game, `period_key`), 8-char token like a play
+link; `POST /v1/games/:id/challenges { periodKey }` (on `gameRoutes`, so `requireAuth`) mints or
+reuses it and **refreshes the score snapshot** (`score_value` / `score_summary`) to the
+challenger's current row — 409 `NO_SCORE` before they've posted, 400 for a day that isn't
+`isNudgeablePeriod`. `expires_at` = end of the period's UTC day + `CHALLENGE_GRACE_HOURS` (12).
+`GET /v1/challenges/:token` (own mount, `optionalAuth`, like `/v1/game-share`) returns the public
+part — challenger, game, score to beat (`display` is server-formatted with `formatScoreValue` so
+the OG card prints what the app does), expiry, `expired` — and for a signed-in viewer `viewer`
+(`isSelf`, `isFriend`, `hasGame`, `accepted`, the viewer's own score that day); a block either
+way 404s. `POST /v1/challenges/:token/accept` forms the friendship (holding the token is the
+vouch), clears pending requests between the pair (`deletePendingBetween` in `lib/friends.ts`),
+adds the game (`addToMyGames`) and inserts a `challenge_accepts` row (idempotent; records
+whether the friendship / game were new, plus `requestOriginColumns`). Expired → **410** with
+`details: { code: "CHALLENGE_EXPIRED", game, challenger }` so the client can "add the game
+anyway"; an expired token still resolves and **still vouches** a friend request.
+`resolveVouchOwner(via)` (same file) is the one vouch rule for both link kinds: friend requests
+and the profile `?via=` accept a play-link **or** challenge token. A challenge mint is a user
+action (`actionRows`, digest `actions`). Funnel: log lines `challenge minted`, `challenge
+resolved` (`src`: `card` = the Pages OG function, `landing` = the app, cached 60s at the edge so
+card counts are a floor; `viewer`: anonymous | self | friend | stranger), `challenge accepted`,
+`challenge accept expired`; "posted within the day" is derived, never logged:
+
+```sql
+SELECT c.id, count(a.*) AS accepts, count(s.*) AS accepted_then_posted
+FROM game_challenges c
+LEFT JOIN challenge_accepts a ON a.challenge_id = c.id
+LEFT JOIN game_scores s ON s.user_id = a.user_id AND s.game_id = c.game_id
+  AND s.period_key = c.period_key AND s.created_at <= c.expires_at
+GROUP BY c.id;
+```
+
+A signup that came through a challenge reads as `none` in signup attribution (no `challenge`
+source yet); join `challenge_accepts.user_id` to `users.created_at` to count them. Tests:
+`challenges.test.ts` (PGlite).
+
 **Emoji reactions on scores (G2c)** live in `game_score_reactions`
 (`(game_id, period_key, score_user_id, reactor_user_id)` PK — one reaction per reactor per
 score, tapback-style; re-reacting upserts the emoji). A composite FK to `game_scores` keeps a

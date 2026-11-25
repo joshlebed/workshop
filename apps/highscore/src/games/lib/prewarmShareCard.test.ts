@@ -11,10 +11,17 @@ describe("shareCardUrl", () => {
     );
   });
 
+  it("maps a challenge link to its own card", () => {
+    expect(shareCardUrl("https://highscore.live/c/AbCd1234")).toBe(
+      "https://highscore.live/og/c/AbCd1234.png",
+    );
+  });
+
   it("returns null for anything that is not a play link", () => {
     expect(shareCardUrl("not a url")).toBeNull();
     expect(shareCardUrl("https://highscore.live/friends/accept/x")).toBeNull();
     expect(shareCardUrl("https://highscore.live/g/")).toBeNull();
+    expect(shareCardUrl("https://highscore.live/x/abc")).toBeNull();
   });
 });
 

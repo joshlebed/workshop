@@ -78,6 +78,9 @@ export async function loadDailyDigest(db: DbClient, now: Date): Promise<DailyDig
       SELECT sender_id, created_at FROM game_nudges, bounds
         WHERE created_at >= week_start_at AND created_at < end_at
       UNION ALL
+      SELECT challenger_id, created_at FROM game_challenges, bounds
+        WHERE created_at >= week_start_at AND created_at < end_at
+      UNION ALL
       SELECT user_low, created_at FROM friendships, bounds
         WHERE created_at >= week_start_at AND created_at < end_at
       UNION ALL

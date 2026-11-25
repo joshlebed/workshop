@@ -23,6 +23,7 @@ import { reportShareIntent, type ShareIntentTelemetry } from "../src/api/telemet
 import { PlayReminderPromptProvider } from "../src/components/PlayReminderPrompt";
 import { UpdateRequiredScreen } from "../src/components/UpdateRequiredScreen";
 import {
+  PENDING_CHALLENGE_TOKEN_KEY,
   PENDING_FRIEND_INVITE_TOKEN_KEY,
   PENDING_GAME_SHARE_TOKEN_KEY,
 } from "../src/games/lib/inviteStash";
@@ -208,11 +209,15 @@ function AuthGate() {
     const onOnboarding = first === "onboarding";
     const onFriendAccept = first === "friends" && segments[1] === "accept";
     const onGameShare = first === "g";
+    // A challenge shows who and what before asking for a sign-in.
+    const onChallenge = first === "c";
 
     if (status !== "signed-in") postSignInResolvedRef.current = false;
 
     if (status === "signed-out") {
-      if (!onSignIn && !onFriendAccept && !onGameShare) router.replace("/sign-in");
+      if (!onSignIn && !onFriendAccept && !onGameShare && !onChallenge) {
+        router.replace("/sign-in");
+      }
       return;
     }
     if (status === "needs-display-name") {
@@ -225,6 +230,12 @@ function AuthGate() {
     // (same commit, declared first). Don't race it with a home redirect.
     if (shareIntentPending) return;
     void (async () => {
+      // The challenge is the most specific hand-off, so it goes first.
+      const challengeToken = await getItem(PENDING_CHALLENGE_TOKEN_KEY).catch(() => null);
+      if (challengeToken) {
+        router.replace(`/c/${encodeURIComponent(challengeToken)}` as Href);
+        return;
+      }
       const friendToken = await getItem(PENDING_FRIEND_INVITE_TOKEN_KEY).catch(() => null);
       if (friendToken) {
         router.replace(`/friends/accept/${encodeURIComponent(friendToken)}` as Href);
@@ -295,6 +306,7 @@ function AuthGate() {
         <Stack.Screen name="friends/[userId]/versus" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="friends/accept/[token]" />
         <Stack.Screen name="g/[token]" />
+        <Stack.Screen name="c/[token]" />
         <Stack.Screen name="share/index" />
         <Stack.Screen name="share/pick-game" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="profile" options={{ animation: "slide_from_right" }} />

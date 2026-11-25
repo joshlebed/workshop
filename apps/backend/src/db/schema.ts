@@ -1100,6 +1100,75 @@ export const gameShareLinks = pgTable(
 );
 
 /**
+ * Per-score challenge links (`/c/:token`, onboarding spike #2): "beat my 937 on
+ * today's MapTap". One row per (challenger, game, period day); re-minting the
+ * same day reuses the token and refreshes the score snapshot to the
+ * challenger's current score. `expires_at` is the end of `period_key`'s UTC
+ * day plus a grace window (`CHALLENGE_GRACE_HOURS` in `lib/challenges.ts`), so
+ * a player west of UTC keeps the whole local day. An expired token still
+ * resolves (the OG card and the landing explain it is over) but accept 410s.
+ * Holding the token vouches the friendship, like a play link. Every FK
+ * cascades, so account deletion needs no extra step.
+ */
+export const gameChallenges = pgTable(
+  "game_challenges",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    token: text("token").notNull().unique(),
+    challengerId: uuid("challenger_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    gameId: uuid("game_id")
+      .notNull()
+      .references(() => games.id, { onDelete: "cascade" }),
+    periodKey: text("period_key").notNull(),
+    /** The challenger's `game_scores.score_value` when the link was (re)minted. */
+    scoreValue: numeric("score_value"),
+    /** The challenger's `game_scores.score_summary` when the link was (re)minted. */
+    scoreSummary: text("score_summary"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  },
+  (t) => ({
+    challengerGameDayUniq: uniqueIndex("game_challenges_challenger_game_period_idx").on(
+      t.challengerId,
+      t.gameId,
+      t.periodKey,
+    ),
+  }),
+);
+
+/**
+ * One row per (challenge, accepter): the challenge funnel's "accepted" step.
+ * Accepting is idempotent — a second accept keeps the first row. Whether the
+ * accepter then posted a score inside the day is derived (join `game_scores`
+ * on game + period), never stored. `friendship_created` / `game_added` say
+ * what the accept actually changed (false = already friends / already had it).
+ */
+export const challengeAccepts = pgTable(
+  "challenge_accepts",
+  {
+    challengeId: uuid("challenge_id")
+      .notNull()
+      .references(() => gameChallenges.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    friendshipCreated: boolean("friendship_created").notNull().default(false),
+    gameAdded: boolean("game_added").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+    // Request origin (see `requestOriginColumns`); NULL = no client headers.
+    client: text("client"),
+    platform: text("platform"),
+    appVersion: text("app_version"),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.challengeId, t.userId] }),
+    userIdx: index("challenge_accepts_user_idx").on(t.userId, t.createdAt),
+  }),
+);
+
+/**
  * Symmetric friend graph (spec §3.6, G2a). One row per unordered pair,
  * stored canonically as `user_low < user_high` (enforced in
  * `lib/friends.ts`, the only writer). Lookups for either side stay indexed:

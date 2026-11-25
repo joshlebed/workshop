@@ -45,7 +45,7 @@ but each app owns its screen implementation so either frontend can evolve indepe
 
 Shared links have two opening mechanisms: iOS Universal Links (the existing
 `applinks:highscore.live` entitlement + deployed AASA) and server-rendered App Links
-metadata in the Pages HTML for `/g/:token` and `/friends/accept/:token`. Meta browsers
+metadata in the Pages HTML for `/g/:token`, `/c/:token` and `/friends/accept/:token`. Meta browsers
 may keep either link on the web; `OpenInAppCard/impl.web.tsx` then attempts the iOS
 scheme once and keeps a real anchor for browsers requiring a tap. Never promise a
 forced handoff: Messenger controls it. Keep the exact token in each native target,
@@ -124,6 +124,32 @@ Dismiss/complete state is the server-side
 `games.share-sheet-announcement` user flag — never a local storage key, so reinstalls and second
 devices don't re-blast. **Merging the announcement PR is the blast** — OTA ships ~60s after merge.
 
+## Challenge links (`/c/:token`, onboarding spike #2)
+
+"Beat my 937 on today's MapTap". Three surfaces, backend model in apps/backend/CLAUDE.md:
+
+- **Mint**: `useChallengeFriend` (`src/games/hooks/`) mints `POST /v1/games/:id/challenges`,
+  pre-warms `/og/c/:token.png` (`prewarmGameShareCard` handles `/g/` and `/c/`), then shares
+  `challengeShareText` (`src/games/lib/challenge.ts`) via `shareOrCopyLink`. Two entry points:
+  the **Challenge a friend** action on the clean "Score posted" toast (`usePostedScoreNotice`,
+  today's period only — a toast carrying Move/Undo advice keeps that action instead) and the
+  "Challenge a friend to beat it" link under my own row on today's board (`GameBoard`).
+- **Card**: `functions/c/[token].ts` (tags) + `functions/og/c/[token].ts` (PNG, "Beat Josh's 937"
+  / "MapTap · today"), helpers `buildChallenge*` in `functions/_lib/og.ts`; they fetch the resolve
+  with `?src=card`. The card is cached a day like the others, so a card first rendered while the
+  challenge was live still says "today" after it expires; the page and the app say it's over.
+  `scripts/check-og.mjs --site=highscore https://highscore.live/c/<token>` checks it post-deploy.
+  Card text goes through `escapeCardText`, not `escapeXml`: Satori prints `&#39;` literally.
+- **Landing**: `app/c/[token].tsx` → `src/games/screens/ChallengeLanding.tsx`. Signed out it shows
+  the challenge (the resolve is public) with "Sign in to accept"; AuthGate lets `/c/*` mount
+  signed-out and its post-sign-in bounce checks `PENDING_CHALLENGE_TOKEN_KEY` **first**. Spike #1
+  is building the richer signed-out landing on a sibling branch; this one is deliberately
+  minimal. Signed in, **Accept challenge** (one call: friendship + game) refetches `["games"]`
+  (minus the challenge resolve, so the funnel's landing count isn't doubled), replaces to the
+  board for the challenge's day — the challenger's row plus the paste prompt — and opens the game
+  with `openExternalUrl`, so coming back to the app lands on the board. Expired → "add the game
+  anyway" (`POST /v1/games` + a friend request vouched by the challenge token).
+
 ## Public pages (`/support`, `/privacy`, `/terms`)
 
 All three routes render with no session. `src/lib/publicRoutes.ts` is the single source of truth, and
@@ -134,7 +160,7 @@ URL) and `/terms` is the EULA the sign-in screen links to (Guideline 1.2), so re
 a metadata change, not a refactor. Copy lives in `src/lib/legal.ts` and
 is pinned by `legal.test.ts`: every claim there about what HighScore stores, how long it keeps it,
 and what it never does must stay literally true of the shipped app. The screens are thin wrappers
-over `src/screens/legal/LegalScreen.tsx`. The AASA (`functions/.well-known/`) only claims `/g/*` and
+over `src/screens/legal/LegalScreen.tsx`. The AASA (`functions/.well-known/`) only claims `/g/*`, `/c/*` and
 `/friends/accept/*`, so iOS leaves these in the browser where a reviewer expects them.
 
 ## App Review 1.0 (9) rejection fixes — don't regress

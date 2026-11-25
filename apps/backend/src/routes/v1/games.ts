@@ -90,6 +90,7 @@ import { addToMyGames } from "../../lib/userGames.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { rateLimit } from "../../middleware/rate-limit.js";
 import { workshopGamesSunset } from "../../middleware/workshop-games-sunset.js";
+import { registerChallengeMintRoute } from "./challenges.js";
 import { handleScorePreviewV2, handleScoreUpsertV2, registerGameTeachRoutes } from "./gameTeach.js";
 import { resolveLinkPreview } from "./link-preview.js";
 
@@ -1106,3 +1107,4 @@ gameRoutes.put(
 
 // Teach v2: previews, picks, parser teaching, direction (see gameTeach.ts).
 registerGameTeachRoutes(gameRoutes);
+registerChallengeMintRoute(gameRoutes);

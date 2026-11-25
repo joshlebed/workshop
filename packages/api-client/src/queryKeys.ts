@@ -100,6 +100,8 @@ export const queryKeys = {
     catalog: ["games", "catalog"] as const,
     /** `GET /v1/game-share/:token` — resolve a play link to its sharer + viewer state. */
     shareLink: (token: string) => ["games", "shareLink", token] as const,
+    /** `GET /v1/challenges/:token` — a challenge link's resolve (`/c/:token`). */
+    challenge: (token: string) => ["games", "challenge", token] as const,
   },
   friends: {
     /**

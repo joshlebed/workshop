@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildChallengeMetaTags,
+  buildChallengeOgImageHtml,
+  buildChallengeThumbnail,
   buildDefaultMetaTags,
   buildDefaultOgImageHtml,
   buildFriendMetaTags,
@@ -112,5 +115,47 @@ describe("HighScore Open Graph helpers", () => {
     expect(image).not.toContain("data-score-grid");
     expect(image).toContain("#0F0D14");
     expect(image).toContain('data-og-background src="https://highscore.live/og-bg.png"');
+  });
+
+  it("renders a challenge card with the score to beat, one tag per property", () => {
+    const preview = {
+      challengerName: "Josh Lebedinsky",
+      gameTitle: "MapTap",
+      scoreDisplay: "937",
+      expired: false,
+    };
+    expect(buildChallengeThumbnail(preview)).toEqual({
+      title: "Beat Josh's 937",
+      subtitle: "MapTap · today",
+    });
+    const tags = buildChallengeMetaTags(preview, {
+      pageUrl: "https://highscore.live/c/AbCd1234",
+      imageUrl: "https://highscore.live/og/c/AbCd1234.png",
+    });
+    expect(tags).toContain("Can you beat 937 on today&#39;s MapTap?");
+    expect(tags).toContain("Josh challenged you on HighScore");
+    expect(tags).toContain('content="https://highscore.live/og/c/AbCd1234.png"');
+    for (const selector of OG_META_SELECTORS) {
+      const attr = selector.match(/\[(\w+)="([^"]+)"\]/);
+      expect(attr).not.toBeNull();
+      const needle = `${attr?.[1]}="${attr?.[2]}"`;
+      expect(tags.split(needle).length - 1).toBe(1);
+    }
+    const image = buildChallengeOgImageHtml(preview, ASSETS);
+    // A raw apostrophe: Satori prints `&#39;` literally.
+    expect(image).toContain(">Beat Josh's 937<");
+    expect(image).toContain(">MapTap · today<");
+  });
+
+  it("says an expired challenge is over and falls back when unresolved", () => {
+    expect(
+      buildChallengeThumbnail({
+        challengerName: null,
+        gameTitle: "Daily Tens",
+        scoreDisplay: "0:42",
+        expired: true,
+      }),
+    ).toEqual({ title: "Beat 0:42", subtitle: "Daily Tens · challenge over" });
+    expect(buildChallengeThumbnail(null).title).toBe("Take the challenge on HighScore");
   });
 });
