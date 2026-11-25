@@ -107,9 +107,13 @@ describe("quest copy", () => {
     expect(questProgress(quest({ count: 14 }))).toBe(1);
   });
 
-  it("celebrates with the real count", () => {
-    expect(celebrationText(quest({ count: 11 }))).toBe(
+  it("celebrates with the real count, or names everyone when there are several", () => {
+    expect(celebrationText([quest({ count: 11 })])).toBe(
       "You and Sam posted 11 scores together this week.",
+    );
+    const named = (name: string) => quest({ friend: { userId: name, displayName: name } });
+    expect(celebrationText([named("Ana"), named("Bo"), named("Cy")])).toBe(
+      "You finished 3 quests — with Ana, Bo & Cy.",
     );
   });
 });

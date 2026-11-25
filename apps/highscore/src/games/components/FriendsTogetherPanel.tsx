@@ -1,7 +1,8 @@
 // Games home: the cooperative layer (spike #10), at the top of the card list.
 //
-//   1. A one-time celebration for each completed weekly quest the viewer
-//      hasn't acknowledged ("Nice!" → `POST /v1/friends/quests/seen`).
+//   1. A one-time celebration of every completed weekly quest the viewer
+//      hasn't acknowledged, in one card ("Nice!" → `POST /v1/friends/quests/seen`
+//      for each).
 //   2. "Keep it alive" lines: a pair streak (≥2 days) that reached yesterday
 //      but not today on both sides — "You and Sam: 5 days — post to keep it".
 //      Tapping one the viewer can save opens the post screen.
@@ -56,21 +57,14 @@ export function FriendsTogetherPanel() {
     refetchInterval: livePoll,
   });
 
+  // One "Nice!" acknowledges every celebration on the card at once.
   const seenMutation = useMutation({
-    mutationFn: (quest: FriendQuest) =>
-      markFriendQuestSeen(quest.friend.userId, quest.weekStart, token),
-    onMutate: (quest) => {
-      // Gone at once; the server write is a formality the next read confirms.
+    mutationFn: (done: FriendQuest[]) =>
+      Promise.all(done.map((q) => markFriendQuestSeen(q.friend.userId, q.weekStart, token))),
+    onMutate: () => {
+      // Gone at once; the server writes are a formality the next read confirms.
       queryClient.setQueryData<FriendQuestsResponse>(questsKey, (prev) =>
-        prev
-          ? {
-              ...prev,
-              celebrations: prev.celebrations.filter(
-                (c) =>
-                  !(c.friend.userId === quest.friend.userId && c.weekStart === quest.weekStart),
-              ),
-            }
-          : prev,
+        prev ? { ...prev, celebrations: [] } : prev,
       );
     },
   });
@@ -80,17 +74,17 @@ export function FriendsTogetherPanel() {
   // Open quests get a row each; finished ones fold into one line.
   const openQuests = quests.filter((q) => !q.completedAt);
   const doneQuests = quests.filter((q) => q.completedAt);
-  const celebration = questsQuery.data?.celebrations[0] ?? null;
-  if (!celebration && lines.length === 0 && quests.length === 0) return null;
+  const celebrations = questsQuery.data?.celebrations ?? [];
+  if (celebrations.length === 0 && lines.length === 0 && quests.length === 0) return null;
 
   return (
     <View style={styles.wrap} testID="friends-together">
-      {celebration ? (
+      {celebrations.length > 0 ? (
         <QuestCelebration
-          quest={celebration}
+          quests={celebrations}
           onDone={() => {
             haptics.success();
-            seenMutation.mutate(celebration);
+            seenMutation.mutate(celebrations);
           }}
         />
       ) : null}
@@ -181,7 +175,7 @@ export function FriendsTogetherPanel() {
   );
 }
 
-function QuestCelebration({ quest, onDone }: { quest: FriendQuest; onDone: () => void }) {
+function QuestCelebration({ quests, onDone }: { quests: FriendQuest[]; onDone: () => void }) {
   // A small pop on arrival; plain Animated so it runs on every runtime.
   const scale = useRef(new Animated.Value(0.92)).current;
   useEffect(() => {
@@ -204,7 +198,7 @@ function QuestCelebration({ quest, onDone }: { quest: FriendQuest; onDone: () =>
           Quest complete
         </Text>
         <Text variant="label" style={styles.celebrationText}>
-          {celebrationText(quest)}
+          {celebrationText(quests)}
         </Text>
       </View>
       <Button label="Nice!" size="md" onPress={onDone} testID="friends-quest-celebration-done" />

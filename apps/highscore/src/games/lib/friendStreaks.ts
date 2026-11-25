@@ -71,9 +71,18 @@ export function questStatusLine(quest: FriendQuest): string {
   return `${left} more ${left === 1 ? "score" : "scores"} together by Sunday`;
 }
 
-/** The one-time home celebration's copy. */
-export function celebrationText(quest: FriendQuest): string {
-  return `You and ${friendFirstName(quest.friend.displayName)} posted ${quest.count} scores together this week.`;
+/**
+ * The one-time home celebration's copy: one quest names the count, several
+ * name the friends ("You finished 3 quests — with Barbara, Renata & Dagmawi.").
+ */
+export function celebrationText(quests: FriendQuest[]): string {
+  const [first] = quests;
+  if (!first) return "";
+  if (quests.length === 1) {
+    return `You and ${friendFirstName(first.friend.displayName)} posted ${first.count} scores together this week.`;
+  }
+  const names = quests.map((q) => friendFirstName(q.friend.displayName));
+  return `You finished ${quests.length} quests — with ${names.slice(0, -1).join(", ")} & ${names[names.length - 1]}.`;
 }
 
 /** "+3 more streaks to keep" under the home's first lines. */
