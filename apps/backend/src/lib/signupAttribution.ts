@@ -17,7 +17,7 @@ import type { SignupSource } from "@workshop/shared/constants";
 import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "../db/client.js";
-import { friendRequests, gameShareLinks, listInvites, users } from "../db/schema.js";
+import { crews, friendRequests, gameShareLinks, listInvites, users } from "../db/schema.js";
 import type { DbClient } from "./sql.js";
 
 const token = z.string().trim().min(1).max(128).optional().catch(undefined);
@@ -33,6 +33,7 @@ export const signupAcquisitionSchema = z
     friendInviteToken: token,
     gameShareToken: token,
     listInviteToken: token,
+    crewInviteToken: token,
     referrer: z.string().max(2048).optional().catch(undefined),
     landingPath: z.string().max(2048).optional().catch(undefined),
     utm: z
@@ -45,7 +46,10 @@ export const signupAcquisitionSchema = z
 /** Parsed `acquisition` (the wire shape is `SignupAcquisition` in @workshop/shared). */
 export type SignupAcquisitionInput = z.infer<typeof signupAcquisitionSchema>;
 
-type LinkSource = Extract<SignupSource, "friend_invite" | "play_link" | "list_invite">;
+type LinkSource = Extract<
+  SignupSource,
+  "friend_invite" | "play_link" | "list_invite" | "crew_invite"
+>;
 
 /** Stored in `users.signup_context`. Only the keys we actually know are set. */
 interface SignupContext {
@@ -108,6 +112,16 @@ export function dbLinkOwnerLookup(db: DbClient = getDb()): LinkOwnerLookup {
         .limit(1);
       return row?.userId ?? null;
     }
+    if (kind === "crew_invite") {
+      // A crew link's referrer is the crew's creator (null once they deleted
+      // their account — recorded as a link that no longer resolves).
+      const [row] = await db
+        .select({ userId: crews.createdBy })
+        .from(crews)
+        .where(eq(crews.token, value))
+        .limit(1);
+      return row?.userId ?? null;
+    }
     if (kind === "play_link") {
       const [row] = await db
         .select({ userId: gameShareLinks.userId })
@@ -128,7 +142,7 @@ export function dbLinkOwnerLookup(db: DbClient = getDb()): LinkOwnerLookup {
 /**
  * Turn what the client sent into what we record. `undefined` (no
  * `acquisition` on the request) → null: nothing is written. Links win over
- * web context, friend invite over play link over list invite; the first link
+ * web context, friend invite over crew link over play link over list invite; the first link
  * that resolves to someone other than the new user is the referrer.
  */
 export async function resolveSignupAttribution(
@@ -140,6 +154,7 @@ export async function resolveSignupAttribution(
   const context = webContext(acq);
   const links: [LinkSource, string | undefined][] = [
     ["friend_invite", acq.friendInviteToken],
+    ["crew_invite", acq.crewInviteToken],
     ["play_link", acq.gameShareToken],
     ["list_invite", acq.listInviteToken],
   ];
@@ -185,6 +200,7 @@ const LINK_LABEL: Record<LinkSource, string> = {
   friend_invite: "friend invite link",
   play_link: "play link",
   list_invite: "list invite",
+  crew_invite: "crew invite link",
 };
 
 function hostOf(referrer: string | undefined): string | null {
@@ -221,7 +237,12 @@ export function describeSignupAttribution(
   const { source, context } = attribution;
   const extra = webDetails(context);
   const tail = extra.length > 0 ? ` · ${extra.join(" · ")}` : "";
-  if (source === "friend_invite" || source === "play_link" || source === "list_invite") {
+  if (
+    source === "friend_invite" ||
+    source === "play_link" ||
+    source === "list_invite" ||
+    source === "crew_invite"
+  ) {
     if (!attribution.referredByUserId || !referrerLabel) {
       return `opened a ${LINK_LABEL[source]} that no longer resolves — inviter unknown${tail}`;
     }

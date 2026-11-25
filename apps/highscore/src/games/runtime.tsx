@@ -22,6 +22,8 @@ export interface GamesRoutes {
   friendProfile: (userId: string, via?: string) => string;
   /** Head-to-head between the viewer and one friend. */
   headToHead: (userId: string) => string;
+  /** A crew's screen: members + the crew board. */
+  crew: (crewId: string) => string;
 }
 
 export interface GamesRuntimeValue {

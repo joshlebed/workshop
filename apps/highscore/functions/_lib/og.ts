@@ -155,6 +155,13 @@ export interface GameSharePreview {
   sharerName: string | null;
 }
 
+/** What the crew card needs from `GET /v1/crews/:token`. */
+export interface CrewInvitePreview {
+  crewName: string;
+  creatorName: string | null;
+  memberCount: number;
+}
+
 export interface OgMetaValues {
   title: string;
   description: string;
@@ -284,6 +291,49 @@ export function buildGameShareMetaTags(
   });
 }
 
+const CREW_OG_FALLBACK_TITLE = "Join a crew on HighScore";
+/** Longest crew name the card renders before an ellipsis (names are ≤40). */
+const CREW_NAME_MAX = 28;
+
+function crewCreatorFirstName(preview: CrewInvitePreview | null): string | null {
+  const first = preview?.creatorName?.trim().split(/\s+/)[0];
+  return first && first.length > 0 ? truncate(first, GAME_SHARE_NAME_MAX) : null;
+}
+
+function crewMembersLabel(count: number): string {
+  return count === 1 ? "1 member" : `${count} members`;
+}
+
+/** "Join Josh's crew" — the card's first line and the link title's lead. */
+export function buildCrewKicker(preview: CrewInvitePreview | null): string {
+  const first = crewCreatorFirstName(preview);
+  return first ? `Join ${first}'s crew` : "Join the crew";
+}
+
+/** "Join Josh's crew: Sunday Puzzlers · 4 members". */
+export function buildCrewOgTitle(preview: CrewInvitePreview | null): string {
+  if (!preview) return CREW_OG_FALLBACK_TITLE;
+  return `${buildCrewKicker(preview)}: ${preview.crewName} · ${crewMembersLabel(preview.memberCount)}`;
+}
+
+export function buildCrewOgDescription(preview: CrewInvitePreview | null): string {
+  return preview
+    ? `Everyone in ${preview.crewName} is friends on HighScore. Join to compare daily game scores with all of them.`
+    : "Everyone in a crew is friends on HighScore. Join to compare daily game scores with all of them.";
+}
+
+export function buildCrewMetaTags(
+  preview: CrewInvitePreview | null,
+  opts: { pageUrl: string; imageUrl: string },
+): string {
+  return buildMetaTagsRaw({
+    title: buildCrewOgTitle(preview),
+    description: buildCrewOgDescription(preview),
+    url: opts.pageUrl,
+    image: opts.imageUrl,
+  });
+}
+
 function gameSharerName(preview: GameSharePreview | null): string | null {
   const name = preview?.sharerName?.trim();
   return name && name.length > 0 ? name : null;
@@ -375,6 +425,49 @@ export function buildGameShareOgImageHtml(
     },
     assets,
   );
+}
+
+/** Two lines: "Join Josh's crew" over "Sunday Puzzlers · 4 members". */
+export function buildCrewOgImageHtml(preview: CrewInvitePreview | null, assets: OgAssets): string {
+  if (!preview) return renderImageHtml({ title: CREW_OG_FALLBACK_TITLE, titleMax: 48 }, assets);
+  return renderImageHtml(
+    {
+      title: buildCrewKicker(preview),
+      subtitle: `${truncate(preview.crewName, CREW_NAME_MAX)} · ${crewMembersLabel(preview.memberCount)}`,
+      titleMax: 48,
+    },
+    assets,
+  );
+}
+
+export async function fetchCrewInvitePreview(
+  token: string,
+  env: PagesEnv,
+): Promise<CrewInvitePreview | null> {
+  const apiUrl = env.EXPO_PUBLIC_API_URL;
+  if (!apiUrl) return null;
+  try {
+    const response = await fetch(
+      `${apiUrl.replace(/\/$/, "")}/v1/crews/${encodeURIComponent(token)}`,
+      { headers: { Accept: "application/json" }, cf: { cacheTtl: 60 } } as RequestInit,
+    );
+    if (!response.ok) return null;
+    const body = (await response.json()) as {
+      crew?: { name?: unknown; memberCount?: unknown; creator?: { displayName?: unknown } | null };
+    };
+    const crew = body.crew;
+    if (!crew || typeof crew.name !== "string" || typeof crew.memberCount !== "number") {
+      return null;
+    }
+    const creatorName = crew.creator?.displayName;
+    return {
+      crewName: crew.name,
+      creatorName: typeof creatorName === "string" ? creatorName : null,
+      memberCount: crew.memberCount,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export async function fetchFriendInvitePreview(

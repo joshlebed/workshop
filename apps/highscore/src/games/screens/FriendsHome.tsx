@@ -34,6 +34,7 @@ import { useOpenProfile } from "../hooks/useOpenProfile";
 import { goBack } from "../lib/navigation";
 import { shareOrCopyLink } from "../lib/share";
 import { useGamesRuntime } from "../runtime";
+import { CrewsSection } from "./CrewsSection";
 
 /**
  * Friends screen (G2b, issue #286; directed requests + mutuals added with the
@@ -323,6 +324,9 @@ export default function FriendsScreen() {
             </>
           ) : null}
         </View>
+
+        {/* Crews — one group link, everyone friends with everyone (spike #8). */}
+        <CrewsSection />
 
         {/* Pending inbound requests. */}
         {inbound.length > 0 ? (

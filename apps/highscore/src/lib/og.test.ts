@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildCrewMetaTags,
+  buildCrewOgImageHtml,
+  buildCrewOgTitle,
   buildDefaultMetaTags,
   buildDefaultOgImageHtml,
   buildFriendMetaTags,
@@ -98,6 +101,24 @@ describe("HighScore Open Graph helpers", () => {
     expect(tags).not.toContain("Workshop.dev");
     expect(image).toContain(">Alex wants to be friends<");
     expect(image).toContain('data-brand-icon="highscore"');
+  });
+
+  it("names the crew, its creator and its size on the crew card", () => {
+    const preview = { crewName: "Sunday Puzzlers", creatorName: "Josh Lebedinsky", memberCount: 4 };
+    expect(buildCrewOgTitle(preview)).toBe("Join Josh's crew: Sunday Puzzlers · 4 members");
+    const tags = buildCrewMetaTags(preview, {
+      pageUrl: "https://highscore.live/crew/example",
+      imageUrl: "https://highscore.live/og/crew/example.png",
+    });
+    expect(tags).toContain('content="Join Josh&#39;s crew: Sunday Puzzlers · 4 members"');
+    expect(tags).toContain('content="https://highscore.live/og/crew/example.png"');
+    const image = buildCrewOgImageHtml(preview, ASSETS);
+    expect(image).toContain(">Join Josh&#39;s crew<");
+    expect(image).toContain(">Sunday Puzzlers · 4 members<");
+    expect(buildCrewOgTitle({ ...preview, creatorName: null, memberCount: 1 })).toBe(
+      "Join the crew: Sunday Puzzlers · 1 member",
+    );
+    expect(buildCrewOgTitle(null)).toBe("Join a crew on HighScore");
   });
 
   it("renders a branded default PNG surface", () => {

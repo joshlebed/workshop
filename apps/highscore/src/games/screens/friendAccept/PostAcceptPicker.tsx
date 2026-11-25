@@ -6,7 +6,9 @@
 //   2. Games — ranked across the new friend plus everyone just requested
 //      (`GET /v1/games/discovery?users=…`), one-tap add / Add all.
 // One component so the two links converge on the same onboarding; the
-// screens own only their own preview + accept step.
+// screens own only their own preview + accept step. The crew landing
+// (`/crew/:token`) reuses the games step alone as `CrewGamesPicker`: everyone
+// in the crew is already a friend, so there is no people step.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { userAvatarImageUrl } from "@workshop/api-client/avatar";
@@ -80,6 +82,50 @@ export function PostAcceptPicker({
 
   return (
     <GamesStep friend={friend} name={name} token={token} requested={requested} onDone={onDone} />
+  );
+}
+
+/**
+ * Post-join picker for a crew: the games step, ranked across the crew members
+ * the joiner is now friends with (`GET /v1/games/discovery?users=…`, ≤20 ids).
+ */
+export function CrewGamesPicker({
+  crewName,
+  members,
+  token,
+  onDone,
+}: {
+  crewName: string;
+  members: { userId: string; displayName: string | null }[];
+  token: string | null;
+  onDone: () => void;
+}) {
+  const [first, ...rest] = members.slice(0, 20);
+  if (!first) {
+    return (
+      <Centered testID="crew-join-picker">
+        <Card style={styles.card} elevated>
+          <Text variant="title" style={styles.inviterTitle}>
+            You're in {crewName}
+          </Text>
+          <Text tone="secondary" style={styles.inviterCaption}>
+            Share the link so your crew can join. Everyone who does becomes friends with everyone in
+            it.
+          </Text>
+          <Button label="Go to Games" onPress={onDone} testID="friend-accept-picker-done" />
+        </Card>
+      </Centered>
+    );
+  }
+  return (
+    <GamesStep
+      friend={first}
+      name={crewName}
+      token={token}
+      requested={rest.map((m) => m.userId)}
+      onDone={onDone}
+      crewName={crewName}
+    />
   );
 }
 
@@ -233,18 +279,22 @@ function GamesStep({
   token,
   requested,
   onDone,
+  crewName,
 }: {
   friend: { userId: string; displayName: string | null };
   name: string;
   token: string | null;
   requested: string[];
   onDone: () => void;
+  /** Set by `CrewGamesPicker`: the header names the crew, not one friend. */
+  crewName?: string;
 }) {
   const queryClient = useQueryClient();
   const openProfile = useOpenProfile();
   const [adding, setAdding] = useState<string[]>([]);
   const [added, setAdded] = useState<string[]>([]);
-  const across = requested.length > 0;
+  // A crew always ranks across its members, even when only one is a friend.
+  const across = requested.length > 0 || crewName !== undefined;
   const userIds = [friend.userId, ...requested];
 
   const discoveryQuery = useQuery({
@@ -301,24 +351,32 @@ function GamesStep({
   return (
     <Centered testID="friend-accept-picker">
       <Card style={styles.card} elevated>
-        <View style={styles.inviterBlock}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`View ${name}'s profile`}
-            onPress={() => openProfile(friend.userId)}
-            style={({ pressed }) => [styles.identity, pressed && styles.identityPressed]}
-            testID="friend-accept-friend"
-          >
-            <Avatar
-              name={friend.displayName}
-              imageUrl={userAvatarImageUrl(friend.userId)}
-              size="lg"
-            />
-            <Text variant="title" style={styles.inviterTitle}>
-              {across ? "Pick your first games" : `You're friends with ${name}`}
+        {crewName !== undefined ? (
+          <View style={styles.inviterBlock}>
+            <Text variant="title" style={styles.inviterTitle} testID="crew-join-picker-title">
+              You're in {crewName}
             </Text>
-          </Pressable>
-        </View>
+          </View>
+        ) : (
+          <View style={styles.inviterBlock}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`View ${name}'s profile`}
+              onPress={() => openProfile(friend.userId)}
+              style={({ pressed }) => [styles.identity, pressed && styles.identityPressed]}
+              testID="friend-accept-friend"
+            >
+              <Avatar
+                name={friend.displayName}
+                imageUrl={userAvatarImageUrl(friend.userId)}
+                size="lg"
+              />
+              <Text variant="title" style={styles.inviterTitle}>
+                {across ? "Pick your first games" : `You're friends with ${name}`}
+              </Text>
+            </Pressable>
+          </View>
+        )}
 
         {discoveryQuery.isLoading ? (
           <View style={styles.pickerLoading}>
@@ -327,9 +385,11 @@ function GamesStep({
         ) : games.length > 0 ? (
           <>
             <Text tone="secondary" style={styles.inviterCaption}>
-              {across
-                ? `What ${name} and the people you added play — add any to your home.`
-                : `${name} plays these — add any to your home.`}
+              {crewName !== undefined
+                ? "What your crew plays — add any to your home."
+                : across
+                  ? `What ${name} and the people you added play — add any to your home.`
+                  : `${name} plays these — add any to your home.`}
             </Text>
             <ScrollView
               style={styles.pickerScroll}

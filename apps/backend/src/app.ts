@@ -13,6 +13,7 @@ import { activityRoutes } from "./routes/v1/activity.js";
 import { adminRoutes } from "./routes/v1/admin.js";
 import { authRoutes } from "./routes/v1/auth.js";
 import { clientRoutes } from "./routes/v1/client.js";
+import { crewRoutes } from "./routes/v1/crews.js";
 import { friendRoutes } from "./routes/v1/friends.js";
 import { gameShareRoutes } from "./routes/v1/gameShare.js";
 import { gameRoutes } from "./routes/v1/games.js";
@@ -161,6 +162,7 @@ export function buildApp() {
   // blanket `requireAuth` — the resolve route is optional-auth (link crawlers).
   app.route("/v1/game-share", gameShareRoutes);
   app.route("/v1/friends", friendRoutes);
+  app.route("/v1/crews", crewRoutes);
   app.route("/v1/me", meRoutes);
   app.route("/v1/search", searchRoutes);
   app.route("/v1/link-preview", linkPreviewRoutes);

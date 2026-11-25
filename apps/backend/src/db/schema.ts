@@ -1162,6 +1162,56 @@ export const friendRequests = pgTable(
 );
 
 /**
+ * Crews (onboarding spike #8, "density first"): one share link that makes
+ * everyone who joins friends with everyone already in it. `token` is the
+ * public `/crew/:token` slug; `name` is UGC (≤40 chars, content-filtered in
+ * `lib/crews.ts`, which owns every rule). The creator is only a label — a
+ * deleted creator leaves the crew standing (`set null`).
+ */
+export const crews = pgTable(
+  "crews",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+    token: text("token").notNull().unique(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => ({
+    nameCheck: check(
+      "crews_name_check",
+      sql`char_length(btrim(${t.name})) > 0 AND char_length(${t.name}) <= 40`,
+    ),
+  }),
+);
+
+/**
+ * Crew membership. `friendships_formed` is the spike's measurement: how many
+ * new `friendships` edges this join created (0 for the creator's own row).
+ * Request origin columns as on other user writes (`requestOriginColumns`).
+ */
+export const crewMembers = pgTable(
+  "crew_members",
+  {
+    crewId: uuid("crew_id")
+      .notNull()
+      .references(() => crews.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().default(sql`now()`),
+    friendshipsFormed: integer("friendships_formed").notNull().default(0),
+    client: text("client"),
+    platform: text("platform"),
+    appVersion: text("app_version"),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.crewId, t.userId] }),
+    userIdx: index("crew_members_user_idx").on(t.userId),
+  }),
+);
+
+/**
  * One-directional user blocks (App Store Review Guideline 1.2). `blocker_id`
  * blocked `blocked_id`. Blocking removes any `friendships` edge and pending
  * `friend_requests` between the pair (routes/v1/moderation.ts), and every

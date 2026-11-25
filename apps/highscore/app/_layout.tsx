@@ -23,6 +23,7 @@ import { reportShareIntent, type ShareIntentTelemetry } from "../src/api/telemet
 import { PlayReminderPromptProvider } from "../src/components/PlayReminderPrompt";
 import { UpdateRequiredScreen } from "../src/components/UpdateRequiredScreen";
 import {
+  PENDING_CREW_TOKEN_KEY,
   PENDING_FRIEND_INVITE_TOKEN_KEY,
   PENDING_GAME_SHARE_TOKEN_KEY,
 } from "../src/games/lib/inviteStash";
@@ -64,6 +65,7 @@ const HIGHSCORE_GAMES_ROUTES: GamesRoutes = {
   friendProfile: (userId, via) =>
     `/friends/${encodeURIComponent(userId)}${via ? `?via=${encodeURIComponent(via)}` : ""}`,
   headToHead: (userId) => `/friends/${encodeURIComponent(userId)}/versus`,
+  crew: (crewId) => `/crews/${encodeURIComponent(crewId)}`,
 };
 
 function GamesRuntimeBridge({ children }: { children: ReactNode }) {
@@ -208,11 +210,16 @@ function AuthGate() {
     const onOnboarding = first === "onboarding";
     const onFriendAccept = first === "friends" && segments[1] === "accept";
     const onGameShare = first === "g";
+    // The crew landing renders its own signed-out context card (name, members,
+    // "Sign in to join") instead of bouncing straight to /sign-in.
+    const onCrewLanding = first === "crew";
 
     if (status !== "signed-in") postSignInResolvedRef.current = false;
 
     if (status === "signed-out") {
-      if (!onSignIn && !onFriendAccept && !onGameShare) router.replace("/sign-in");
+      if (!onSignIn && !onFriendAccept && !onGameShare && !onCrewLanding) {
+        router.replace("/sign-in");
+      }
       return;
     }
     if (status === "needs-display-name") {
@@ -228,6 +235,11 @@ function AuthGate() {
       const friendToken = await getItem(PENDING_FRIEND_INVITE_TOKEN_KEY).catch(() => null);
       if (friendToken) {
         router.replace(`/friends/accept/${encodeURIComponent(friendToken)}` as Href);
+        return;
+      }
+      const crewToken = await getItem(PENDING_CREW_TOKEN_KEY).catch(() => null);
+      if (crewToken) {
+        router.replace(`/crew/${encodeURIComponent(crewToken)}` as Href);
         return;
       }
       const gameToken = await getItem(PENDING_GAME_SHARE_TOKEN_KEY).catch(() => null);
@@ -295,6 +307,8 @@ function AuthGate() {
         <Stack.Screen name="friends/[userId]/versus" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="friends/accept/[token]" />
         <Stack.Screen name="g/[token]" />
+        <Stack.Screen name="crew/[token]" />
+        <Stack.Screen name="crews/[id]" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="share/index" />
         <Stack.Screen name="share/pick-game" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="profile" options={{ animation: "slide_from_right" }} />

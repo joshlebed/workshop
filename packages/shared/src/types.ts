@@ -156,6 +156,8 @@ export interface SignupAcquisition {
   friendInviteToken?: string;
   /** Pending `/g/:token` play link the visitor opened before signing in. */
   gameShareToken?: string;
+  /** Pending `/crew/:token` crew link (HighScore). The referrer is the crew's creator. */
+  crewInviteToken?: string;
   /** Pending legacy list invite (`/invite/:token`, Workshop only). */
   listInviteToken?: string;
   /** Web only: `document.referrer` of the first page load, when cross-site. */

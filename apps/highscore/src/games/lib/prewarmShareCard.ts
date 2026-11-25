@@ -15,12 +15,14 @@ export function shareCardUrl(linkUrl: string): string | null {
   } catch {
     return null;
   }
-  const match = url.pathname.match(/^\/g\/([^/]+)$/);
+  // Play link `/g/:token` → `/og/g/:token.png`; crew link `/crew/:token` →
+  // `/og/crew/:token.png`.
+  const match = url.pathname.match(/^\/(g|crew)\/([^/]+)$/);
   if (!match) return null;
-  return new URL(`/og/g/${match[1]}.png`, url.origin).toString();
+  return new URL(`/og/${match[1]}/${match[2]}.png`, url.origin).toString();
 }
 
-export function prewarmGameShareCard(linkUrl: string): void {
+export function prewarmShareCard(linkUrl: string): void {
   const cardUrl = shareCardUrl(linkUrl);
   if (!cardUrl) return;
   void fetch(cardUrl, { method: "GET" }).catch(() => undefined);

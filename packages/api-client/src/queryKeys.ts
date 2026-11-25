@@ -101,6 +101,14 @@ export const queryKeys = {
     /** `GET /v1/game-share/:token` — resolve a play link to its sharer + viewer state. */
     shareLink: (token: string) => ["games", "shareLink", token] as const,
   },
+  crews: {
+    /** `GET /v1/crews/mine` — prefix of every crews key. */
+    mine: ["crews"] as const,
+    /** `GET /v1/crews/:token` — public preview. */
+    preview: (crewToken: string) => ["crews", "preview", crewToken] as const,
+    /** `GET /v1/crews/:id/board?period=`. */
+    board: (crewId: string, periodKey: string) => ["crews", "board", crewId, periodKey] as const,
+  },
   friends: {
     /**
      * `GET /v1/friends` — my accepted friends. Also the prefix every other
