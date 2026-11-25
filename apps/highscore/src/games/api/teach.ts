@@ -10,6 +10,7 @@ import { ApiError } from "@workshop/api-client/apiError";
 import type {
   ApplyScorePickResponse,
   GameScoreDirection,
+  PreviewGameScoreRequest,
   ScoreEntryPoint,
   ScoreInputRejection,
   SetScoreDirectionResponse,
@@ -83,7 +84,13 @@ export function scoreInputRejection(error: unknown): ScoreInputRejection | null 
  */
 export async function previewTeachScore(
   gameId: string,
-  body: { scoreRaw: string; periodKey: string; entry: ScoreEntryPoint },
+  body: {
+    scoreRaw: string;
+    periodKey: string;
+    entry: ScoreEntryPoint;
+    /** How this device recognized the game, when it did (logged server-side). */
+    recognizedBy?: PreviewGameScoreRequest["recognizedBy"];
+  },
   token: string | null,
   signal?: AbortSignal,
 ): Promise<PreviewAnswer | null> {

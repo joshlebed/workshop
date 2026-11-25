@@ -621,8 +621,8 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   pixel icons — see `apps/highscore/CLAUDE.md`): HighScore imports only behaviour helpers from
   `@workshop/ui`. Workshop has no Games UI. Never re-share presentation code between
   them: HighScore style/layout/branding/client iteration must have zero Workshop effect. Shared
-  game contracts stay in `@workshop/shared` (`games`, `gameRegistry`, `scoreParsing`,
-  `summarySpec`), while core friends HTTP validation lives at `@workshop/api-client/friends`.
+  game contracts stay in `@workshop/shared` (`games`, `gameRegistry`, `gameRecognition`,
+  `scoreParsing`, `summarySpec`), while core friends HTTP validation lives at `@workshop/api-client/friends`.
 - **Metro does NOT apply `.web.ts` / `.native.ts` resolution to a package `exports` target.**
   `metro-resolver` does an exact `fileSystemLookup` on whatever the `exports` map points at, so
   `"./storage": "./src/storage.web.ts"`-style platform splitting silently ships the wrong

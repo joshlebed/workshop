@@ -29,6 +29,15 @@ trail.
 
 ### Dev / sandbox environment
 
+- **`react-native-mmkv` is preloaded in the HighScore 1.3.0 binary but cannot initialize.**
+  Loading it throws `Failed to install Nitro: installJSIBindingsWithRuntime: was not called`
+  (react-native-nitro-modules 0.35.9 on RN 0.88.1, Release simulator build, 2026-11-15), which
+  is fatal at launch. Root cause not investigated — likely Nitro's TurboModule JSI-bindings hook
+  against RN 0.88's prebuilt core. Until the next binary fixes or drops it, `deviceCache` uses
+  NSUserDefaults and a test bans the import. Suggested fix: reproduce with
+  `ns mobile build highscore` after adding `createMMKV()` to a screen, then bump or patch
+  nitro/mmkv in the next native release (or remove both from `package.json`).
+
 - **`/v1/auth/*` rate limit (30/min per IP) starves parallel agents in one sandbox.** Every
   web page load spends one or two auth requests (dev sign-in, refresh), and all agents and
   Playwright runs share the sandbox's IP bucket, so a busy session lands pages on `/sign-in`

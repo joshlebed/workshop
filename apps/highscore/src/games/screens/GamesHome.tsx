@@ -73,6 +73,7 @@ import { isGameReteachable, specForGame } from "../lib/scoreSpecs";
 import { buildTodaysGameScoresSummary, summarizeGameScoreBody } from "../lib/scoresSummary";
 import { copyToClipboard, shareOrCopyLink } from "../lib/share";
 import { teachAfterPost, teachOutcomeMessage } from "../lib/teachAfterPost";
+import { useGameRecognizers } from "../lib/useGameRecognizers";
 import { type ScorePostExtras, useTeachAvailable } from "../lib/useScoreCheck";
 import { useGamesRuntime } from "../runtime";
 import { useViewDay } from "../state/viewDay";
@@ -133,6 +134,13 @@ export function GamesHome({ headerLeft = null, headerTrailing = null }: GamesHom
   });
   const myGames = gamesQuery.data?.games ?? [];
   const isEmpty = !gamesQuery.isPending && !gamesQuery.isError && myGames.length === 0;
+  // Keeps this device's recognizers fresh, so the next share — often a cold
+  // start straight into the share flow — is recognized with no request.
+  const myGameIds = useMemo(
+    () => (gamesQuery.data ? new Set(gamesQuery.data.games.map((g) => g.gameId)) : null),
+    [gamesQuery.data],
+  );
+  useGameRecognizers(myGameIds);
   // The bar floats over the list, so the list pads its tail to clear it and
   // toasts lift above it while this screen is mounted.
   const barVisible = !gamesQuery.isPending && !isEmpty;

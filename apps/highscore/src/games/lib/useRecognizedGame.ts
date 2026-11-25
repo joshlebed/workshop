@@ -39,8 +39,15 @@ export function useRecognizedGame(text: string): RecognizedGameMatch | null {
     return () => clearTimeout(timer);
   }, [trimmed]);
 
+  // `settled === trimmed`: a caller that stops asking (passes "") must not
+  // have the previous draft sent for the length of the debounce — a teach
+  // account cold-starting into the share flow did, once its games loaded.
   const enabled =
-    available && !!token && settled.length >= MIN_TEXT_LENGTH && !isResultlessShare(settled);
+    available &&
+    !!token &&
+    settled === trimmed &&
+    settled.length >= MIN_TEXT_LENGTH &&
+    !isResultlessShare(settled);
   const query = useQuery({
     // Not under ["games"]: posting a score invalidates that prefix, and a
     // refetch of this would be a second, pointless recognition call.
@@ -51,5 +58,5 @@ export function useRecognizedGame(text: string): RecognizedGameMatch | null {
     retry: false,
   });
   // Only an answer for the text on screen counts — not one for a previous draft.
-  return enabled && settled === trimmed ? (query.data ?? null) : null;
+  return enabled ? (query.data ?? null) : null;
 }

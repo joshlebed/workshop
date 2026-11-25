@@ -30,6 +30,7 @@ import { addGame, fetchMyGames, upsertGameScore } from "../api/games";
 import { ScoreCheckPanel } from "../components/ScoreCheckPanel";
 import { usePostedScoreNotice } from "../hooks/usePostedScoreNotice";
 import { askScoreDirection } from "../lib/askScoreDirection";
+import { recognizeLocally } from "../lib/localRecognition";
 import { writePostedScore } from "../lib/postedScore";
 import { recognizedGameLabel, recognizedGameTarget } from "../lib/recognition";
 import {
@@ -39,6 +40,7 @@ import {
   type ShareGameTarget,
 } from "../lib/shareScoreDetection";
 import { teachAfterPost, teachOutcomeMessage } from "../lib/teachAfterPost";
+import { useGameRecognizers } from "../lib/useGameRecognizers";
 import { useRecognizedGame } from "../lib/useRecognizedGame";
 import {
   type ScoreCheck,
@@ -86,21 +88,33 @@ export default function PickGame() {
   });
   const myGames = myGamesQuery.data?.games ?? [];
 
-  // Server-side recognition, for accounts that have it: it knows every game
-  // with stored scores, including ones the registry has never heard of. Null
-  // for everyone else and whenever it has no answer (yet) — the registry
+  // The device recognizes the game itself, from recognizers it keeps (see
+  // `localRecognition.ts`): no request, so the card is up with the text even
+  // on a share that cold-started the app. Null when it has none yet or
+  // cannot place this text — then the server is asked, as before.
+  const myGameIds = useMemo(
+    () => (myGamesQuery.data ? new Set(myGamesQuery.data.games.map((g) => g.gameId)) : null),
+    [myGamesQuery.data],
+  );
+  const recognizers = useGameRecognizers(myGameIds);
+  const recognizedHere = useMemo(
+    () => recognizeLocally(scoreDraft, recognizers, myGameIds),
+    [scoreDraft, recognizers, myGameIds],
+  );
+
+  // Server-side recognition, for what the device could not place: it knows
+  // every game with stored scores and has a classifier for a share with no
+  // name in it. Null whenever it has no answer (yet) — the registry
   // detection above stays the behaviour then.
   //
   // Teach v2 accounts ask once for both the game and what posting there would
   // record (`POST /v1/games/score-preview`); recognition is not asked again.
   const teachAvailable = useTeachAvailable();
-  const shared = useSharePreview(scoreDraft, today);
-  const recognizedAlone = useRecognizedGame(teachAvailable ? "" : scoreDraft);
-  const recognized = teachAvailable
-    ? shared?.kind === "preview"
-      ? shared.match
-      : null
-    : recognizedAlone;
+  const shared = useSharePreview(recognizedHere ? "" : scoreDraft, today);
+  const recognizedAlone = useRecognizedGame(teachAvailable || recognizedHere ? "" : scoreDraft);
+  const recognized =
+    recognizedHere ??
+    (teachAvailable ? (shared?.kind === "preview" ? shared.match : null) : recognizedAlone);
   const detected = recognized ? { gameLabel: recognizedGameLabel(recognized) } : detectedScore;
 
   // Where a detected score posts: the matching My Games row when there is one,
@@ -115,24 +129,24 @@ export default function PickGame() {
   const suggestionLoading = !!detected && !!token && myGamesQuery.isPending && !suggestion;
   // Teach v2: what the one-tap post will record, and the picker when nothing
   // read the score. Checked against the catalog game even when it is not in
-  // My Games yet (posting adds it).
+  // My Games yet (posting adds it). Reading the score is always the server's.
   //
-  // For a teach account the share preview is the one request: it seeds this
-  // check's cache under the recognised game, so the check only gets a game —
-  // and could only ask for itself — once that answer is in. Before this, the
-  // registry's guess at the game sent a second, identical preview request.
+  // A game recognized on the device goes straight to that game's preview.
+  // Otherwise the share preview is the one request: it seeds this check's
+  // cache under the game the server recognised, so the check only gets a
+  // game — and could only ask for itself — once that answer is in. Before
+  // that, the registry's guess at the game sent a second, identical request.
+  const awaitingSharePreview = teachAvailable && !recognizedHere && shared === undefined;
   const check = useScoreCheck({
-    gameId:
-      teachAvailable && shared === undefined
-        ? null
-        : (recognized?.game.id ?? suggestion?.gameId ?? null),
+    gameId: awaitingSharePreview ? null : (recognized?.game.id ?? suggestion?.gameId ?? null),
     text: scoreDraft,
     periodKey: today,
     entry: "share",
     today,
+    ...(recognizedHere ? { recognizedBy: recognizedHere.method } : {}),
   });
   // The server refused the text (a link or a title with no result in it).
-  const serverResultless = shared?.kind === "rejected";
+  const serverResultless = shared?.kind === "rejected" || check.view.kind === "no_result_text";
 
   const submitScore = useMutation({
     mutationFn: async (target: ShareGameTarget & { extras?: ScorePostExtras }) => {

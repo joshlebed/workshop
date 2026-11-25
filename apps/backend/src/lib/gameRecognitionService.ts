@@ -7,6 +7,7 @@
 // its own — DB statements by a server-side `statement_timeout`, Jev by the
 // time left — and a final cap covers whatever those can't (a stalled socket).
 
+import type { GameRecognizer } from "@workshop/shared/gameRecognition";
 import { CATALOG_GAME_DEFINITIONS } from "@workshop/shared/gameRegistry";
 import { normalizeGameUrl } from "@workshop/shared/games";
 import { eq, inArray, or, sql } from "drizzle-orm";
@@ -15,12 +16,15 @@ import { type DbGame, gameScores, games, userGames } from "../db/schema.js";
 import { getConfig } from "./config.js";
 import {
   catalogGameNamedBy,
+  compileMatcher,
   type ExampleLoader,
   MAX_EXAMPLES_PER_GAME,
   RECOGNITION_SURFACE_THRESHOLD,
   type RecognitionResult,
   type RecognitionTrace,
   recognizeGame,
+  recognizerEvidence,
+  selectExamples,
 } from "./gameRecognition.js";
 import { isGamesBetaUser } from "./gamesBeta.js";
 import { jevRecognitionJudge } from "./jev.js";
@@ -217,6 +221,39 @@ async function boundedDbStep<T>(
     await tx.execute(sql.raw(`set local statement_timeout = ${ms}`));
     return step(tx);
   });
+}
+
+/**
+ * The recognizers a client keeps so it can name a share's game with no
+ * request (`GET /v1/games/recognizers`): one per game in the caller's My
+ * Games, each with the fingerprint of its stored scores.
+ *
+ * My Games only, on purpose: a device holds nothing about a game its player
+ * has not added — not the catalog, not what friends play. A share for any
+ * other game is one these can't place, the client asks the server, and the
+ * server's own lookup (`loadRecognitionCandidates`) covers the catalog.
+ */
+export async function loadGameRecognizers(
+  userId: string,
+  db: DbClient = getDb(),
+): Promise<GameRecognizer[]> {
+  const mine = await db
+    .select({ game: games })
+    .from(userGames)
+    .innerJoin(games, eq(games.id, userGames.gameId))
+    .where(eq(userGames.userId, userId));
+  const myGames = mine.map((row) => row.game);
+  const stored = await storedScoreLoader(db)(myGames.map((game) => game.id));
+  // An example that names another of these games was filed under the wrong
+  // one; the matcher drops it, as it does when the server recognizes.
+  const matcher = compileMatcher(myGames);
+  return myGames.map((game) => ({
+    id: game.id,
+    title: game.title,
+    url: game.url,
+    normalizedUrl: game.normalizedUrl,
+    ...recognizerEvidence(selectExamples(game, stored.get(game.id) ?? [], matcher)),
+  }));
 }
 
 interface UserRecognition {

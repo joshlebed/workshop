@@ -5,6 +5,7 @@
 // `import { normalizeGameUrl } from "@workshop/shared/games"`.
 
 import type { GameScoreEntrySource } from "./constants.js";
+import type { GameRecognizer } from "./gameRecognition.js";
 import type { ScoreFeature, ScoreFeatureRole, ScorePick } from "./scoreCandidates.js";
 import type { ScoreSpec } from "./scoreParsing.js";
 import type { SummarySpec } from "./summarySpec.js";
@@ -457,6 +458,12 @@ export interface PreviewGameScoreRequest {
   periodKey?: string;
   /** Teach v2: where the preview was asked from — logged, never changes the answer. */
   entry?: ScoreEntryPoint;
+  /**
+   * Set when the client recognized this game from the text on its own (its
+   * cached recognizers) rather than being told by the server or the user.
+   * Logged, never changes the answer.
+   */
+  recognizedBy?: Exclude<GameRecognitionMethod, "jev">;
 }
 
 export interface GameScorePreview {
@@ -492,6 +499,18 @@ export interface RecognizedGame {
 
 export interface RecognizeGameResponse {
   match: RecognizedGame | null;
+}
+
+/**
+ * `GET /v1/games/recognizers` — what the client needs to recognize a share
+ * on its own, before any request returns: one `GameRecognizer` per game in
+ * the caller's My Games, and nothing about any other game. Clients keep the
+ * response on the device and refresh it in the background. Only the game is
+ * recognized locally; the score is always read by the server.
+ */
+export interface GameRecognizersResponse {
+  recognizers: GameRecognizer[];
+  generatedAt: string;
 }
 
 /** `GET /v1/users/me/flags` — all of the caller's `user_flags` rows as a map.

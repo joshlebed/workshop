@@ -3,6 +3,7 @@
 // and example queries are the point); only the Jev call is stubbed.
 
 import { PGlite } from "@electric-sql/pglite";
+import { type GameRecognizer, recognizeWithRecognizers } from "@workshop/shared/gameRecognition";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -318,6 +319,76 @@ describe("POST /v1/games/recognize", () => {
     judgeMock.mockImplementation(async () => ({ probabilities: { [maptapId]: 0.01 } }));
     expect(await matchOf(await recognize("see you at 7"))).toBeNull();
     expect(judgeMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("GET /v1/games/recognizers", () => {
+  const recognizers = (asUser = userId) =>
+    gameRoutes.request("/recognizers", { headers: authHeaders(asUser) });
+  const listOf = async (res: Response) =>
+    ((await res.json()) as { recognizers: GameRecognizer[] }).recognizers;
+
+  it("is 404 unless recognition is on, and requires auth", async () => {
+    expect((await recognizers()).status).toBe(404);
+    setMode("shadow");
+    expect((await recognizers()).status).toBe(404);
+    setMode("on");
+    expect((await recognizers()).status).toBe(200);
+    expect((await gameRoutes.request("/recognizers")).status).toBe(401);
+  });
+
+  it("carries the caller's My Games with fingerprints, and no other game", async () => {
+    setMode("on");
+    const list = await listOf(await recognizers());
+    const byId = new Map(list.map((r) => [r.id, r]));
+    expect([...byId.keys()].sort()).toEqual([maptapId, miniId, krillionId, geoHistoryId].sort());
+
+    // Three stored Mini scores: enough for a fingerprint.
+    expect(byId.get(miniId)).toMatchObject({ examples: 3 });
+    expect(byId.get(miniId)?.fingerprint).toMatchObject({ "w:crossword": 1, "n:9:9!": 1 });
+    // One MapTap score: counted, but one text is not a fingerprint.
+    expect(byId.get(maptapId)).toMatchObject({ examples: 1, fingerprint: null });
+
+    // Nothing from the catalog (Wordle is a registry game this player has
+    // not added) and nothing another player added.
+    expect(list.some((r) => r.title === "Wordle")).toBe(false);
+    expect(list.some((r) => r.normalizedUrl === "shrimpdle.io")).toBe(false);
+    // No score text travels: only token sets and hosts.
+    expect(JSON.stringify(list)).not.toContain("New York Times Mini Crossword");
+  });
+
+  it("lets the client reach the server's deterministic answers for its own games", async () => {
+    setMode("on");
+    const list = await listOf(await recognizers());
+    const texts = [
+      MAPTAP,
+      "Krillion #77 🦐\n305\n\n🏮🐟🫧🐟🐟🦑🦑",
+      mini("6/01/2026", "0:13"),
+      geo("GeoHistory", "www.geohistory.gg", 702),
+      "anyone playing today?",
+    ];
+    for (const text of texts) {
+      const server = await matchOf(await recognize(text));
+      const local = recognizeWithRecognizers(text, list);
+      expect(local?.gameId ?? null, text).toBe(server?.game.id ?? null);
+      expect(local?.method ?? null, text).toBe(server?.method ?? null);
+    }
+    expect(judgeMock).not.toHaveBeenCalled();
+  });
+
+  it("leaves what only the server can place to the server", async () => {
+    setMode("on");
+    const list = await listOf(await recognizers());
+    // Needs the classifier.
+    expect(recognizeWithRecognizers(HEADERLESS_MAPTAP, list)).toBeNull();
+    // A catalog game the player has not added: the server knows the catalog.
+    const wordle = "Wordle 1,127 3/6\n\n⬜🟨⬜⬜⬜\n🟩🟩🟩🟩🟩";
+    expect(recognizeWithRecognizers(wordle, list)).toBeNull();
+    expect(await matchOf(await recognize(wordle))).toMatchObject({ inMyGames: false });
+    // A game someone else added: the server finds it by link.
+    expect(
+      recognizeWithRecognizers("Shrimpdle #4 🦐 312\nhttps://shrimpdle.io/?ref=1", list),
+    ).toBeNull();
   });
 });
 
