@@ -16,7 +16,14 @@ import { StyleSheet, View } from "react-native";
 import { useShareAnnouncement } from "../../hooks/useShareAnnouncement";
 import { Button, IconButton, PixelIcon, Text, tokens } from "../../theme";
 
-export function ShareAnnouncementCard({ hasGames }: { hasGames: boolean | undefined }) {
+export function ShareAnnouncementCard({
+  hasGames,
+  suppressCard = false,
+}: {
+  hasGames: boolean | undefined;
+  /** Hide the card (not the auto-open) — the day-1 checklist carries the pitch. */
+  suppressCard?: boolean;
+}) {
   const router = useRouter();
   const { visible, dismiss, autoOpen, markOnboarded } = useShareAnnouncement({ hasGames });
   // One push per mount even if the flags query refetches before the
@@ -30,7 +37,7 @@ export function ShareAnnouncementCard({ hasGames }: { hasGames: boolean | undefi
       router.push("/share-setup?onboarding=1" as Href);
     }, [autoOpen, markOnboarded, router]),
   );
-  if (!visible) return null;
+  if (!visible || suppressCard) return null;
   return (
     <View style={styles.card} testID="share-announcement" accessibilityRole="summary">
       <View style={styles.copy}>

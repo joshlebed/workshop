@@ -66,7 +66,35 @@ export const USER_FLAG_KEYS = {
   // walkthrough finished. Server-side so a reinstall/second device never
   // re-blasts a user who already dealt with it.
   shareSheetAnnouncement: "games.share-sheet-announcement",
+  // HighScore's day-1 "Get set up" checklist on the Games home (onboarding
+  // spike 6). Client-authored `SetupChecklistFlagValue`
+  // (apps/highscore/src/lib/setupChecklist.ts): `shownAt`, `dismissedAt`,
+  // `completedAt` (every row done — "You're set" shown), `retiredAt`, and
+  // `rows` (row id → first time it was seen done).
+  setupChecklist: "games.setup-checklist",
 } as const;
+
+// HighScore's day-1 "Get set up" checklist rows, in priority order (onboarding
+// spike 6). Shared so the log-only `POST /v1/telemetry/setup-checklist`
+// validates the same ids the client sends.
+export const SETUP_CHECKLIST_ROW_IDS = [
+  "friend",
+  "friend2",
+  "games",
+  "score",
+  "share_sheet",
+  "reminder",
+] as const;
+export type SetupChecklistRowId = (typeof SETUP_CHECKLIST_ROW_IDS)[number];
+export const SETUP_CHECKLIST_EVENTS = [
+  "shown",
+  "row_tapped",
+  "row_completed",
+  "dismissed",
+  "completed",
+  "retired",
+] as const;
+export type SetupChecklistEvent = (typeof SETUP_CHECKLIST_EVENTS)[number];
 
 // Operator-set "update from the App Store" nudge (`client_releases`, read by
 // `GET /v1/client/release`, written ONLY by the operator through

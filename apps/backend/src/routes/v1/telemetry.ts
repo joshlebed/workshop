@@ -1,3 +1,4 @@
+import { SETUP_CHECKLIST_EVENTS, SETUP_CHECKLIST_ROW_IDS } from "@workshop/shared/constants";
 import { Hono } from "hono";
 import { z } from "zod";
 import { logger } from "../../lib/logger.js";
@@ -32,6 +33,21 @@ export const shareIntentSchema = z.object({
   updateId: z.string().max(80).nullish(),
 });
 
+// HighScore's day-1 "Get set up" card (onboarding spike 6). One log line per
+// event — shown, row_tapped, row_completed, dismissed, completed, retired —
+// filter `client_setup_checklist`. The durable per-user record (when each row
+// was first done, dismissed / completed / retired) is the client-authored
+// `games.setup-checklist` user flag; this stream adds the taps and the order.
+export const setupChecklistEventSchema = z.object({
+  event: z.enum(SETUP_CHECKLIST_EVENTS),
+  row: z.enum(SETUP_CHECKLIST_ROW_IDS).optional(),
+  minutesSinceSignup: z.number().int().nonnegative().max(10_000_000).optional(),
+  doneCount: z.number().int().nonnegative().max(20).optional(),
+  total: z.number().int().nonnegative().max(20).optional(),
+  reason: z.enum(["completed", "expired"]).optional(),
+  platform: z.string().max(16).optional(),
+});
+
 export const telemetryRoutes = new Hono();
 telemetryRoutes.use("*", requireAuth);
 
@@ -49,6 +65,26 @@ telemetryRoutes.post(
     logger.info("client_share_intent", {
       kind: "client_telemetry",
       event: "share_intent",
+      user_id: c.get("userId"),
+      ...parsed.data,
+    });
+    return ok(c, { ok: true });
+  },
+);
+
+telemetryRoutes.post(
+  "/setup-checklist",
+  rateLimit({
+    family: "v1.telemetry.setupChecklist",
+    limit: 60,
+    windowSec: 60,
+    key: (c) => c.get("userId") ?? null,
+  }),
+  async (c) => {
+    const parsed = await parseJsonBody(c, setupChecklistEventSchema);
+    if (!parsed.ok) return parsed.response;
+    logger.info("client_setup_checklist", {
+      kind: "client_telemetry",
       user_id: c.get("userId"),
       ...parsed.data,
     });

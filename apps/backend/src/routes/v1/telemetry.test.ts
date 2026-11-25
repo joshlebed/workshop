@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { shareIntentSchema } from "./telemetry.js";
+import { setupChecklistEventSchema, shareIntentSchema } from "./telemetry.js";
 
 describe("shareIntentSchema", () => {
   it("accepts a minimal valid snapshot", () => {
@@ -51,5 +51,33 @@ describe("shareIntentSchema", () => {
       textPreview: "x".repeat(5000),
     });
     expect(r.success).toBe(false);
+  });
+});
+
+describe("setupChecklistEventSchema", () => {
+  it("accepts each event shape the card sends", () => {
+    for (const body of [
+      { event: "shown", doneCount: 1, total: 6, minutesSinceSignup: 3, platform: "ios" },
+      { event: "row_tapped", row: "games", minutesSinceSignup: 4 },
+      { event: "row_completed", row: "friend2", minutesSinceSignup: 12 },
+      { event: "dismissed", doneCount: 2, total: 4 },
+      { event: "completed", minutesSinceSignup: 30 },
+      { event: "retired", reason: "expired", doneCount: 3, total: 6 },
+    ]) {
+      expect(setupChecklistEventSchema.safeParse(body).success).toBe(true);
+    }
+  });
+
+  it("rejects unknown events, rows and reasons", () => {
+    expect(setupChecklistEventSchema.safeParse({ event: "clicked" }).success).toBe(false);
+    expect(setupChecklistEventSchema.safeParse({ event: "row_tapped", row: "x" }).success).toBe(
+      false,
+    );
+    expect(setupChecklistEventSchema.safeParse({ event: "retired", reason: "bored" }).success).toBe(
+      false,
+    );
+    expect(
+      setupChecklistEventSchema.safeParse({ event: "shown", minutesSinceSignup: -1 }).success,
+    ).toBe(false);
   });
 });
