@@ -12,6 +12,7 @@ import { healthRoutes } from "./routes/health.js";
 import { activityRoutes } from "./routes/v1/activity.js";
 import { adminRoutes } from "./routes/v1/admin.js";
 import { authRoutes } from "./routes/v1/auth.js";
+import { challengeRoutes } from "./routes/v1/challenges.js";
 import { clientRoutes } from "./routes/v1/client.js";
 import { friendRoutes } from "./routes/v1/friends.js";
 import { gameShareRoutes } from "./routes/v1/gameShare.js";
@@ -160,6 +161,8 @@ export function buildApp() {
   // Distinct mount (not `/v1/games/...`) so it doesn't inherit gameRoutes'
   // blanket `requireAuth` — the resolve route is optional-auth (link crawlers).
   app.route("/v1/game-share", gameShareRoutes);
+  // Challenge links (`/c/:token`): same reason — the resolve is optional-auth.
+  app.route("/v1/challenges", challengeRoutes);
   app.route("/v1/friends", friendRoutes);
   app.route("/v1/me", meRoutes);
   app.route("/v1/search", searchRoutes);

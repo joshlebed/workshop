@@ -6,7 +6,7 @@ const AASA = {
     details: [
       {
         appIDs: [APP_ID],
-        components: [{ "/": "/g/*" }, { "/": "/friends/accept/*" }],
+        components: [{ "/": "/g/*" }, { "/": "/c/*" }, { "/": "/friends/accept/*" }],
       },
     ],
   },

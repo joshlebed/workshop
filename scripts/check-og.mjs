@@ -168,6 +168,7 @@ if (meta.get("twitter:card") && meta.get("twitter:card") !== "summary_large_imag
 // Pick the expected variant from the URL path and site:
 //   HighScore:
 //   - `/g/<token>`                      → game-share card
+//   - `/c/<token>`                      → challenge card ("Can you beat 937 …")
 //   - `/friends/accept/<token>`         → friend card
 //   - everything else                  → HighScore default
 //   Workshop:
@@ -194,17 +195,19 @@ const pathname = parsedUrl.pathname;
 const listIdMatch = /^\/list\/([^/]+)/.exec(pathname);
 const variant = pathname.startsWith("/g/")
   ? "game"
-  : pathname.startsWith("/friends/accept/")
-    ? "friend"
-    : site === "highscore"
-      ? "default"
-      : pathname.startsWith("/l/") || pathname.startsWith("/invite/")
-        ? "list-specific"
-        : listIdMatch && UUID_RE.test(listIdMatch[1])
-          ? "list-or-locked"
-          : pathname.startsWith("/list/")
-            ? "locked-list"
-            : "default";
+  : site === "highscore" && pathname.startsWith("/c/")
+    ? "challenge"
+    : pathname.startsWith("/friends/accept/")
+      ? "friend"
+      : site === "highscore"
+        ? "default"
+        : pathname.startsWith("/l/") || pathname.startsWith("/invite/")
+          ? "list-specific"
+          : listIdMatch && UUID_RE.test(listIdMatch[1])
+            ? "list-or-locked"
+            : pathname.startsWith("/list/")
+              ? "locked-list"
+              : "default";
 if (variant === "list-specific") {
   if (ogTitle === "Workshop.dev" || ogTitle.includes("Sign in") || ogTitle === "") {
     fail(
@@ -239,6 +242,17 @@ if (variant === "list-specific") {
       `og:title is "${ogTitle}" — the game-share Pages function didn't fire`,
     );
   }
+} else if (variant === "challenge") {
+  // The fallback copy means the API couldn't resolve the token.
+  if (!ogTitle.startsWith("Can you beat") && !ogTitle.includes("challenge on HighScore")) {
+    fail(
+      "challenge-fallback-title",
+      `og:title is "${ogTitle}" — the challenge Pages function didn't fire or couldn't resolve`,
+    );
+  }
+  if (ogTitle === "Take the challenge on HighScore") {
+    fail("challenge-unresolved", "the challenge preview API returned nothing for this token");
+  }
 } else if (ogTitle !== expectedSiteName) {
   fail("default-title", `og:title is "${ogTitle}" (expected "${expectedSiteName}")`);
 }
@@ -261,7 +275,7 @@ let pngBytes;
 if (imageUrl) {
   try {
     if (
-      (variant === "friend" || variant === "game") &&
+      (variant === "friend" || variant === "game" || variant === "challenge") &&
       new URL(imageUrl).origin !== parsedUrl.origin
     ) {
       fail("og-image-origin", `${imageUrl} is not on ${parsedUrl.origin}`);

@@ -7,6 +7,7 @@ import { useToast } from "../../theme";
 import { clearGameScore, upsertGameScore } from "../api/games";
 import { postedCheckNotice } from "../lib/postedCheck";
 import { useGamesRuntime } from "../runtime";
+import { useChallengeFriend } from "./useChallengeFriend";
 
 /** How long a toast with something to do on it stays up. */
 const NOTICE_DURATION_MS = 8000;
@@ -23,7 +24,8 @@ export interface PostedScoreInput {
 }
 
 /**
- * The toast after a score post. Usually just "Score posted"; when the post
+ * The toast after a score post. Usually "Score posted" with a **Challenge a
+ * friend** action (today's puzzle only — `useChallengeFriend`); when the post
  * came back with a `check` — it was made before its preview could say
  * anything — the toast carries the preview's advice and the one action that
  * answers it: **Move** the score to the game it looks like, or **Undo** a
@@ -37,13 +39,26 @@ export function usePostedScoreNotice(): (input: PostedScoreInput) => void {
   // Every post surface lands here on success — the one place the daily-nudge
   // pre-prompt is offered (once per session; it decides whether to show).
   const offerReminder = usePlayReminderOffer();
+  const challengeFriend = useChallengeFriend();
 
   return useCallback(
     ({ result, gameId, periodKey, scoreRaw, today, posted }: PostedScoreInput) => {
       offerReminder();
       const notice = postedCheckNotice(result.check, today);
       if (!notice) {
-        showToast({ message: posted, tone: "success" });
+        // A clean post of today's puzzle is the moment to challenge someone
+        // (onboarding spike #2): the toast carries the one-tap mint + share.
+        showToast(
+          periodKey === today
+            ? {
+                message: posted,
+                tone: "success",
+                durationMs: NOTICE_DURATION_MS,
+                actionLabel: "Challenge a friend",
+                onAction: () => void challengeFriend(gameId, periodKey),
+              }
+            : { message: posted, tone: "success" },
+        );
         return;
       }
       const refresh = () => queryClient.invalidateQueries({ queryKey: ["games"] });
@@ -89,6 +104,6 @@ export function usePostedScoreNotice(): (input: PostedScoreInput) => void {
         onAction: () => void onAction(),
       });
     },
-    [offerReminder, queryClient, showToast, token],
+    [challengeFriend, offerReminder, queryClient, showToast, token],
   );
 }

@@ -36,6 +36,7 @@ import { getDb } from "../db/client.js";
 import {
   activityEvents,
   friendships,
+  gameChallenges,
   gameNudges,
   gameScoreReactions,
   gameScores,
@@ -235,6 +236,15 @@ async function actionRows(db: Db, client: WorkshopClient): Promise<ActionRow[]> 
         .select({ userId: gameNudges.senderId, day: utcDayOf(gameNudges.createdAt) })
         .from(gameNudges)
         .groupBy(gameNudges.senderId, utcDayOf(gameNudges.createdAt)),
+    );
+    push(
+      await db
+        .select({
+          userId: gameChallenges.challengerId,
+          day: utcDayOf(gameChallenges.createdAt),
+        })
+        .from(gameChallenges)
+        .groupBy(gameChallenges.challengerId, utcDayOf(gameChallenges.createdAt)),
     );
   } else {
     push(

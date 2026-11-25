@@ -4,8 +4,11 @@
 
 import { apiRequest } from "@workshop/api-client/api";
 import type {
+  AcceptGameChallengeResponse,
   AddGameResponse,
   GameCatalogResponse,
+  GameChallengePreview,
+  GameChallengeResponse,
   GameDiscoveryResponse,
   GameLeaderboardResponse,
   GameScoreDirection,
@@ -55,6 +58,95 @@ export async function fetchGameShareLink(
     token,
   });
   return gameShareLinkPreviewSchema.parse(raw);
+}
+
+const challengeScoreSchema = z.object({
+  value: z.number().nullable(),
+  summary: z.string().nullable(),
+  display: z.string(),
+});
+
+const challengeGameSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  url: z.string(),
+  iconUrl: z.string().nullable(),
+  scoreDirection: z.enum(["asc", "desc"]),
+  scoreUnit: z.enum(["seconds"]).nullable(),
+});
+
+const gameChallengeResponseSchema = z.object({
+  token: z.string(),
+  url: z.string(),
+  gameTitle: z.string(),
+  periodKey: z.string(),
+  expiresAt: z.string(),
+  score: challengeScoreSchema,
+});
+
+const gameChallengePreviewSchema = z.object({
+  token: z.string(),
+  challenger: z.object({ userId: z.string(), displayName: z.string().nullable() }),
+  game: challengeGameSchema,
+  periodKey: z.string(),
+  score: challengeScoreSchema,
+  expiresAt: z.string(),
+  expired: z.boolean(),
+  viewer: z
+    .object({
+      isSelf: z.boolean(),
+      isFriend: z.boolean(),
+      hasGame: z.boolean(),
+      accepted: z.boolean(),
+      score: challengeScoreSchema.nullable(),
+    })
+    .optional(),
+});
+
+/**
+ * `POST /v1/games/:id/challenges` — mint/reuse my challenge link (`/c/:token`)
+ * for this game and day. 409 until I've posted that day.
+ */
+export async function createGameChallenge(
+  gameId: string,
+  periodKey: string,
+  token: string | null,
+): Promise<GameChallengeResponse> {
+  const raw = await apiRequest<unknown>({
+    method: "POST",
+    path: `/v1/games/${encodeURIComponent(gameId)}/challenges`,
+    body: { periodKey },
+    token,
+  });
+  return gameChallengeResponseSchema.parse(raw);
+}
+
+/**
+ * `GET /v1/challenges/:token` — public for anyone (the signed-out landing),
+ * plus `viewer` when signed in. `src=landing` tags the funnel log line.
+ */
+export async function fetchGameChallenge(
+  challengeToken: string,
+  token: string | null,
+): Promise<GameChallengePreview> {
+  const raw = await apiRequest<unknown>({
+    method: "GET",
+    path: `/v1/challenges/${encodeURIComponent(challengeToken)}?src=landing`,
+    token,
+  });
+  return gameChallengePreviewSchema.parse(raw);
+}
+
+/** `POST /v1/challenges/:token/accept` — friendship + game; 410 once expired. */
+export function acceptGameChallenge(
+  challengeToken: string,
+  token: string | null,
+): Promise<AcceptGameChallengeResponse> {
+  return apiRequest<AcceptGameChallengeResponse>({
+    method: "POST",
+    path: `/v1/challenges/${encodeURIComponent(challengeToken)}/accept`,
+    token,
+  });
 }
 
 export function fetchMyGames(periodKey: string, token: string | null): Promise<GamesResponse> {

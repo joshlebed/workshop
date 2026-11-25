@@ -15,9 +15,10 @@ export function shareCardUrl(linkUrl: string): string | null {
   } catch {
     return null;
   }
-  const match = url.pathname.match(/^\/g\/([^/]+)$/);
+  // Play links (`/g/:token`) and challenge links (`/c/:token`) each have a card.
+  const match = url.pathname.match(/^\/(g|c)\/([^/]+)$/);
   if (!match) return null;
-  return new URL(`/og/g/${match[1]}.png`, url.origin).toString();
+  return new URL(`/og/${match[1]}/${match[2]}.png`, url.origin).toString();
 }
 
 export function prewarmGameShareCard(linkUrl: string): void {
