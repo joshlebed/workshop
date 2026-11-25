@@ -754,6 +754,9 @@ export const userGames = pgTable(
   (t) => ({
     pk: primaryKey({ columns: [t.userId, t.gameId] }),
     userPositionIdx: index("user_games_user_position_idx").on(t.userId, t.position),
+    // "Who plays this game" — co-play suggestions and per-game player counts
+    // walk it instead of scanning the table (the PK leads with user_id).
+    gameUserIdx: index("user_games_game_user_idx").on(t.gameId, t.userId),
   }),
 );
 
@@ -1070,6 +1073,40 @@ export const gameNudges = pgTable(
   (t) => ({
     pk: primaryKey({ columns: [t.senderId, t.periodKey, t.gameId, t.recipientId] }),
     recipientIdx: index("game_nudges_recipient_idx").on(t.recipientId, t.createdAt),
+  }),
+);
+
+/**
+ * "What to play next" instrumentation (spike 5): one row per suggestion a
+ * client showed (`impression`), added (`add`) or dismissed (`dismiss`), with
+ * the surface (`GAME_SUGGESTION_SURFACES`) and why the row was there
+ * (`reason_kind`). Written only by `POST /v1/games/suggestions/events`; read
+ * by hand (apps/backend/CLAUDE.md has the queries). Not a user action — keep
+ * it out of `actionRows`. Every FK cascades, so account deletion needs no step.
+ */
+export const gameSuggestionEvents = pgTable(
+  "game_suggestion_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    gameId: uuid("game_id")
+      .notNull()
+      .references(() => games.id, { onDelete: "cascade" }),
+    event: text("event").notNull(),
+    surface: text("surface").notNull(),
+    reasonKind: text("reason_kind").notNull(),
+    /** 0-based row the game was shown at on that surface. */
+    rank: integer("rank"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+    // Request origin (see `requestOriginColumns`); NULL = no client headers.
+    client: text("client"),
+    platform: text("platform"),
+    appVersion: text("app_version"),
+  },
+  (t) => ({
+    userIdx: index("game_suggestion_events_user_idx").on(t.userId, t.createdAt),
   }),
 );
 

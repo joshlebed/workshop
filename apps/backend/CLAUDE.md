@@ -617,6 +617,42 @@ when I already play everything my friends do. All ranking reads `user_games` (pe
 (`@electric-sql/pglite`) with `getDb` mocked — copy that pattern when a route's acceptance
 criteria are DB behaviors, not just schema validation.
 
+**"What to play next" (`GET /v1/games/suggestions?limit=8`, spike 5)** lives in
+`lib/gameSuggestions.ts` and is registered before `/:id` like discovery. Three tiers fill up to
+`limit` (1–20), never repeating a game and never one in My Games: **co-play** (everyone else who
+has at least one of my games is a co-player, blocked users dropped, capped at 500 — friends first,
+then by overlap; a candidate scores one point per co-player who has it, **2 when the co-player is my
+friend**; a row needs 2 co-players or 1 friend; `reason = { kind: "coplay", withGameTitle, players }`
+where `withGameTitle` is my game sharing the most co-players with it and `players` is the raw
+co-player count), then **friends of friends** only for a viewer with 0–1 games (distinct
+`friendsOfFriends` who posted a score to it in the last 7 days; `{ kind: "friends_of_friends",
+players }`), then **popular** (listed games by player count; `{ kind: "popular" }`). Example: I play
+MapTap; S1, S2 and my friend F play MapTap + Daily Tens, S1–S3 play MapTap + Tradle → Daily Tens
+1+1+2 = 4 beats Tradle 3, both "3 MapTap players". **Content gate (the catalog's):** a suggestion is
+`isOfficiallyListed` or a friend plays it — never an unreviewed URL only strangers added, however
+many co-play it. Counts are aggregate; nobody is named. **Index-bounded:** the co-player walk is a
+CTE over `user_games_game_user_idx` (game_id, user_id; migration 0066) with aggregation in SQL, so a
+response reads a few dozen rows from Neon whatever the graph size (~15 ms on the prod copy); fof
+reads `game_scores (user_id, created_at)`; popular probes `games.normalized_url` for the listed URLs
+then counts on the same index. `POST /v1/games/suggestions/events` (`{ surface, events: [{ event:
+impression|add|dismiss, gameId, reasonKind, rank }] }`, ≤20, unknown game ids dropped) writes
+`game_suggestion_events` with `requestOriginColumns`. Not a user action — keep it out of
+`actionRows`. Tests: `routes/v1/game-suggestions.test.ts` (PGlite). Measuring the spike (there is no
+milestones table yet; derive day 1 from `users.created_at` vs `user_games.added_at`):
+
+```sql
+-- impressions → adds by surface + reason
+SELECT surface, reason_kind, count(*) FILTER (WHERE event = 'impression') AS shown,
+       count(*) FILTER (WHERE event = 'add') AS added
+FROM game_suggestion_events GROUP BY 1, 2 ORDER BY 1, 2;
+-- HighScore signups by games added within 24h of signup, split by "added one from a rail"
+SELECT u.id, count(ug.game_id) FILTER (WHERE ug.added_at < u.created_at + interval '1 day') AS day1_games,
+       bool_or(e.event = 'add') AS used_rail
+FROM users u LEFT JOIN user_games ug ON ug.user_id = u.id
+LEFT JOIN game_suggestion_events e ON e.user_id = u.id AND e.created_at < u.created_at + interval '1 day'
+WHERE u.created_at > '2026-11-25' GROUP BY u.id;
+```
+
 **Play links (`game_share_links`, `routes/v1/gameShare.ts`)** are the Games-tab copy-scores
 CTA — a per-(user, UTC-day) short link (`/g/:token`). Mounted at `/v1/game-share` (a
 **distinct** path, not `/v1/games/...`, so it doesn't inherit `gameRoutes`' blanket

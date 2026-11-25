@@ -5,6 +5,8 @@
 //      vouches for), one-tap Add = a directed request. Skipped when empty.
 //   2. Games — ranked across the new friend plus everyone just requested
 //      (`GET /v1/games/discovery?users=…`), one-tap add / Add all.
+//   3. What to play next — co-play suggestions for the games just added
+//      (`GET /v1/games/suggestions`, spike 5). Skipped when empty.
 // One component so the two links converge on the same onboarding; the
 // screens own only their own preview + accept step.
 
@@ -13,12 +15,13 @@ import { userAvatarImageUrl } from "@workshop/api-client/avatar";
 import { fetchMutuals, sendFriendRequest } from "@workshop/api-client/friends";
 import { queryKeys } from "@workshop/api-client/queryKeys";
 import type { MutualSummary } from "@workshop/shared/friends";
-import type { DiscoveryGame } from "@workshop/shared/games";
+import type { DiscoveryGame, GameSuggestion } from "@workshop/shared/games";
 import { haptics } from "@workshop/ui";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { Avatar, Button, Card, Text, tokens } from "../../../theme";
 import { addGame, fetchGameDiscovery } from "../../api/games";
+import { GameSuggestionRows, useGameSuggestions } from "../../components/GameSuggestionsRail";
 import { useOpenProfile } from "../../hooks/useOpenProfile";
 import { localDateKey } from "../../lib/gameDate";
 import { mutualsVia } from "../../lib/mutualsVia";
@@ -39,7 +42,7 @@ export function PostAcceptPicker({
   onDone: () => void;
 }) {
   const name = friend.displayName?.trim() || "Your friend";
-  const [step, setStep] = useState<"people" | "games">("people");
+  const [step, setStep] = useState<"people" | "games" | "next">("people");
   // Mutuals requested in this session — they join the games ranking below.
   const [requested, setRequested] = useState<string[]>([]);
 
@@ -52,6 +55,9 @@ export function PostAcceptPicker({
     staleTime: 0,
   });
   const people = mutualsQuery.data ? mutualsVia(mutualsQuery.data.mutuals, friend.userId) : null;
+  const toNext = () => setStep("next");
+
+  if (step === "next") return <NextStep onDone={onDone} />;
 
   if (step === "people") {
     if (mutualsQuery.isLoading) {
@@ -63,7 +69,7 @@ export function PostAcceptPicker({
     }
     // Nothing to offer (or the feed failed) → straight to games.
     if (!people || people.length === 0) {
-      return <GamesStep friend={friend} name={name} token={token} requested={[]} onDone={onDone} />;
+      return <GamesStep friend={friend} name={name} token={token} requested={[]} onDone={toNext} />;
     }
     return (
       <PeopleStep
@@ -79,7 +85,7 @@ export function PostAcceptPicker({
   }
 
   return (
-    <GamesStep friend={friend} name={name} token={token} requested={requested} onDone={onDone} />
+    <GamesStep friend={friend} name={name} token={token} requested={requested} onDone={toNext} />
   );
 }
 
@@ -375,6 +381,58 @@ function GamesStep({
       </Card>
     </Centered>
   );
+}
+
+/**
+ * Step 3 — "What to play next": games co-added by players of what the viewer
+ * now has (friends-of-friends' and the catalog's most played for a viewer
+ * still at 0–1 games). Skipped when there is nothing to suggest.
+ */
+function NextStep({ onDone }: { onDone: () => void }) {
+  const state = useGameSuggestions("post_accept", true);
+  const empty = !state.isLoading && state.suggestions.length === 0;
+  useEffect(() => {
+    if (empty) onDone();
+  }, [empty, onDone]);
+  if (state.isLoading || empty) {
+    return (
+      <Centered testID="friend-accept-loading">
+        <ActivityIndicator color={tokens.accent.default} />
+      </Centered>
+    );
+  }
+  return (
+    <Centered testID="friend-accept-next">
+      <Card style={styles.card} elevated>
+        <View style={styles.inviterBlock}>
+          <Text variant="title" style={styles.inviterTitle}>
+            What to play next
+          </Text>
+          <Text tone="secondary" style={styles.inviterCaption}>
+            {nextStepCaption(state.suggestions[0]?.reason.kind)}
+          </Text>
+        </View>
+        <ScrollView
+          style={styles.pickerScroll}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <GameSuggestionRows state={state} testIDPrefix="friend-accept-next" />
+        </ScrollView>
+        <Button
+          label={state.added.length > 0 ? "Done" : "Maybe later"}
+          onPress={onDone}
+          testID="friend-accept-next-done"
+        />
+      </Card>
+    </Centered>
+  );
+}
+
+function nextStepCaption(kind: GameSuggestion["reason"]["kind"] | undefined): string {
+  if (kind === "coplay") return "People who play your games also play these.";
+  if (kind === "friends_of_friends") return "What your friends' friends played this week.";
+  return "The most played games on HighScore.";
 }
 
 export function Centered({ children, testID }: { children: React.ReactNode; testID?: string }) {

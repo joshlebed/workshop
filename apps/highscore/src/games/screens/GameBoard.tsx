@@ -43,11 +43,13 @@ import {
 } from "../api/games";
 import { setScoreDirection } from "../api/teach";
 import { DAY_PICKER_LENGTH, DayPicker } from "../components/DayPicker";
+import { GameSuggestionsRail } from "../components/GameSuggestionsRail";
 import { ScoreCheckPanel } from "../components/ScoreCheckPanel";
 import { useOpenProfile } from "../hooks/useOpenProfile";
 import { usePostedScoreNotice } from "../hooks/usePostedScoreNotice";
 import { askScoreDirection } from "../lib/askScoreDirection";
 import { formatGameDateLabel, resolveRailDate } from "../lib/gameDate";
+import { boardRailVisible } from "../lib/gameSuggestions";
 import { goBack } from "../lib/navigation";
 import {
   friendUnreachableMessage,
@@ -62,6 +64,7 @@ import { writePostedScore } from "../lib/postedScore";
 import { scoreLineLabel } from "../lib/scoreCheck";
 import { summarizeGameScoreBody } from "../lib/scoresSummary";
 import { copyToClipboard } from "../lib/share";
+import { useSuggestionSession } from "../lib/suggestionSession";
 import { teachAfterPost, teachOutcomeMessage } from "../lib/teachAfterPost";
 import { type ScorePostExtras, useScoreCheck, useTeachAvailable } from "../lib/useScoreCheck";
 import { useGamesRuntime } from "../runtime";
@@ -106,6 +109,7 @@ export default function GameBoard() {
   const [editingScore, setEditingScore] = useState(false);
   // Teach v2: every read row states its score; the ranking footer.
   const teachAvailable = useTeachAvailable();
+  const suggestionSession = useSuggestionSession();
 
   // The catalog row (title / URL) comes from the My Games query — there's no
   // standalone `GET /v1/games/:id`. Navigation always arrives from the home
@@ -396,6 +400,14 @@ export default function GameBoard() {
   const dateLabel = formatGameDateLabel(date, today);
   const streak = myGame?.standings.viewerStreak ?? 0;
   const playedToday = myGame?.standings.viewerHasPlayed ?? false;
+  // "What to play next" below the standings once a score was posted this
+  // session and the viewer has today's score here (≤3 rows, dismissable).
+  const showSuggestions = boardRailVisible({
+    scorePostedThisSession: suggestionSession.scorePosted,
+    viewerScoredOnBoard: !!myScore,
+    viewingToday: date === today,
+    dismissed: suggestionSession.dismissed.has("board"),
+  });
 
   // Copy my own result as pasted, plus a HighScore link to bring friends in.
   const onCopyMine = async () => {
@@ -683,6 +695,9 @@ export default function GameBoard() {
                     </Text>
                   </Text>
                 </Pressable>
+              ) : null}
+              {showSuggestions ? (
+                <GameSuggestionsRail surface="board" style={styles.suggestions} />
               ) : null}
             </View>
           )}
@@ -1099,6 +1114,7 @@ const styles = StyleSheet.create({
   leaderboard: {
     paddingHorizontal: tokens.space.xl,
   },
+  suggestions: { marginTop: tokens.space.xl },
   // Teach v2 ranking direction — a quiet footer, not a header control.
   directionLink: { alignSelf: "center", marginTop: tokens.space.lg, padding: tokens.space.xs },
   directionChange: { textDecorationLine: "underline" },

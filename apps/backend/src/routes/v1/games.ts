@@ -3,6 +3,11 @@
 // but this router still only owns the Games surface tables directly.
 // Standings cover `viewer ∪ friends_of(viewer)` (G2a) in the G1a shape.
 
+import {
+  GAME_SUGGESTION_EVENTS,
+  GAME_SUGGESTION_REASON_KINDS,
+  GAME_SUGGESTION_SURFACES,
+} from "@workshop/shared/constants";
 import { isOfficiallyListed } from "@workshop/shared/gameRegistry";
 import type {
   AddGameResponse,
@@ -13,6 +18,7 @@ import type {
   GameNudgeRefusal,
   GameScore,
   GameStandings,
+  GameSuggestionsResponse,
   GamesResponse,
   MyGame,
   PreviewGameScoreResponse,
@@ -35,6 +41,7 @@ import {
   gameScoreReactions,
   gameScores,
   gameSpecRevisions,
+  gameSuggestionEvents,
   games,
   userGames,
   users,
@@ -76,6 +83,11 @@ import {
   reactionKey,
   visibleUserIds,
 } from "../../lib/gameStandings.js";
+import {
+  SUGGESTION_LIMIT_DEFAULT,
+  SUGGESTION_LIMIT_MAX,
+  suggestGames,
+} from "../../lib/gameSuggestions.js";
 import { isNudgeablePeriod, loadNudgeState, sendGameNudge } from "../../lib/nudges.js";
 import { notifyScoreSpecTaught } from "../../lib/opsNotifications.js";
 import { rankEntries } from "../../lib/ranking.js";
@@ -425,6 +437,87 @@ gameRoutes.get("/catalog", async (c) => {
   };
   return ok(c, response);
 });
+
+/**
+ * GET /v1/games/suggestions?limit=8 — "What to play next" (spike 5): co-play,
+ * then friends-of-friends (0–1 game viewers), then the catalog's most played.
+ * Rules and ranking in `lib/gameSuggestions.ts`. Registered before the `/:id`
+ * routes so the literal path isn't shadowed.
+ */
+gameRoutes.get("/suggestions", async (c) => {
+  const raw = c.req.query("limit");
+  let limit = SUGGESTION_LIMIT_DEFAULT;
+  if (raw !== undefined) {
+    const parsed = z.coerce.number().int().min(1).max(SUGGESTION_LIMIT_MAX).safeParse(raw);
+    if (!parsed.success) return err(c, "VALIDATION", `limit must be 1–${SUGGESTION_LIMIT_MAX}`);
+    limit = parsed.data;
+  }
+  const response: GameSuggestionsResponse = {
+    suggestions: await suggestGames(c.get("userId"), limit),
+  };
+  return ok(c, response);
+});
+
+const suggestionEventsSchema = z.object({
+  surface: z.enum(GAME_SUGGESTION_SURFACES),
+  events: z
+    .array(
+      z.object({
+        event: z.enum(GAME_SUGGESTION_EVENTS),
+        gameId: z.string().uuid(),
+        reasonKind: z.enum(GAME_SUGGESTION_REASON_KINDS),
+        rank: z.number().int().min(0).max(100).optional(),
+      }),
+    )
+    .min(1)
+    .max(SUGGESTION_LIMIT_MAX),
+});
+
+/**
+ * POST /v1/games/suggestions/events — the rail's instrumentation: impressions
+ * (one batch per rail shown), adds and dismissals, by surface and reason.
+ * Stored in `game_suggestion_events`; an unknown game id is dropped silently
+ * (the FK would 500 otherwise, and the client can't fix it).
+ */
+gameRoutes.post(
+  "/suggestions/events",
+  rateLimit({
+    family: "v1.games.suggestionEvents",
+    limit: 120,
+    windowSec: 60,
+    key: (c) => c.get("userId") ?? null,
+  }),
+  async (c) => {
+    const parsed = await parseJsonBody(c, suggestionEventsSchema);
+    if (!parsed.ok) return parsed.response;
+    const { surface, events } = parsed.data;
+    const db = getDb();
+    const known = await db
+      .select({ id: games.id })
+      .from(games)
+      .where(
+        inArray(
+          games.id,
+          events.map((e) => e.gameId),
+        ),
+      );
+    const knownIds = new Set(known.map((r) => r.id));
+    const origin = requestOriginColumns();
+    const values = events
+      .filter((e) => knownIds.has(e.gameId))
+      .map((e) => ({
+        userId: c.get("userId"),
+        gameId: e.gameId,
+        event: e.event,
+        surface,
+        reasonKind: e.reasonKind,
+        rank: e.rank ?? null,
+        ...origin,
+      }));
+    if (values.length > 0) await db.insert(gameSuggestionEvents).values(values);
+    return ok(c, { recorded: values.length });
+  },
+);
 
 /**
  * Best-effort display metadata for a brand-new catalog row — the same

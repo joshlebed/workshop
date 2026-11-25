@@ -56,6 +56,17 @@ export type SignupSource = (typeof SIGNUP_SOURCES)[number];
 // `appUpdateDismissed` is client-authored (`{ version }`): the HighScore
 // "new version on the App Store" banner was dismissed for that latestVersion.
 // A newer latestVersion no longer matches, so the banner comes back.
+/**
+ * "What to play next" instrumentation (`POST /v1/games/suggestions/events`):
+ * where a rail was shown, what happened, and why the row was there.
+ */
+export const GAME_SUGGESTION_SURFACES = ["board", "home", "post_accept"] as const;
+export type GameSuggestionSurface = (typeof GAME_SUGGESTION_SURFACES)[number];
+export const GAME_SUGGESTION_EVENTS = ["impression", "add", "dismiss"] as const;
+export type GameSuggestionEvent = (typeof GAME_SUGGESTION_EVENTS)[number];
+export const GAME_SUGGESTION_REASON_KINDS = ["coplay", "friends_of_friends", "popular"] as const;
+export type GameSuggestionReasonKind = (typeof GAME_SUGGESTION_REASON_KINDS)[number];
+
 export const USER_FLAG_KEYS = {
   shareExtensionScore: "games.share-extension-score",
   appUpdateDismissed: "app.update-banner-dismissed",

@@ -1,6 +1,6 @@
 // Friend-game discovery list (G3, issue #293) — a presentational column of
 // "games your friends play that you haven't added", each one-tap addable.
-// Shared by three surfaces: the + add-game sheet (suggestions above the URL
+// Shared by four surfaces (the "What to play next" rail passes `captionFor`): the + add-game sheet (suggestions above the URL
 // field), the Games-home "friends but no games" empty state, and the
 // post-accept picker. Data + add mutations live at the call site; this file
 // only renders rows and reports taps.
@@ -23,6 +23,11 @@ interface FriendGameSuggestionsProps {
    * row reads as noise.
    */
   hideFriendLine?: boolean;
+  /**
+   * Replace the friends line with a caption of the caller's (the "What to
+   * play next" rail's reason line). Wins over `hideFriendLine`.
+   */
+  captionFor?: (game: DiscoveryGame) => string;
   /** testID stem → `${testIDPrefix}-row-${id}` / `${testIDPrefix}-add-${id}`. */
   testIDPrefix: string;
 }
@@ -33,6 +38,7 @@ export function FriendGameSuggestions({
   addedGameIds,
   onAdd,
   hideFriendLine = false,
+  captionFor,
   testIDPrefix,
 }: FriendGameSuggestionsProps) {
   return (
@@ -60,7 +66,16 @@ export function FriendGameSuggestions({
               <Text variant="game" numberOfLines={1} style={styles.title}>
                 {dg.game.title}
               </Text>
-              {hideFriendLine ? null : (
+              {captionFor ? (
+                <Text
+                  variant="caption"
+                  tone="muted"
+                  numberOfLines={2}
+                  testID={`${testIDPrefix}-reason-${dg.game.id}`}
+                >
+                  {captionFor(dg)}
+                </Text>
+              ) : hideFriendLine ? null : (
                 <Text variant="caption" tone="muted" numberOfLines={1}>
                   {friendsPlayLine(dg.friends) ?? "A friend plays this"}
                 </Text>

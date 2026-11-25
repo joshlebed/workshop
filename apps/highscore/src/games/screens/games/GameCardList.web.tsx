@@ -29,6 +29,7 @@ export function GameCardList({
   refreshing,
   onRefresh,
   bottomInset = 0,
+  footer = null,
 }: GameCardListProps) {
   // Two sensors, never one with mixed activation (see ItemList.web.tsx):
   // MouseSensor stays snappy on desktop; TouchSensor's delay+tolerance lets
@@ -76,6 +77,7 @@ export function GameCardList({
               <SortableCard key={game.gameId} game={game} render={renderCard} />
             ))}
           </SortableContext>
+          {footer}
         </ScrollView>
       </PullToRefresh>
     </DndContext>
