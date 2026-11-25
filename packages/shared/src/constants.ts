@@ -66,6 +66,10 @@ export const USER_FLAG_KEYS = {
   // walkthrough finished. Server-side so a reinstall/second device never
   // re-blasts a user who already dealt with it.
   shareSheetAnnouncement: "games.share-sheet-announcement",
+  // HighScore's Games-home "Sam wants to be friends" card. Client-authored
+  // `{ userId, requestedAt, dismissedAt }` for the request whose card was X'd
+  // away; a newer inbound request brings the card back. Dismiss never declines.
+  friendRequestCard: "friends.request-card",
 } as const;
 
 // Operator-set "update from the App Store" nudge (`client_releases`, read by

@@ -180,6 +180,7 @@ const friendProfileResponseSchema = z.object({
   mutualFriends: z.array(friendUserSchema),
   periodKey: z.string(),
   games: z.array(profileGameSchema).nullable(),
+  outboundExpiredAt: z.string().nullable().optional(),
 });
 
 /** `GET /v1/friends/requests` — my pending directed requests, both sides. */

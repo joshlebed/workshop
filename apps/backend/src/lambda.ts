@@ -3,6 +3,7 @@ import { buildApp } from "./app.js";
 import { runDailyDigestJob } from "./jobs/dailyDigest.js";
 import { runDiscordHealthJob } from "./jobs/discordHealth.js";
 import { runDiscordMergedJob } from "./jobs/discordMerged.js";
+import { runFriendRequestReminderJob } from "./jobs/friendRequestReminders.js";
 import { runNeonQuotaJob } from "./jobs/neonQuota.js";
 import { runScheduledPlayReminders } from "./jobs/playReminders.js";
 import { runRequestRollupJob } from "./jobs/requestRollups.js";
@@ -25,6 +26,7 @@ const JOBS = [
   "discord-merged",
   "daily-digest",
   "neon-quota",
+  "friend-request-reminders",
 ] as const;
 type JobName = (typeof JOBS)[number];
 
@@ -54,8 +56,14 @@ export async function handler(
             if (removed > 0) logger.info("pruned expired rate limits", { removed });
           })
           .catch((error) => logger.warn("rate limit prune failed", { error }));
+        // Friend-request reminders + expiry ride this wake too (Neon compute:
+        // no extra wake). Its own runJob so a failure alarms under its name
+        // and never stops the rollup.
+        await runJob("friend-request-reminders", () => runFriendRequestReminderJob());
         return runRequestRollupJob();
       });
+    case "friend-request-reminders":
+      return runJob("friend-request-reminders", () => runFriendRequestReminderJob());
     case "discord-health":
       return runJob("discord-health", () => runDiscordHealthJob());
     case "discord-merged":

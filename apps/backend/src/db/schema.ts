@@ -1131,14 +1131,19 @@ export const friendships = pgTable(
  *   `friendships` edge with the inviter, any number of times. One stable
  *   row per inviter; `POST /v1/friends/invite` reuses it.
  * - **Directed request** (`invitee_id` set, `token` NULL): a user-to-user
- *   friend request (mutuals / profile-page flow). Rows exist only while
- *   pending — accept forms the edge and deletes the row; deny/cancel
+ *   friend request (mutuals / profile-page flow). `pending` until answered
+ *   or expired — accept forms the edge and deletes the row; deny/cancel
  *   deletes it silently (re-requesting is allowed). The partial unique
- *   index keeps one pending request per (inviter, invitee).
+ *   index keeps one pending request per (inviter, invitee). The
+ *   `friend-request-reminders` job (jobs/friendRequestReminders.ts) pushes
+ *   the recipient once at 48h (`reminded_at`) and, past `expires_at`, sets
+ *   `status = 'expired'` + `responded_at`: the row leaves the recipient's
+ *   inbox and stays only so the sender's profile view can say "Request
+ *   expired — send again". Re-sending deletes it and inserts a fresh row.
  *
- * Either way `friendships` is the source of truth for edges. `status` /
- * `responded_at` are legacy from the original single-use link model: kept
- * for old rows, and directed rows only ever exist as `pending`.
+ * Either way `friendships` is the source of truth for edges. On share-link
+ * rows `status` / `responded_at` are legacy from the original single-use
+ * link model; on directed rows `status` is `pending` or `expired`.
  */
 export const friendRequests = pgTable(
   "friend_requests",
@@ -1152,12 +1157,47 @@ export const friendRequests = pgTable(
     status: text("status").notNull().default("pending"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
     respondedAt: timestamp("responded_at", { withTimezone: true }),
+    /** Directed rows: when the 48h reminder push went out (once per request). */
+    remindedAt: timestamp("reminded_at", { withTimezone: true }),
+    /**
+     * Directed rows: when the pending request expires (insert time + 14 days).
+     * Rows pending when this column shipped got deploy time + 14 days, so
+     * expiry never reached back over requests sent before the feature existed.
+     */
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
   },
   (t) => ({
     inviteeIdx: index("friend_requests_invitee_idx").on(t.inviteeId),
     directedPendingUniq: uniqueIndex("friend_requests_directed_pending_idx")
       .on(t.inviterId, t.inviteeId)
       .where(sql`invitee_id IS NOT NULL AND status = 'pending'`),
+  }),
+);
+
+/**
+ * Lifecycle events for directed friend requests (onboarding spike #7), kept
+ * because the request row itself is deleted on accept/deny. `kind`:
+ * `reminded` (48h push went out), `accepted_after_reminder`,
+ * `declined_after_reminder`, `expired`, `resent` (the sender re-sent after
+ * an expiry). `request_created_at` is the original request's insert time so
+ * time-to-answer can be computed. Written only by lib/friendRequestLifecycle.ts.
+ */
+export const friendRequestEvents = pgTable(
+  "friend_request_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    kind: text("kind").notNull(),
+    inviterId: uuid("inviter_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    inviteeId: uuid("invitee_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    requestCreatedAt: timestamp("request_created_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => ({
+    kindCreatedIdx: index("friend_request_events_kind_created_idx").on(t.kind, t.createdAt),
   }),
 );
 

@@ -60,7 +60,7 @@ function relationshipLine(profile: FriendProfileResponse): string {
     case "inbound":
       return "Wants to be friends";
     case "none":
-      return "Not friends yet";
+      return profile.outboundExpiredAt ? "Request expired — send again" : "Not friends yet";
   }
 }
 
@@ -304,7 +304,12 @@ export default function FriendProfileScreen() {
             {/* Not friends yet: the one thing to do about it. */}
             {profile.relationship === "none" ? (
               <Button
-                label="Add friend"
+                label={profile.outboundExpiredAt ? "Send again" : "Add friend"}
+                accessibilityHint={
+                  profile.outboundExpiredAt
+                    ? "Your last request expired after 14 days without an answer"
+                    : undefined
+                }
                 onPress={() => sendMutation.mutate()}
                 loading={sendMutation.isPending}
                 disabled={sendMutation.isPending}

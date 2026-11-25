@@ -120,6 +120,13 @@ export interface FriendProfileResponse {
    * from before games went public.
    */
   games: FriendProfileGame[] | null;
+  /**
+   * When the viewer's own request to this person expired unanswered (14 days,
+   * onboarding spike #7) and nothing newer exists — `relationship` is `none`
+   * and the profile offers "Request expired — send again". Optional: absent
+   * from older backends.
+   */
+  outboundExpiredAt?: string | null;
 }
 
 /** Ranges the head-to-head screen offers. `all` = every day on record. */

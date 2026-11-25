@@ -2,12 +2,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { errorMessage } from "@workshop/api-client/api";
 import { userAvatarImageUrl } from "@workshop/api-client/avatar";
 import {
-  acceptFriendRequestFrom,
   createFriendInvite,
   fetchFriendRequests,
   fetchFriends,
   fetchMutuals,
-  removeFriendRequest,
   resetFriendInvite,
   sendFriendRequest,
   unfriend,
@@ -30,6 +28,7 @@ import {
   tokens,
   useToast,
 } from "../../theme";
+import { useFriendRequestAnswers } from "../hooks/useFriendRequestAnswers";
 import { useOpenProfile } from "../hooks/useOpenProfile";
 import { goBack } from "../lib/navigation";
 import { shareOrCopyLink } from "../lib/share";
@@ -65,7 +64,7 @@ export default function FriendsScreen() {
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
   // Per-row in-flight state — one mutation serves many mutual cards.
   const [requestingIds, setRequestingIds] = useState<string[]>([]);
-  const [answeringIds, setAnsweringIds] = useState<string[]>([]);
+  const { accept, decline, answeringIds } = useFriendRequestAnswers();
 
   const enabled = !!token;
   const friendsQuery = useQuery({
@@ -187,46 +186,6 @@ export default function FriendsScreen() {
     },
   });
 
-  const acceptRequestMutation = useMutation({
-    mutationFn: (userId: string) => {
-      setAnsweringIds((ids) => [...ids, userId]);
-      return acceptFriendRequestFrom(userId, token);
-    },
-    onSuccess: async (data) => {
-      haptics.medium();
-      showToast({
-        message: `You're now friends with ${data.friend.displayName?.trim() || "them"}!`,
-        tone: "success",
-      });
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.friends.all }),
-        queryClient.invalidateQueries({ queryKey: ["games"] }),
-      ]);
-    },
-    onError: (e) => {
-      showToast({ message: errorMessage(e, "Couldn't accept that request."), tone: "danger" });
-    },
-    onSettled: (_data, _err, userId) => {
-      setAnsweringIds((ids) => ids.filter((id) => id !== userId));
-    },
-  });
-
-  const denyRequestMutation = useMutation({
-    mutationFn: (userId: string) => {
-      setAnsweringIds((ids) => [...ids, userId]);
-      return removeFriendRequest(userId, token);
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.friends.all });
-    },
-    onError: (e) => {
-      showToast({ message: errorMessage(e, "Couldn't decline that request."), tone: "danger" });
-    },
-    onSettled: (_data, _err, userId) => {
-      setAnsweringIds((ids) => ids.filter((id) => id !== userId));
-    },
-  });
-
   const onRemove = async (friend: FriendSummary) => {
     const name = friend.displayName?.trim() || "this friend";
     const ok = await confirm({
@@ -264,6 +223,80 @@ export default function FriendsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+        {/* Pending inbound requests, pinned above everything else. */}
+        {inbound.length > 0 ? (
+          <View style={styles.list} testID="friend-requests-section">
+            <Text style={styles.listLabel}>
+              {inbound.length === 1 ? "1 friend request" : `${inbound.length} friend requests`}
+            </Text>
+            {inbound.map((request) => {
+              const answering = answeringIds.includes(request.userId);
+              return (
+                <Pressable
+                  key={request.userId}
+                  onPress={() => openProfile(request.userId)}
+                  accessibilityLabel={`View ${request.displayName?.trim() || "their"} profile`}
+                  style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
+                    styles.friendRow,
+                    (pressed || hovered) && styles.friendRowHover,
+                  ]}
+                  testID={`friend-request-row-${request.userId}`}
+                >
+                  <Avatar
+                    name={request.displayName}
+                    imageUrl={userAvatarImageUrl(request.userId)}
+                    size="md"
+                  />
+                  <View style={styles.friendText}>
+                    <Text variant="label" numberOfLines={1} style={styles.friendName}>
+                      {request.displayName?.trim() || "Someone"}
+                    </Text>
+                    <Text variant="caption" tone="muted" numberOfLines={1}>
+                      Wants to be friends
+                    </Text>
+                  </View>
+                  {answering ? (
+                    <ActivityIndicator size="small" color={tokens.accent.default} />
+                  ) : (
+                    <>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Accept ${request.displayName?.trim() || "request"}`}
+                        onPress={() => accept(request.userId)}
+                        testID={`friend-request-accept-${request.userId}`}
+                        hitSlop={6}
+                        style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
+                          styles.acceptBtn,
+                          (pressed || hovered) && styles.acceptBtnHover,
+                        ]}
+                      >
+                        <Text variant="label" style={styles.acceptLabel}>
+                          Accept
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Decline ${request.displayName?.trim() || "request"}`}
+                        onPress={() => decline(request.userId)}
+                        testID={`friend-request-deny-${request.userId}`}
+                        hitSlop={6}
+                        style={({ pressed }) => [
+                          styles.removeBtn,
+                          pressed && styles.removeBtnPressed,
+                        ]}
+                      >
+                        <Text variant="label" style={styles.removeLabel}>
+                          Decline
+                        </Text>
+                      </Pressable>
+                    </>
+                  )}
+                </Pressable>
+              );
+            })}
+          </View>
+        ) : null}
+
         {/* Invite — the share-link path for people outside the graph. */}
         <View style={styles.inviteCard}>
           <Text variant="heading" style={styles.inviteTitle}>
@@ -323,80 +356,6 @@ export default function FriendsScreen() {
             </>
           ) : null}
         </View>
-
-        {/* Pending inbound requests. */}
-        {inbound.length > 0 ? (
-          <View style={styles.list} testID="friend-requests-section">
-            <Text style={styles.listLabel}>
-              {inbound.length === 1 ? "1 friend request" : `${inbound.length} friend requests`}
-            </Text>
-            {inbound.map((request) => {
-              const answering = answeringIds.includes(request.userId);
-              return (
-                <Pressable
-                  key={request.userId}
-                  onPress={() => openProfile(request.userId)}
-                  accessibilityLabel={`View ${request.displayName?.trim() || "their"} profile`}
-                  style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
-                    styles.friendRow,
-                    (pressed || hovered) && styles.friendRowHover,
-                  ]}
-                  testID={`friend-request-row-${request.userId}`}
-                >
-                  <Avatar
-                    name={request.displayName}
-                    imageUrl={userAvatarImageUrl(request.userId)}
-                    size="md"
-                  />
-                  <View style={styles.friendText}>
-                    <Text variant="label" numberOfLines={1} style={styles.friendName}>
-                      {request.displayName?.trim() || "Someone"}
-                    </Text>
-                    <Text variant="caption" tone="muted" numberOfLines={1}>
-                      Wants to be friends
-                    </Text>
-                  </View>
-                  {answering ? (
-                    <ActivityIndicator size="small" color={tokens.accent.default} />
-                  ) : (
-                    <>
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel={`Accept ${request.displayName?.trim() || "request"}`}
-                        onPress={() => acceptRequestMutation.mutate(request.userId)}
-                        testID={`friend-request-accept-${request.userId}`}
-                        hitSlop={6}
-                        style={({ pressed, hovered }: { pressed: boolean; hovered?: boolean }) => [
-                          styles.acceptBtn,
-                          (pressed || hovered) && styles.acceptBtnHover,
-                        ]}
-                      >
-                        <Text variant="label" style={styles.acceptLabel}>
-                          Accept
-                        </Text>
-                      </Pressable>
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel={`Decline ${request.displayName?.trim() || "request"}`}
-                        onPress={() => denyRequestMutation.mutate(request.userId)}
-                        testID={`friend-request-deny-${request.userId}`}
-                        hitSlop={6}
-                        style={({ pressed }) => [
-                          styles.removeBtn,
-                          pressed && styles.removeBtnPressed,
-                        ]}
-                      >
-                        <Text variant="label" style={styles.removeLabel}>
-                          Decline
-                        </Text>
-                      </Pressable>
-                    </>
-                  )}
-                </Pressable>
-              );
-            })}
-          </View>
-        ) : null}
 
         {/* Friends list. */}
         {friendsQuery.isPending ? (

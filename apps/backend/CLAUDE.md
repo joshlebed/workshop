@@ -590,12 +590,25 @@ any query that touches link rows); `POST /v1/friends/invite/reset` rotates the s
 one row (mirrors `POST /v1/lists/:id/share/reset` via the shared `isUniqueViolation` in
 `lib/pgErrors.ts`), invalidating the old URL (preview + accept 404) and minting a fresh one —
 it only touches the oldest/canonical link row, so legacy multi-row users don't self-collide.
-Directed requests (mutuals / profile flow) exist **only while pending**: accept (`POST
+Directed requests (mutuals / profile flow) are `pending` or `expired` (onboarding spike #7,
+`docs/friend-request-recovery.md`): accept (`POST
 /v1/friends/requests/user/:userId/accept`, or accepting the sender's share link, or a
 cross-request via `POST /v1/friends/requests`) forms the edge and deletes the row; `DELETE
 /v1/friends/requests/user/:userId` is both cancel and silent deny (re-requesting is allowed).
-A partial unique index keeps one pending row per (inviter, invitee); the legacy `status` /
-`responded_at` columns stay at defaults. `GET /v1/friends/mutuals` is a two-hop walk over
+A partial unique index keeps one pending row per (inviter, invitee). **Every rule lives in
+`lib/friendRequestLifecycle.ts`**: "is there a pending request" means `livePendingWhere()`
+(`status = 'pending'` and not past `expires_at`), and every path that answers or removes a
+request goes through `consumeDirectedRequests` (deletes pending + expired rows both ways and
+writes the `friend_request_events` row). New rows get `expires_at = now + 14d`. The
+`friend-request-reminders` job (`jobs/friendRequestReminders.ts`, riding the `request-rollups`
+wake every six hours) expires rows past `expires_at` (`status = 'expired'`, `responded_at`) and
+pushes each recipient once at 48h (`reminded_at`, 09–21 local, recipients with a push token
+only). An expired row leaves the recipient's inbox but stays so the sender's profile shows
+`outboundExpiredAt` ("Request expired — send again") and is let past the anti-probe 404;
+re-sending deletes it (`clearExpiredForResend`, event `resent`). Migration 0066 gave rows
+pending at deploy a fresh 14-day clock rather than expiring them. **A new path that accepts,
+removes or checks a directed request must use those helpers** — a bare `status = 'pending'`
+query counts expired-but-unswept rows. `GET /v1/friends/mutuals` is a two-hop walk over
 `friendships` computed in app code, and `GET /v1/friends/users/:userId` 404s when the viewer
 has no relationship AND no mutual friends with the target (profiles can't probe strangers) —
 **unless** the request carries `?via=<token>`, a valid play link (`game_share_links`) for the
@@ -741,7 +754,8 @@ is intentionally skipped in v1. Delivery (chunking, ticket parsing, pruning) liv
 `lib/expoPush.ts` (`sendExpoPushMessages`), shared with the operator push route
 (`POST /v1/admin/push/send`, `lib/adminPush.ts`) and the recipient push on a fresh directed
 friend request (`lib/friendRequestPush.ts`: best-effort, 3s fetch cap, never fails the route,
-`data: { kind: "friend_request", userId }`) and the nudge push (`lib/nudges.ts`, same best-effort
+`data: { kind: "friend_request", userId, url: "highscore:///friends" }`), the 48h friend-request
+reminder (`jobs/friendRequestReminders.ts`, `kind: "friend_request_reminder"`, same `url`) and the nudge push (`lib/nudges.ts`, same best-effort
 shape, `data: { kind: "nudge", userId, gameId, url }` where `url` opens the board); its endpoint is `EXPO_PUSH_URL` (config,
 default Expo's). Never send to Expo with production tokens from a sandbox — point it at a stub.
 

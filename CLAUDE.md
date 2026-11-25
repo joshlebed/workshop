@@ -585,7 +585,7 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   it skips **only when sure** (a missing, malformed or day-old object means "ask the
   database"). Anything that changes who is due (`PUT /v1/me/notification-prefs`, push-token
   register / delete) calls `refreshReminderSlotsQuietly`; **a new write path for those tables
-  must too**. `request-rollups` runs every six hours, a minute after a reminders tick. Before
+  must too**. `request-rollups` runs every six hours, a minute after a reminders tick; the friend-request reminder + expiry job rides that same wake (`docs/friend-request-recovery.md`). Before
   adding a scheduled job that queries, ask whether it can ride an existing wake. The compute is
   pinned at 0.25 CU (no autoscaling) in the Neon console for the same reason.
 - **What a query reads out of Neon is metered, so select the columns a response needs.** Neon's
