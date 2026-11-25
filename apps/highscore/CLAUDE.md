@@ -124,6 +124,21 @@ Dismiss/complete state is the server-side
 `games.share-sheet-announcement` user flag — never a local storage key, so reinstalls and second
 devices don't re-blast. **Merging the announcement PR is the blast** — OTA ships ~60s after merge.
 
+## Pending friend requests (onboarding spike #7)
+
+Three surfaces read the same `GET /v1/friends/requests` query (`queryKeys.friends.requests`),
+which only returns live requests (expired ones are filtered server-side — never re-filter by age
+client-side): the badge on the home header's Friends button (`HomeAccountButtons`, the only
+Friends entry — there is no visible tab bar), the inbound section **pinned at the top** of
+`FriendsHome` (above "Add a friend"), and `FriendRequestCard` on Games home for the newest one.
+Accept / Decline on both go through `useFriendRequestAnswers`. The card's X only hides it for that
+request — the `friends.request-card` user flag (`{ userId, requestedAt, dismissedAt }`, rules in
+`src/games/lib/friendRequestCard.ts`); it must never decline. A sender whose request expired sees
+"Request expired — send again" on the recipient's profile (`outboundExpiredAt`, kept by the
+`fetchFriendProfile` zod schema in `@workshop/api-client/friends` — a field missing there is
+silently stripped). Both friend-request pushes carry `data.url: "highscore:///friends"`, which
+`notificationPath` routes to `/friends`. Backend side: `docs/friend-request-recovery.md`.
+
 ## Public pages (`/support`, `/privacy`, `/terms`)
 
 All three routes render with no session. `src/lib/publicRoutes.ts` is the single source of truth, and
