@@ -6,15 +6,18 @@ import { queryKeys } from "@workshop/api-client/queryKeys";
 import { removeItem, setItem } from "@workshop/api-client/storage";
 import { haptics } from "@workshop/ui";
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, View } from "react-native";
 import { Avatar, Button, Card, Text, tokens } from "../../theme";
 import { OpenInAppCard } from "../components/OpenInAppCard";
 import { useInAppBrowserPrompt } from "../hooks/useInAppBrowserPrompt";
 import { useOpenProfile } from "../hooks/useOpenProfile";
+import { usePreloginDraftPost } from "../hooks/usePreloginDraft";
 import { PENDING_FRIEND_INVITE_TOKEN_KEY } from "../lib/inviteStash";
+import { clearInviteContext } from "../lib/preloginDraftStore";
 import { useGamesRuntime } from "../runtime";
 import { Centered, PostAcceptPicker, styles } from "./friendAccept/PostAcceptPicker";
+import { DraftScoreRow, SignedOutInviteLanding } from "./inviteLanding/SignedOutInviteLanding";
 
 /**
  * Deep-link landing for a friend invite (`/friends/accept/:token`, minted by
@@ -28,12 +31,15 @@ import { Centered, PostAcceptPicker, styles } from "./friendAccept/PostAcceptPic
  *
  * Flow:
  *   1. Stash the token so a sign-in round-trip recovers it.
- *   2. Signed-out → AuthGate routes to `/sign-in`; the stash bounces the user
- *      back here once signed in.
+ *   2. Signed-out → the public preview renders the inviter and a paste box
+ *      (`SignedOutInviteLanding`, score before sign-in); its sign-in button
+ *      stashes the invite context, and the token stash bounces the user back
+ *      here once signed in.
  *   3. Signed-in → preview the inviter, then on Accept POST the acceptance,
  *      clear the stash, refresh the friend + games caches, and show the
  *      post-accept picker of the new friend's games (G3) — so a brand-new user
- *      leaves onboarding with a populated home.
+ *      leaves onboarding with a populated home. With a score pasted before
+ *      sign-in, Accept posts it and opens that game's board instead.
  */
 export default function AcceptFriendInvite() {
   const params = useLocalSearchParams<{ token?: string }>();
@@ -58,19 +64,36 @@ export default function AcceptFriendInvite() {
     setItem(PENDING_FRIEND_INVITE_TOKEN_KEY, inviteToken).catch(() => {});
   }, [inviteToken]);
 
-  // Signed-out → send through sign-in. AuthGate bounces back here once signed
-  // in (it consults the friend stash, same as the list-invite stash).
-  useEffect(() => {
-    if (!showAppPrompt && status === "signed-out" && inviteToken) {
-      router.replace(routes.signIn as Href);
-    }
-  }, [status, inviteToken, router, routes.signIn, showAppPrompt]);
-
-  const previewQuery = useQuery({
-    queryKey: queryKeys.friends.requestPreview(inviteToken ?? ""),
-    queryFn: () => fetchFriendRequestPreview(inviteToken ?? "", authToken),
-    enabled: !!inviteToken && status === "signed-in" && !acceptedFriend && !showAppPrompt,
+  const signedIn = status === "signed-in";
+  // A score pasted here before sign-in, waiting to be posted (signed in only).
+  const prelogin = usePreloginDraftPost({
+    linkKind: "friend",
+    linkToken: inviteToken ?? null,
+    enabled: signedIn && !showAppPrompt,
   });
+  const { post: postDraft } = prelogin;
+
+  // The preview is public: signed out it feeds the landing, signed in it also
+  // says whether the viewer is already a friend.
+  const previewQuery = useQuery({
+    queryKey: [
+      ...queryKeys.friends.requestPreview(inviteToken ?? ""),
+      signedIn ? "viewer" : "public",
+    ],
+    queryFn: () => fetchFriendRequestPreview(inviteToken ?? "", signedIn ? authToken : null),
+    enabled:
+      !!inviteToken && (signedIn || status === "signed-out") && !acceptedFriend && !showAppPrompt,
+  });
+
+  // Signed in, the invite context has done its job (the sign-in header).
+  useEffect(() => {
+    if (signedIn) void clearInviteContext();
+  }, [signedIn]);
+
+  // An invite that doesn't resolve must not be where sign-in lands.
+  useEffect(() => {
+    if (previewQuery.isError) removeItem(PENDING_FRIEND_INVITE_TOKEN_KEY).catch(() => {});
+  }, [previewQuery.isError]);
 
   const acceptMutation = useMutation({
     mutationFn: () => acceptFriendRequest(inviteToken ?? "", authToken),
@@ -82,8 +105,11 @@ export default function AcceptFriendInvite() {
         // Friendship gates score visibility — refresh the social board.
         queryClient.invalidateQueries({ queryKey: ["games"] }),
       ]);
-      // Hand off to the post-accept picker instead of bouncing to /friends.
-      setAcceptedFriend(data.friend);
+      // Score before sign-in: post the draft and open its board (the new
+      // friend's score sits next to it). Otherwise — or if that post fails —
+      // hand off to the post-accept picker instead of bouncing to /friends.
+      if (prelogin.draft) postDraft(() => setAcceptedFriend(data.friend));
+      else setAcceptedFriend(data.friend);
     },
     onError: (e) => {
       // Drop the stash on a hard failure so re-opening doesn't loop back here.
@@ -138,13 +164,46 @@ export default function AcceptFriendInvite() {
     );
   }
 
-  // Still resolving auth, or signed-out and on the way to /sign-in.
+  if (status === "signed-out" && previewQuery.isError) {
+    return (
+      <Centered>
+        <Card style={styles.card} elevated>
+          <Text variant="title">Invite not found</Text>
+          <Text tone="secondary" testID="friend-accept-not-found">
+            This invite link isn't valid anymore. Ask your friend for a fresh one.
+          </Text>
+        </Card>
+      </Centered>
+    );
+  }
+
+  if (status === "signed-out" && previewQuery.isSuccess) {
+    return (
+      <SignedOutInviteLanding
+        linkKind="friend"
+        linkToken={inviteToken}
+        inviter={previewQuery.data.inviter}
+        sharerGames={[]}
+        testID="friend-accept-landing"
+      />
+    );
+  }
+
+  // Still resolving auth or the preview.
   if (status !== "signed-in") {
     return (
       <Centered testID="friend-accept-loading">
         <ActivityIndicator color={tokens.accent.default} />
+      </Centered>
+    );
+  }
+
+  if (prelogin.posting || prelogin.posted) {
+    return (
+      <Centered testID="friend-accept-posting">
+        <ActivityIndicator color={tokens.accent.default} />
         <Text tone="secondary" style={styles.loadingText}>
-          Sign in to add your friend
+          Saving your {prelogin.draft?.gameTitle ?? ""} score…
         </Text>
       </Centered>
     );
@@ -161,7 +220,7 @@ export default function AcceptFriendInvite() {
     );
   }
 
-  if (previewQuery.isPending) {
+  if (previewQuery.isPending || !prelogin.loaded) {
     return (
       <Centered testID="friend-accept-loading">
         <ActivityIndicator color={tokens.accent.default} />
@@ -189,9 +248,18 @@ export default function AcceptFriendInvite() {
   const inviterName = preview.inviter.displayName?.trim() || "Someone";
   const isOwnInvite = preview.inviter.userId === user?.id;
 
-  // Already friends — nothing to accept; the link just opens their profile.
-  if (preview.viewerIsFriend && !isOwnInvite) {
-    return <RedirectToProfile userId={preview.inviter.userId} />;
+  // Already friends — nothing to accept; the link just opens their profile
+  // (or, with a score pasted before sign-in, that game's board).
+  // Not while this screen's own Accept is landing: it invalidates this
+  // preview, whose refetch says "already friends" before the picker (or the
+  // draft's board) takes over.
+  const acceptingHere = acceptMutation.isPending || acceptMutation.isSuccess;
+  if (preview.viewerIsFriend && !isOwnInvite && !acceptingHere) {
+    return prelogin.draft ? (
+      <PostDraftNow post={postDraft} userId={preview.inviter.userId} />
+    ) : (
+      <RedirectToProfile userId={preview.inviter.userId} />
+    );
   }
 
   // You opened your own link — nothing to accept; point you back to Friends.
@@ -236,19 +304,27 @@ export default function AcceptFriendInvite() {
             Accept to start comparing daily scores. You'll see each other on shared games.
           </Text>
         </View>
+        {prelogin.draft ? (
+          <DraftScoreRow
+            gameTitle={prelogin.draft.gameTitle}
+            scoreRaw={prelogin.draft.scoreRaw}
+            testID="friend-accept-draft"
+          />
+        ) : null}
         <Button
-          label={`Add ${inviterName}`}
+          label={prelogin.draft ? `Add ${inviterName} & save score` : `Add ${inviterName}`}
           onPress={() => acceptMutation.mutate()}
           loading={acceptMutation.isPending}
           disabled={acceptMutation.isPending}
           testID="friend-accept-button"
         />
         <Button
-          label="Not now"
+          label={prelogin.draft ? "Just save my score" : "Not now"}
           variant="ghost"
           onPress={() => {
             removeItem(PENDING_FRIEND_INVITE_TOKEN_KEY).catch(() => {});
-            router.replace(routes.root as Href);
+            if (prelogin.draft) postDraft(() => router.replace(routes.root as Href));
+            else router.replace(routes.root as Href);
           }}
           disabled={acceptMutation.isPending}
           testID="friend-accept-decline"
@@ -273,6 +349,28 @@ function RedirectToProfile({ userId }: { userId: string }) {
   }, [router, routes, userId]);
   return (
     <Centered testID="friend-accept-loading">
+      <ActivityIndicator color={tokens.accent.default} />
+    </Centered>
+  );
+}
+
+/**
+ * Already friends, with a score pasted before sign-in: post it once (the
+ * board opens on success; the profile on failure). A component so the hooks
+ * above the early return stay unconditional.
+ */
+function PostDraftNow({ post, userId }: { post: (onFailed?: () => void) => void; userId: string }) {
+  const router = useRouter();
+  const { routes } = useGamesRuntime();
+  const startedRef = useRef(false);
+  useEffect(() => {
+    if (startedRef.current) return;
+    startedRef.current = true;
+    removeItem(PENDING_FRIEND_INVITE_TOKEN_KEY).catch(() => {});
+    post(() => router.replace(routes.friendProfile(userId) as Href));
+  }, [post, router, routes, userId]);
+  return (
+    <Centered testID="friend-accept-posting">
       <ActivityIndicator color={tokens.accent.default} />
     </Centered>
   );

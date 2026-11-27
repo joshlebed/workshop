@@ -17,7 +17,11 @@ import { callerIpKey } from "../../lib/clientIp.js";
 import { getConfig } from "../../lib/config.js";
 import { friendsOf } from "../../lib/friends.js";
 import { todayPeriodKey } from "../../lib/gameShapes.js";
-import { findOrCreateGameShareLink, resolveGameShareLink } from "../../lib/gameShareLinks.js";
+import {
+  findOrCreateGameShareLink,
+  resolveGameShareLink,
+  sharerGameTitlesForLink,
+} from "../../lib/gameShareLinks.js";
 import { err, ok } from "../../lib/response.js";
 import { isValidShareSlug } from "../../lib/shareSlug.js";
 import { optionalAuth, requireAuth } from "../../middleware/auth.js";
@@ -104,9 +108,14 @@ gameShareRoutes.get(
       viewer = { isSelf, isFriend };
     }
 
+    // The games the sharer played on the link's day — titles only, for the
+    // signed-out landing's "Josh played MapTap today" (score-before-sign-in).
+    const sharerGames = await sharerGameTitlesForLink(sharer.id, link.dateKey);
+
     const response: GameShareLinkPreview = {
       user: { userId: sharer.id, displayName: sharer.displayName },
       ...(viewer ? { viewer } : {}),
+      games: sharerGames.map((title) => ({ title })),
     };
     return ok(c, response);
   },

@@ -591,6 +591,11 @@ export interface GameShareLinkResponse {
 export interface GameShareLinkPreview {
   user: { userId: string; displayName: string | null };
   viewer?: { isSelf: boolean; isFriend: boolean };
+  /**
+   * Titles of the games the sharer posted to on the link's day (never
+   * scores). Optional: older servers omit it.
+   */
+  games?: { title: string }[];
 }
 
 // Meta's outbound-link shims (`l.facebook.com/l.php?u=<target>`): a link

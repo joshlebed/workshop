@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { shareIntentSchema } from "./telemetry.js";
+import { preloginScoreSchema, shareIntentSchema } from "./telemetry.js";
 
 describe("shareIntentSchema", () => {
   it("accepts a minimal valid snapshot", () => {
@@ -51,5 +51,37 @@ describe("shareIntentSchema", () => {
       textPreview: "x".repeat(5000),
     });
     expect(r.success).toBe(false);
+  });
+});
+
+describe("preloginScoreSchema", () => {
+  it("accepts each funnel event with its optional fields", () => {
+    expect(
+      preloginScoreSchema.safeParse({
+        event: "draft_created",
+        draftId: "d_123",
+        linkKind: "play",
+        gameKey: "maptap",
+        sharerPlayed: true,
+        platform: "web",
+      }).success,
+    ).toBe(true);
+    expect(
+      preloginScoreSchema.safeParse({
+        event: "draft_abandoned",
+        draftId: "d_123",
+        reason: "expired",
+        ageMs: 90_000_000,
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects an unknown event", () => {
+    expect(preloginScoreSchema.safeParse({ event: "score_text" }).success).toBe(false);
+  });
+
+  it("has no field for score text", () => {
+    const r = preloginScoreSchema.safeParse({ event: "draft_created", scoreRaw: "secret" });
+    expect(r.success && "scoreRaw" in r.data).toBe(false);
   });
 });

@@ -1,9 +1,11 @@
+import { PRELOGIN_SCORE_EVENTS } from "@workshop/shared/constants";
 import { Hono } from "hono";
 import { z } from "zod";
+import { callerIpKey } from "../../lib/clientIp.js";
 import { logger } from "../../lib/logger.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { ok } from "../../lib/response.js";
-import { requireAuth } from "../../middleware/auth.js";
+import { optionalAuth, requireAuth } from "../../middleware/auth.js";
 import { rateLimit } from "../../middleware/rate-limit.js";
 
 // Client-reported diagnostics. Currently just the iOS share-intent shape, so we
@@ -32,11 +34,54 @@ export const shareIntentSchema = z.object({
   updateId: z.string().max(80).nullish(),
 });
 
+// Score-before-sign-in spike (docs/onboarding-spikes-2026-11.md, spike 1): one
+// structured line per step of the pre-login score funnel, so "does moving
+// sign-in after the first score lift the day-1 score rate?" is a Logs Insights
+// query (filter `kind = "prelogin_score"`). Most of these steps happen signed
+// out, so the route takes optional auth and is rate-limited per IP. `draftId`
+// is a random client id that joins a signed-out draft to its post after
+// sign-in. Nothing here is score text: the game key and the parsed number at
+// most.
+export const preloginScoreSchema = z.object({
+  event: z.enum(PRELOGIN_SCORE_EVENTS),
+  draftId: z.string().max(64).optional(),
+  linkKind: z.enum(["play", "friend"]).optional(),
+  gameKey: z.string().max(64).nullish(),
+  // Did the pasted game match one the sharer played that day?
+  sharerPlayed: z.boolean().optional(),
+  // Abandon reason (discarded / expired / post_failed / left_page).
+  reason: z.string().max(32).optional(),
+  // ms from draft created to this event.
+  ageMs: z
+    .number()
+    .int()
+    .nonnegative()
+    .max(30 * 86_400_000)
+    .optional(),
+  platform: z.string().max(16).optional(),
+});
+
 export const telemetryRoutes = new Hono();
-telemetryRoutes.use("*", requireAuth);
+
+telemetryRoutes.post(
+  "/prelogin-score",
+  optionalAuth,
+  rateLimit({ family: "v1.telemetry.preloginScore", limit: 60, windowSec: 60, key: callerIpKey }),
+  async (c) => {
+    const parsed = await parseJsonBody(c, preloginScoreSchema);
+    if (!parsed.ok) return parsed.response;
+    logger.info("client_prelogin_score", {
+      kind: "prelogin_score",
+      user_id: c.get("userId") ?? null,
+      ...parsed.data,
+    });
+    return ok(c, { ok: true });
+  },
+);
 
 telemetryRoutes.post(
   "/share-intent",
+  requireAuth,
   rateLimit({
     family: "v1.telemetry.shareIntent",
     limit: 60,
