@@ -201,14 +201,13 @@ export async function sendGameNudge(
       periodKey,
       tokenRows.map((row) => row.token),
     );
-    const fetchFn = opts.fetchFn ?? fetch;
     const delivery = await sendExpoPushMessages(
       messages.map((message) => ({ ...message, recipientId: recipientId })),
       {
         category: "poke",
         db,
-        fetchFn: (input, init) =>
-          fetchFn(input, { ...init, signal: AbortSignal.timeout(NUDGE_PUSH_TIMEOUT_MS) }),
+        fetchFn: opts.fetchFn,
+        timeoutMs: NUDGE_PUSH_TIMEOUT_MS,
         onChunkError: (error, chunkIndex, tokenCount) =>
           logger.error("nudge push chunk failed", {
             error,

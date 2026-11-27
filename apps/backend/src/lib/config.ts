@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { LOCAL_PUSH_URL } from "./localPush.js";
 
 /**
  * Comma-separated env value → trimmed, de-duplicated, non-empty list.
@@ -145,14 +146,8 @@ const configSchema = z.object({
   // Discord webhook URL for operator-facing notifications (new signups, new
   // lists). Empty in local dev — the notifier no-ops. See lib/discord.ts.
   discordNotifyWebhookUrl: z.string().optional().default(""),
-  // Expo push endpoint (lib/expoPush.ts). Overridable so a sandbox backend can
-  // point at a local stub and never reach Apple with real tokens; unset/blank
-  // means Expo's production endpoint. Not set by Terraform.
-  expoPushUrl: z
-    .string()
-    .optional()
-    .transform((v) => v?.trim() || DEFAULT_EXPO_PUSH_URL)
-    .pipe(z.string().url()),
+  // Local overrides are checked at send time so a bad URL only fails push.
+  expoPushUrl: z.string().trim().optional(),
   // S3 bucket for user-uploaded images (lib/imageStorage.ts). Set by
   // Terraform in prod; unset locally, where images go to `imageStorageDir`.
   imageBucket: z.string().optional().default(""),
@@ -165,7 +160,7 @@ const configSchema = z.object({
     .transform((v) => v?.trim() || ".data/images"),
 });
 
-type Config = z.infer<typeof configSchema> & { isLocal: boolean };
+type Config = z.infer<typeof configSchema> & { isLocal: boolean; expoPushUrl: string };
 
 let cached: Config | null = null;
 
@@ -207,7 +202,10 @@ export function getConfig(): Config {
     imageS3Endpoint: process.env.IMAGE_S3_ENDPOINT,
     imageStorageDir: process.env.IMAGE_STORAGE_DIR,
   });
-  cached = { ...parsed, isLocal: parsed.stage === "local" };
+  const isLocal = parsed.stage === "local";
+  const expoPushUrl = parsed.expoPushUrl || (isLocal ? LOCAL_PUSH_URL : DEFAULT_EXPO_PUSH_URL);
+  if (!isLocal) z.url().parse(expoPushUrl);
+  cached = { ...parsed, isLocal, expoPushUrl };
   return cached;
 }
 

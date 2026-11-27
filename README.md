@@ -38,6 +38,8 @@ Open <http://localhost:8082> (or <http://localhost:8081> for HighScore). Web is 
 agent-browser can drive the real UI. The web app auto-signs in as a seeded dev user
 (`joshlebed@gmail.com`) with sample lists already populated, so it opens lived-in.
 
+Niteshift starts the local push recorder automatically. See the [push runbook](docs/push-runbook.md#local--sandbox-testing) for shell inspection and how to start it in a regular checkout.
+
 For iOS in Expo Go (separate terminal — Expo's interactive UI doesn't render cleanly
 next to streaming backend logs):
 

@@ -386,8 +386,8 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   sends one message per device. Delivery for this, the play-reminder job and the inbound friend-request
   push (`lib/friendRequestPush.ts`) goes through
   `apps/backend/src/lib/expoPush.ts` (`sendExpoPushMessages`: 100-per-request chunks, zod tickets,
-  `DeviceNotRegistered` pruning). The endpoint is `EXPO_PUSH_URL` (default Expo's): **the sandbox
-  DB is a prod copy with real tokens, so point it at a local stub before exercising any send**.
+  `DeviceNotRegistered` pruning). Local-stage delivery defaults to the loopback recorder and
+  omits device tokens.
   Agents never send (see Prohibited); runbook: `docs/push-runbook.md`.
 
 - **Nudges (shown to players as a "poke"; code, table and route keep `nudge`): one rule set, in
@@ -413,9 +413,8 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   the viewer can tell them to turn notifications on), then the allowance. With none left the hands stay too; a tap toasts "You're out of pokes for
   today" client-side (the server still 429s). "Has a `push_tokens` row" is the only signal there
   is: a user who later switches notifications off in iOS Settings keeps their row and silently
-  receives nothing. Like every push path it goes through `sendExpoPushMessages`, so **stub
-  `EXPO_PUSH_URL` before tapping the hand in a sandbox** — the DB is a prod copy with real
-  tokens. `game_nudges` is in `actionRows`.
+  receives nothing. Like every push path it goes through `sendExpoPushMessages`, which keeps
+  local-stage delivery on loopback and omits device tokens. `game_nudges` is in `actionRows`.
 
 - **Head to head (`/friends/:userId/versus` in HighScore) is one endpoint and one rule set.**
   `GET /v1/friends/users/:userId/head-to-head?range=7|30|all&today=<viewer's local date>`

@@ -43,11 +43,12 @@ pnpm exec playwright install chromium
 #    repository variables), and drizzle-kit / seed tooling read it directly.
 #    Dev auth is on by default: the web bundle auto-signs-in as the seeded
 #    joshlebed@gmail.com user, so the preview lands signed in with no login.
+#    Pin local stage because the sandbox can contain production push tokens.
 : "${SESSION_SECRET:?SESSION_SECRET must be provided as a repository environment variable}"
 log "writing apps/backend/.env"
 umask 077
 cat > apps/backend/.env <<ENV
-STAGE=${STAGE:-local}
+STAGE=local
 DATABASE_URL=${DATABASE_URL}
 SESSION_SECRET=${SESSION_SECRET}
 SES_FROM_ADDRESS=${SES_FROM_ADDRESS:-noreply@example.com}

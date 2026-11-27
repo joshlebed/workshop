@@ -163,7 +163,6 @@ export async function runPlayReminderJob(
 
   const db = args.db ?? getDb();
   const now = args.now ?? new Date();
-  const fetchFn = args.fetchFn ?? fetch;
   const rows = await withDbRetry(() => selectCandidateTokens(db, now), {
     label: "play-reminders",
   });
@@ -193,7 +192,7 @@ export async function runPlayReminderJob(
     {
       category: "play_reminder",
       db,
-      fetchFn,
+      fetchFn: args.fetchFn,
       onChunkError: (error, chunkIndex, tokenCount) =>
         logger.error("play reminder push chunk failed", {
           error,

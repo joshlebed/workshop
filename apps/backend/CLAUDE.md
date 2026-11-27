@@ -742,8 +742,11 @@ is intentionally skipped in v1. Delivery (chunking, ticket parsing, pruning) liv
 (`POST /v1/admin/push/send`, `lib/adminPush.ts`) and the recipient push on a fresh directed
 friend request (`lib/friendRequestPush.ts`: best-effort, 3s fetch cap, never fails the route,
 `data: { kind: "friend_request", userId }`) and the nudge push (`lib/nudges.ts`, same best-effort
-shape, `data: { kind: "nudge", userId, gameId, url }` where `url` opens the board); its endpoint is `EXPO_PUSH_URL` (config,
-default Expo's). Never send to Expo with production tokens from a sandbox — point it at a stub.
+shape, `data: { kind: "nudge", userId, gameId, url }` where `url` opens the board).
+A sandbox DB can contain production device tokens. With `STAGE=local`, the sender strips device
+tokens and posts copy plus recipient ID to the loopback recorder. Only HTTP on `127.0.0.1` is
+allowed and redirects fail. Niteshift starts the recorder without a preview port. See
+`docs/push-runbook.md` for the private capture file and local startup command.
 
 ## Lists and items are soft-deleted via `archived_at`
 

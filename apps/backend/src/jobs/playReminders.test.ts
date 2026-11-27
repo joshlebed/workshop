@@ -36,7 +36,9 @@ function parsePushMessages(body: unknown): unknown[] {
 }
 
 beforeAll(async () => {
-  process.env.STAGE = "local";
+  process.env.STAGE = "prod";
+  process.env.ENABLE_GAMES = "1";
+  process.env.EXPO_PUSH_URL = "http://127.0.0.1:9/push-stub";
   process.env.DATABASE_URL = "postgres://test";
   process.env.SESSION_SECRET = "x".repeat(32);
   resetConfigForTesting();
