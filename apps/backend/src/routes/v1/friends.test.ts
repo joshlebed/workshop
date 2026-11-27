@@ -917,6 +917,7 @@ describe("POST /v1/friends/requests — recipient push", () => {
     const messages = sendExpoPushMessages.mock.calls[0]?.[0];
     expect(messages).toEqual(
       ["ExponentPushToken[recip-a]", "ExponentPushToken[recip-b]"].map((to) => ({
+        recipientId: recipient,
         to,
         title: "New friend request",
         body: "Sendy wants to be friends on HighScore",
