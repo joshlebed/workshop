@@ -4,7 +4,7 @@
 # The sandbox always runs against the local `postgres` service (docker,
 # PG 17 to match prod, host networking). Any DATABASE_URL Niteshift injects
 # (e.g. a Neon branch from the Database integration) is ignored on purpose:
-# the local DB is seeded by copying prod wholesale (see
+# the local DB is seeded by copying prod with synthetic push tokens (see
 # workshop_snapshot_prod_into_local), which gives a realistic repro without
 # per-task Neon branches.
 #
@@ -17,7 +17,8 @@ WORKSHOP_PROD_DB_SSM_PARAM="/workshop-prod/db/url"
 WORKSHOP_BUCKET_PREFIX="workshop-prod"
 # A cached dump younger than this is reused instead of dumping prod again.
 WORKSHOP_SNAPSHOT_MAX_AGE_SECONDS=$((24 * 60 * 60))
-WORKSHOP_SNAPSHOT_KEY="prod.dump"
+# The legacy prod.dump can contain live push tokens. Never read or refresh it.
+WORKSHOP_SNAPSHOT_KEY="prod-sanitized-v1.dump"
 # Where the backend's local image driver reads and writes (IMAGE_STORAGE_DIR
 # default, relative to apps/backend).
 WORKSHOP_LOCAL_IMAGE_DIR="apps/backend/.data/images"
@@ -105,18 +106,60 @@ workshop_ensure_local_postgres() {
 # owners/privileges (neondb_owner doesn't exist locally), and leaves out
 # `rate_limits` rows (per-request counters, ~1 MB, no use
 # locally). Returns 1 (without touching the local DB) when no dump is to be had.
-workshop_snapshot_prod_into_local() {
+workshop_snapshot_prod_into_local() (
   local dir dump
-  dir="$(mktemp -d)"
+  umask 077
+  dir="$(mktemp -d)" || return 1
+  trap 'rm -rf -- "$dir"' EXIT
   dump="$dir/prod.dump"
   if ! workshop_fetch_cached_dump "$dump" && ! workshop_dump_prod "$dir"; then
-    rm -rf "$dir"
     return 1
   fi
   workshop_restore_dump "$dir"
+)
+
+# Only update the local cluster. Existing sandboxes may predate push_tokens
+# (or be empty before setup runs migrations), so only that path allows absence.
+workshop_scrub_push_tokens() {
+  local database="${1:-workshop}" allow_missing="${2:-true}"
+  docker exec -i workshop-pg psql -X -U postgres -d "$database" -q \
+    -v ON_ERROR_STOP=1 -v allow_missing="$allow_missing" <<'SQL'
+\if :allow_missing
+SELECT to_regclass('public.push_tokens') IS NOT NULL AS has_push_tokens \gset
+\if :has_push_tokens
+\else
+\quit
+\endif
+\endif
+UPDATE public.push_tokens
+SET expo_push_token = 'sandbox:' || encode(sha256(convert_to(expo_push_token, 'UTF8')), 'hex')
+WHERE expo_push_token !~ '^sandbox:[0-9a-f]{64}$';
+SQL
 }
 
-# Dump prod into $1/prod.dump and refresh the shared cache.
+# Restore the raw dump into a scratch database, scrub it, then export the
+# sanitized archive. The scratch database is never used by the backend.
+workshop_sanitize_dump() (
+  local dir="$1" scratch_db="workshop_snapshot_${BASHPID}_${RANDOM}"
+  docker exec workshop-pg createdb -U postgres "$scratch_db" || return 1
+  trap 'docker exec workshop-pg dropdb -U postgres "$scratch_db"' EXIT
+
+  # pg_restore errors can contain COPY data. Keep them out of setup logs.
+  if ! docker exec -i workshop-pg pg_restore -U postgres -d "$scratch_db" \
+    --no-owner --no-privileges --exit-on-error < "$dir/raw.dump" 2>/dev/null; then
+    echo "could not restore raw dump into scratch database" >&2
+    return 1
+  fi
+  rm -f -- "$dir/raw.dump" || return 1
+  workshop_scrub_push_tokens "$scratch_db" false || return 1
+  docker exec workshop-pg pg_dump -U postgres -d "$scratch_db" \
+    --no-owner --no-privileges --format=custom > "$dir/prod.dump" || return 1
+
+  docker exec workshop-pg dropdb -U postgres "$scratch_db" || return 1
+  trap - EXIT
+)
+
+# Dump prod, sanitize the archive, and refresh the shared cache.
 workshop_dump_prod() {
   local dir="$1" prod_url dump bucket
   prod_url="$(aws ssm get-parameter --name "$WORKSHOP_PROD_DB_SSM_PARAM" \
@@ -133,12 +176,12 @@ workshop_dump_prod() {
   local attempt
   dump="$dir/prod.dump"
   for attempt in 1 2 3; do
-    echo "dumping prod → $dump (attempt $attempt)"
+    echo "dumping prod (attempt $attempt)"
     if docker run --rm --network=host -v "$dir:/out" "$WORKSHOP_PG_IMAGE" \
       pg_dump --no-owner --no-privileges --format=custom \
-      --exclude-table-data=rate_limits --file=/out/prod.dump "$prod_url" &&
+      --exclude-table-data=rate_limits --file=/out/raw.dump "$prod_url" &&
       docker run --rm -v "$dir:/out" "$WORKSHOP_PG_IMAGE" \
-        pg_restore --list /out/prod.dump >/dev/null; then
+        pg_restore --list /out/raw.dump >/dev/null; then
       break
     fi
     if [ "$attempt" = 3 ]; then
@@ -147,6 +190,10 @@ workshop_dump_prod() {
     fi
     sleep 5
   done
+  if ! workshop_sanitize_dump "$dir"; then
+    echo "snapshot sanitization failed; local workshop DB and cache left untouched" >&2
+    return 1
+  fi
   # Share it. Best effort: the bucket may not exist yet, and a sandbox that
   # cannot upload still has its own dump.
   if bucket="$(workshop_bucket dev-snapshots)" &&
@@ -155,22 +202,17 @@ workshop_dump_prod() {
   fi
 }
 
-# Restore $1/prod.dump over the local `workshop` database, then remove $1.
+# Restore the sanitized $1/prod.dump over the local `workshop` database.
 workshop_restore_dump() {
   local dir="$1"
   echo "restoring into local workshop db"
   docker exec workshop-pg psql -U postgres -d postgres -v ON_ERROR_STOP=1 -q \
-    -c "DROP DATABASE IF EXISTS workshop WITH (FORCE);" -c "CREATE DATABASE workshop;" || {
-    rm -rf "$dir"
-    return 1
-  }
+    -c "DROP DATABASE IF EXISTS workshop WITH (FORCE);" -c "CREATE DATABASE workshop;" || return 1
   if ! docker run --rm --network=host -v "$dir:/out" "$WORKSHOP_PG_IMAGE" \
     pg_restore --no-owner --no-privileges --exit-on-error \
     --dbname="$WORKSHOP_LOCAL_DB_URL" /out/prod.dump; then
     echo "pg_restore failed; local DB is partial — re-run .niteshift/files/snapshot-prod.sh" >&2
-    rm -rf "$dir"
     return 1
   fi
-  rm -rf "$dir"
-  echo "local workshop db now mirrors prod"
+  echo "local workshop db now has a sanitized prod snapshot"
 }

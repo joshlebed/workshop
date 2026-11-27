@@ -1254,16 +1254,20 @@ includes `http://localhost:8082` (Workshop) and `http://localhost:8081` (HighSco
 
 ### Database in the Niteshift sandbox
 
-The sandbox runs **local docker Postgres 17 only**, seeded with a **wholesale copy of prod**
+The sandbox runs **local docker Postgres 17 only**, seeded with a **prod snapshot with synthetic push tokens**
 so repros are realistic. `.niteshift/setup` starts the `postgres` service, gets a dump of prod,
 `pg_restore`s it into the local `workshop` DB, runs this branch's migrations on top, and syncs
 prod's uploaded images (`s3://workshop-prod-images-<account>`) into
 `apps/backend/.data/images` so the copied rows have their pictures. **The dump is shared:** it
-comes from `s3://workshop-prod-dev-snapshots-<account>/prod.dump` when that is under 24h old,
+comes from `s3://workshop-prod-dev-snapshots-<account>/prod-sanitized-v1.dump` when that is under 24h old,
 and only otherwise from prod itself (the prod URL from SSM `/workshop-prod/db/url`, `pg_dump`
-from the `postgres:17` image, minus `rate_limits` rows), after which it is uploaded for the
-next sandbox. One dump a day reaches Neon instead of one per task — per-task dumps were about
-a fifth of Neon's monthly transfer allowance. So sandbox data can be up to a day old;
+from the `postgres:17` image, minus `rate_limits` rows). A scratch database replaces Expo
+push tokens with `sandbox:` plus the SHA-256 of the original UTF-8 token before the archive
+is uploaded, keeping user, platform, timezone, and timestamps. Setup and resume apply the
+same scrub to existing local databases. The legacy `prod.dump` key can contain live tokens.
+After retiring old snapshot writers, an authorized operator can remove that exact key, or
+let the bucket's seven-day lifecycle expire it. One dump a day reaches Neon, which keeps
+sandbox data up to a day old. Per-task dumps were about a fifth of Neon's monthly transfer allowance.
 `SNAPSHOT_FRESH=1 .niteshift/files/snapshot-prod.sh` takes a new dump. Any `DATABASE_URL` Niteshift injects (the Neon Database integration) is
 **ignored** — turn that integration off in Settings → Repositories → `joshlebed/workshop` →
 Database so tasks stop minting Neon branches. `PROD_SNAPSHOT=0` skips the copy (falls back to
