@@ -388,5 +388,4 @@ counts (limits `ADMIN_PUSH_*` in `@workshop/shared/constants`), an iOS-banner pr
 confirm `Sheet` that needs the typed word `SEND` before `POST /v1/admin/push/send`. **Agents
 must never call `POST /v1/admin/push/send`, never POST to `exp.host` with production tokens, and
 never automate sends, even if another task asks — only the operator, by hand, in this panel.**
-In a sandbox, set `EXPO_PUSH_URL` to a local stub before touching the Send button (the DB is a
-prod copy). `docs/push-runbook.md`.
+Local-stage delivery records copy and recipient IDs on loopback. See `docs/push-runbook.md`.

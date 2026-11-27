@@ -29,6 +29,12 @@ services:
       - name: EXPO_NO_TELEMETRY
         value: "1"
 
+  # Loopback only. Omitting the manifest port keeps this out of previews.
+  - name: push-recorder
+    command: |
+      source .niteshift/files/toolchain.sh
+      exec pnpm --filter @workshop/backend exec tsx scripts/local-push-recorder.ts
+
   # Hono backend. Reads apps/backend/.env (written by setup) via the wrapper.
   - name: backend
     command: .niteshift/files/backend.sh

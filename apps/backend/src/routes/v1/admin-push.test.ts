@@ -72,7 +72,7 @@ async function recipients(query = "", h: Record<string, string> = asAdmin()) {
 }
 
 beforeAll(async () => {
-  process.env.STAGE = "local";
+  process.env.STAGE = "prod";
   process.env.DATABASE_URL = "postgres://test";
   process.env.SESSION_SECRET = "x".repeat(32);
   process.env.EXPO_PUSH_URL = STUB_URL;

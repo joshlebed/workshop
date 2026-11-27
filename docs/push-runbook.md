@@ -55,18 +55,22 @@ pastes (`lib/contentFilter.ts`); a hit is a 400 `OBJECTIONABLE_CONTENT` and noth
 
 ## Local / sandbox testing
 
-The Niteshift sandbox DB is a **copy of prod, including real push tokens**. Before pressing Send
-anywhere but production, point the backend at a stub:
+Niteshift starts `push-recorder` automatically. With `STAGE=local`, the backend defaults to
+`http://127.0.0.1:9911/push`. To start the recorder in a regular checkout, run this from the root:
 
 ```bash
-# a stub that answers every message with an ok ticket
-node -e 'require("http").createServer((q,s)=>{let b="";q.on("data",c=>b+=c);q.on("end",()=>{const m=JSON.parse(b||"[]");s.setHeader("Content-Type","application/json");s.end(JSON.stringify({data:m.map(()=>({status:"ok"}))}))})}).listen(9911)' &
-echo 'EXPO_PUSH_URL=http://127.0.0.1:9911/--/api/v2/push/send' >> apps/backend/.env
-ns services restart backend
+pnpm --filter @workshop/backend exec tsx scripts/local-push-recorder.ts
 ```
 
-Then check the running backend has it (`tr '\0' '\n' < /proc/<pid>/environ | grep EXPO_PUSH_URL`)
-and select only users whose tokens you inserted yourself (`ExpoPushToken[sandbox-fake-…]`).
+Inspect `apps/backend/.data/local-push/recorded.json` from the sandbox shell. The private file
+holds the latest 1,000 entries since startup with category, recipient user ID, title, body, and
+timestamp. It is reset on restart. The recorder has no preview port or HTTP read endpoint.
+Device tokens and deep-link data are omitted from local transport.
+
+For transport failure testing, override `EXPO_PUSH_URL` and restart the backend. Local sends
+accept only HTTP on `127.0.0.1`, reject redirects, time out, and leave token rows intact.
+A friend request still succeeds if its push fails. Use synthetic accounts when sharing evidence.
+The operator-only Send action remains reserved for the operator.
 
 ## Look up a player's notification history
 

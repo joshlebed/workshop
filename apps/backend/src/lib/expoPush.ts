@@ -12,7 +12,8 @@ import { inArray } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "../db/client.js";
 import { pushTokens } from "../db/schema.js";
-import { DEFAULT_EXPO_PUSH_URL, getConfig } from "./config.js";
+import { getConfig } from "./config.js";
+import { localPushEndpoint, postLocalPush } from "./localPush.js";
 import { logger } from "./logger.js";
 import type { DbClient } from "./sql.js";
 
@@ -80,42 +81,47 @@ export async function sendExpoPushMessages(
     category: "play_reminder" | "friend_request" | "poke" | "admin_message";
     db?: DbClient | undefined;
     fetchFn?: typeof fetch | undefined;
+    timeoutMs?: number;
     onChunkError?: (error: unknown, chunkIndex: number, chunkSize: number) => void;
   },
 ): Promise<ExpoPushSendResult> {
-  const fetchFn = opts.fetchFn ?? fetch;
-  const config = getConfig();
-  const url = config.expoPushUrl;
+  const { isLocal, expoPushUrl } = getConfig();
   const outcomes: ExpoPushOutcome[] = [];
-  // A local backend never reaches Expo unless EXPO_PUSH_URL is set on purpose:
-  // the sandbox database is a prod copy with real tokens. A hot-reloaded dev
-  // server without the stub once delivered real pushes (Nov 2026). Tests run
-  // under vitest with a mocked fetch and keep the default URL.
-  if (config.isLocal && url === DEFAULT_EXPO_PUSH_URL && !process.env.VITEST) {
-    logger.warn("expo push refused: local stage without EXPO_PUSH_URL", {
-      message_count: messages.length,
-    });
-    return {
-      sent: 0,
-      failed: messages.length,
-      prunedTokens: [],
-      outcomes: messages.map((m) => ({ to: m.to, status: "request_failed" as const })),
-    };
-  }
   const tokensToPrune = new Set<string>();
 
   for (const [chunkIndex, chunk] of chunksOf(messages, EXPO_CHUNK_SIZE).entries()) {
     const offset = outcomes.length;
     try {
-      const response = await fetchFn(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(chunk.map(({ recipientId: _, ...message }) => message)),
-      });
-      if (!response.ok) {
-        throw new Error(`Expo push request failed with status ${response.status}`);
+      const url = isLocal ? localPushEndpoint(expoPushUrl) : expoPushUrl;
+      const timeoutMs = opts.timeoutMs ?? (isLocal ? 3000 : undefined);
+      const signal = timeoutMs === undefined ? undefined : AbortSignal.timeout(timeoutMs);
+      const body = JSON.stringify(
+        isLocal
+          ? chunk.map(({ recipientId, title, body }) => ({
+              category: opts.category,
+              recipientId,
+              title,
+              body,
+            }))
+          : chunk.map(({ recipientId: _, ...message }) => message),
+      );
+      let payload: unknown;
+      if (url instanceof URL && !opts.fetchFn) {
+        payload = await postLocalPush(url, body, signal ?? AbortSignal.timeout(3000));
+      } else {
+        const response = await (opts.fetchFn ?? fetch)(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+          ...(signal && { signal }),
+          ...(isLocal && { redirect: "error" }),
+        });
+        if (!response.ok) {
+          throw new Error(`Expo push request failed with status ${response.status}`);
+        }
+        payload = await response.json();
       }
-      const parsed = expoTicketResponseSchema.safeParse(await response.json());
+      const parsed = expoTicketResponseSchema.safeParse(payload);
       if (!parsed.success) throw new Error("Expo push response had an invalid ticket payload");
       if (parsed.data.data.length !== chunk.length) {
         throw new Error("Expo push response ticket count did not match the request");
@@ -129,7 +135,7 @@ export async function sendExpoPushMessages(
         }
         const error = ticket.details?.error;
         outcomes.push({ to: message.to, status: "error", ...(error ? { error } : {}) });
-        if (error === "DeviceNotRegistered") tokensToPrune.add(message.to);
+        if (!isLocal && error === "DeviceNotRegistered") tokensToPrune.add(message.to);
       }
     } catch (error) {
       if (opts.onChunkError) opts.onChunkError(error, chunkIndex, chunk.length);
@@ -147,10 +153,9 @@ export async function sendExpoPushMessages(
       logger.info("highscore_push_outcome", {
         category: opts.category,
         recipient_id: message.recipientId,
-        title: message.title,
-        body: message.body,
+        ...(!isLocal && { title: message.title, body: message.body }),
         status: outcome?.status,
-        expo_error: outcome?.error,
+        ...(!isLocal && { expo_error: outcome?.error }),
       });
     }
   }
