@@ -2,12 +2,14 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "../db/client.js";
 import { userGames } from "../db/schema.js";
 import { appendUserGamePosition } from "./gamePositions.js";
+import { recordGameMilestones } from "./milestones.js";
 import type { DbClient } from "./sql.js";
 
 /**
  * Append a game to My Games; keeps the existing row and position if present.
  * `created` is true only when a new row was inserted (vs already present), so
- * callers can ping ops on a genuine add and skip idempotent re-adds.
+ * callers can ping ops on a genuine add and skip idempotent re-adds. A new
+ * row records the first / third-game milestones (every add path comes here).
  */
 export async function addToMyGames(
   userId: string,
@@ -20,7 +22,10 @@ export async function addToMyGames(
     .values({ userId, gameId, position })
     .onConflictDoNothing()
     .returning();
-  if (inserted) return { position: inserted.position, addedAt: inserted.addedAt, created: true };
+  if (inserted) {
+    await recordGameMilestones(userId, db);
+    return { position: inserted.position, addedAt: inserted.addedAt, created: true };
+  }
 
   const [existing] = await db
     .select()

@@ -43,6 +43,7 @@ import { recognitionModeFor, recognizeGameForUser } from "../../lib/gameRecognit
 import { todayPeriodKey, toGameShape } from "../../lib/gameShapes.js";
 import { loadGameStandings } from "../../lib/gameStandings.js";
 import { logger } from "../../lib/logger.js";
+import { recordScoreMilestones } from "../../lib/milestones.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
 import { claimTeachLlmCall } from "../../lib/teach/budget.js";
@@ -200,6 +201,8 @@ export async function handleScoreUpsertV2(c: Context, gameId: string): Promise<R
   if (parsed.data.entrySource === "share_extension") {
     await recordShareExtensionScore(db, userId, saved.row.updatedAt);
   }
+  // First-score milestones — same as the legacy write path.
+  await recordScoreMilestones(userId, parsed.data.entrySource, db);
 
   await addToMyGames(userId, game.id);
   if (parsed.data.wrongGame) {

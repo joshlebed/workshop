@@ -309,6 +309,16 @@ forwarding to `highscore.live/friends/accept/:token`. The backend friends routes
   as per-app copies in `@workshop/ui` and `apps/highscore/src/theme`. Per-app content series
   (scores + scorers per day for HighScore, items + lists per day for Workshop) are computed
   from their source tables in `lib/adminAnalytics.ts`; add a series there, not client-side.
+  **HighScore also gets the "2-3-1" activation table and the push-permission funnel**
+  (`activation` / `pushFunnel` on the response, both optional on the client; math in
+  `lib/adminActivation.ts`, UI `apps/highscore/src/admin/ActivationTable.tsx`). Cohort = accounts
+  created that UTC week (Monday start) with any HighScore request or game; day-1 cells count a
+  `user_milestones` row (first score, second friend, third game, all three) reached under 24h
+  after `users.created_at`, out of members at least 24h old; "back after d7" is a HighScore
+  action on a UTC day ≥ signup day + 7, out of members 7+ days old; the same weeks are split by
+  `signup_source`. The funnel reads `push_prompt_events` (written by
+  `POST /v1/telemetry/push-prompt`). Milestone write sites: `apps/backend/CLAUDE.md` →
+  "Activation milestones".
   User-written rows (`game_scores`, `items`) are stamped with `client` / `platform` /
   `app_version` via `requestOriginColumns()` from `lib/requestContext.ts` — **add it to any
   new user-write path** so the per-platform stacks stay complete (NULL = pre-stamping or a

@@ -121,7 +121,7 @@ function ReminderControls() {
     mutationFn: async (next: { enabled: boolean; hour: number | null }) => {
       if (!token || !user) throw new Error("Not signed in");
       if (next.enabled && permission !== "granted") {
-        const result = await enablePlayReminder(token, user.id);
+        const result = await enablePlayReminder(token, user.id, "settings");
         refreshPermission();
         if (!result.ok) {
           throw new Error(

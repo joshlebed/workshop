@@ -231,6 +231,13 @@ any other file under `src/` or `app/` mentions the package). Web is always unsup
   OS dialog (after the Sheet's `onClosed`) → token → `PUT` prefs at the stored hour else the
   server's `suggestedHour`. The sheet opens 1.2s after the post so it never stacks on the
   closing paste sheet.
+- **Funnel telemetry**: every ask reports to `POST /v1/telemetry/push-prompt`
+  (`reportPushPrompt`, `src/api/telemetry.ts`) for the admin push funnel — the pre-prompt
+  reports `shown` / `accepted` / `declined` (trigger `post_score`); `enablePlayReminder` /
+  `ensurePushRegistered` take the trigger (`post_score` | `settings` | `poke`) and report
+  `accepted` (no-pre-prompt triggers) plus `os_granted` / `os_denied`, only when the OS had not
+  been asked yet. A new place that asks for push passes its own trigger (add it to
+  `PUSH_PROMPT_TRIGGERS`).
 - **Settings**: `/settings/notifications` (ProfileMenu → Notifications). Unsupported builds show
   the App Store message instead of controls. Taps route `data.url` (`highscore:///`, set by
   `apps/backend/src/jobs/playReminders.ts`) through `notificationPath`, cold start included.

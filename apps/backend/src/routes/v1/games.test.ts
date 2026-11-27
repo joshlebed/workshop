@@ -341,6 +341,16 @@ describe("PUT /v1/games/:id/scores", () => {
       [sourceUserId],
     );
     expect(flagAfter[0]?.value?.firstAt).toBe(firstAt);
+
+    // The legacy write path records the same first-score milestones.
+    const milestones = await rows<{ key: string; context: { by_self?: boolean } }>(
+      `SELECT key, context FROM user_milestones
+       WHERE user_id = $1 AND key IN ('first_score', 'first_share_extension_score')
+       ORDER BY key`,
+      [sourceUserId],
+    );
+    expect(milestones.map((m) => m.key)).toEqual(["first_score", "first_share_extension_score"]);
+    expect(milestones[0]?.context.by_self).toBe(true);
   });
 
   it("rejects an unknown entry source", async () => {

@@ -71,7 +71,8 @@
       "!**/*.icon",
       "!**/test-results",
       "!**/playwright-report",
-      "!**/.wrangler"
+      "!**/.wrangler",
+      "!**/apps/backend/.data"
     ]
   },
   "overrides": [
