@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type {
   DeletePushTokenRequest,
   NotificationPrefsResponse,
@@ -23,6 +24,11 @@ const expoPushTokenSchema = z
   .trim()
   .max(255, "push token too long")
   .regex(/^(ExponentPushToken|ExpoPushToken)\[[A-Za-z0-9_-]+\]$/, "invalid Expo push token");
+
+function storedPushToken(expoPushToken: string): string {
+  if (!getConfig().isLocal) return expoPushToken;
+  return `sandbox:${createHash("sha256").update(expoPushToken, "utf8").digest("hex")}`;
+}
 
 const ianaTimezoneSchema = z
   .string()
@@ -81,7 +87,7 @@ meRoutes.post("/push-token", async (c) => {
     .insert(pushTokens)
     .values({
       userId,
-      expoPushToken: request.expoPushToken,
+      expoPushToken: storedPushToken(request.expoPushToken),
       platform: request.platform,
       timezone: request.timezone,
       createdAt: now,
@@ -113,7 +119,12 @@ meRoutes.delete("/push-token", async (c) => {
 
   await db
     .delete(pushTokens)
-    .where(and(eq(pushTokens.userId, userId), eq(pushTokens.expoPushToken, request.expoPushToken)));
+    .where(
+      and(
+        eq(pushTokens.userId, userId),
+        eq(pushTokens.expoPushToken, storedPushToken(request.expoPushToken)),
+      ),
+    );
   await refreshReminderSlotsQuietly(db);
   const response: PushTokenMutationResponse = { ok: true };
   return ok(c, response);
