@@ -15,6 +15,7 @@ vi.mock("../db/client.js", () => ({
 }));
 
 import { runScheduledPlayReminders } from "../jobs/playReminders.js";
+import * as localPush from "./localPush.js";
 import {
   anySlotDue,
   localHour,
@@ -133,17 +134,9 @@ describe("runScheduledPlayReminders", () => {
   });
 
   it("runs the job and rewrites the slots when nothing is stored", async () => {
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          data: [
-            { status: "ok", id: "t1" },
-            { status: "ok", id: "t2" },
-          ],
-        }),
-        { status: 200 },
-      ),
-    );
+    const recorder = vi.spyOn(localPush, "postLocalPush").mockResolvedValue({
+      data: [{ status: "ok" }, { status: "ok" }],
+    });
     try {
       const result = await runScheduledPlayReminders(ELEVEN_IN_NY);
       // One user due (New York, 11:00), reminded on both of their devices.
@@ -160,7 +153,7 @@ describe("runScheduledPlayReminders", () => {
         ),
       );
     } finally {
-      fetchSpy.mockRestore();
+      recorder.mockRestore();
     }
   });
 });
