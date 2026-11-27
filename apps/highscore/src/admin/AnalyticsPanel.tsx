@@ -27,6 +27,7 @@ import {
   Text,
   tokens,
 } from "../theme";
+import { ActivationTable, PushFunnelTable } from "./ActivationTable";
 
 const CLIENT = "highscore" as const;
 
@@ -102,6 +103,8 @@ export function AnalyticsPanel() {
             ))}
           </View>
 
+          {query.data.activation ? <ActivationTable activation={query.data.activation} /> : null}
+
           {query.data.series.map((series) => (
             <Card key={series.key} style={styles.chartCard} testID={`series-${series.key}`}>
               <Text variant="label">{series.label}</Text>
@@ -121,6 +124,8 @@ export function AnalyticsPanel() {
               </Text>
             </Card>
           ))}
+
+          {query.data.pushFunnel ? <PushFunnelTable funnel={query.data.pushFunnel} /> : null}
 
           {(query.data.breakdowns ?? []).map((b) => (
             <Card key={b.key} style={styles.chartCard} testID={`breakdown-${b.key}`}>

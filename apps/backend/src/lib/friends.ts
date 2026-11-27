@@ -5,6 +5,7 @@
 import { and, eq, inArray, or } from "drizzle-orm";
 import { getDb } from "../db/client.js";
 import { friendships } from "../db/schema.js";
+import { recordFriendMilestones } from "./milestones.js";
 
 /** Order a pair canonically (`user_low < user_high`). Throws on self-pairs. */
 export function canonicalPair(a: string, b: string): { userLow: string; userHigh: string } {
@@ -31,15 +32,23 @@ export async function friendsOf(userId: string): Promise<string[]> {
  * `addFriendship(a, b)` and `addFriendship(b, a)` land on the same row.
  * Returns `true` when a new edge was created, `false` when the pair was
  * already friends (lets callers ping ops only on genuinely-new friendships).
+ * A new edge records both people's first / second-friend milestones;
+ * `actorId` is whoever's request formed it (their client goes on the row).
  */
-export async function addFriendship(a: string, b: string): Promise<boolean> {
+export async function addFriendship(
+  a: string,
+  b: string,
+  actorId: string | null = null,
+): Promise<boolean> {
   const pair = canonicalPair(a, b);
   const inserted = await getDb()
     .insert(friendships)
     .values(pair)
     .onConflictDoNothing()
     .returning({ userLow: friendships.userLow });
-  return inserted.length > 0;
+  if (inserted.length === 0) return false;
+  await recordFriendMilestones(a, b, actorId);
+  return true;
 }
 
 /** Remove the edge between two users (no-op when it doesn't exist). */

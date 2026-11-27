@@ -13,6 +13,7 @@ import { getDb } from "../../db/client.js";
 import { notificationPrefs, pushTokens } from "../../db/schema.js";
 import { reminderTimezoneForUser, suggestPlayReminderHour } from "../../jobs/playReminders.js";
 import { getConfig } from "../../lib/config.js";
+import { recordMilestones } from "../../lib/milestones.js";
 import { refreshReminderSlotsQuietly } from "../../lib/reminderSlots.js";
 import { parseJsonBody } from "../../lib/request.js";
 import { err, ok } from "../../lib/response.js";
@@ -99,6 +100,8 @@ meRoutes.post("/push-token", async (c) => {
   // A new device can change the account's timezone, and so which hour its
   // reminder falls in.
   await refreshReminderSlotsQuietly(db);
+  // A posted token means the OS granted push on some device.
+  await recordMilestones(userId, ["push_granted"], db);
 
   const response: PushTokenMutationResponse = { ok: true };
   return ok(c, response);
@@ -161,6 +164,7 @@ meRoutes.put("/notification-prefs", async (c) => {
     });
   if (!prefs) return err(c, "NOT_FOUND", "user not found");
   await refreshReminderSlotsQuietly(db);
+  if (prefs.playReminderEnabled) await recordMilestones(userId, ["reminders_enabled"], db);
 
   const response: UpdateNotificationPrefsResponse = prefs;
   return ok(c, response);

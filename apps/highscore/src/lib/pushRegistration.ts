@@ -3,13 +3,16 @@
 // each function is a cheap no-op.
 
 import type { NotificationPrefs } from "@workshop/shared";
+import type { PushPromptTrigger } from "@workshop/shared/constants";
 import {
   deletePushToken,
   fetchNotificationPrefs,
   registerPushToken,
   saveNotificationPrefs,
 } from "../api/notifications";
+import { reportPushPrompt } from "../api/telemetry";
 import {
+  getPermissionStatus,
   getPushToken,
   isPushSupported,
   type PushPermissionStatus,
@@ -75,6 +78,23 @@ export async function unregisterPushToken(authToken: string | null): Promise<voi
   }
 }
 
+/**
+ * `requestPermissionAndToken`, reporting the push funnel: when the OS had not
+ * been asked yet (so its dialog is about to show), the ask itself (`accepted`,
+ * for triggers with no pre-prompt of ours — the post-score sheet reports its
+ * own answer) and the dialog's answer (`os_granted` / `os_denied`).
+ */
+async function requestAndReport(authToken: string, trigger: PushPromptTrigger) {
+  const before = await getPermissionStatus().catch(() => "unsupported" as const);
+  const asking = before === "undetermined";
+  if (asking && trigger !== "post_score") void reportPushPrompt(authToken, "accepted", trigger);
+  const result = await requestPermissionAndToken();
+  if (asking && result.status === "granted")
+    void reportPushPrompt(authToken, "os_granted", trigger);
+  if (asking && result.status === "denied") void reportPushPrompt(authToken, "os_denied", trigger);
+  return result;
+}
+
 export type EnableReminderResult =
   | { ok: true; prefs: NotificationPrefs }
   | { ok: false; status: PushPermissionStatus };
@@ -88,8 +108,9 @@ export type EnableReminderResult =
 export async function enablePlayReminder(
   authToken: string,
   userId: string,
+  trigger: PushPromptTrigger,
 ): Promise<EnableReminderResult> {
-  const { status, token: pushToken } = await requestPermissionAndToken();
+  const { status, token: pushToken } = await requestAndReport(authToken, trigger);
   if (status !== "granted") return { ok: false, status };
   if (pushToken) await postToken(authToken, userId, pushToken);
   const current = await fetchNotificationPrefs(authToken);
@@ -111,9 +132,10 @@ export type PushReadiness = "ready" | "denied" | "dismissed" | "unsupported";
 export async function ensurePushRegistered(
   authToken: string,
   userId: string,
+  trigger: PushPromptTrigger,
 ): Promise<PushReadiness> {
   if (!isPushSupported()) return "unsupported";
-  const { status, token: pushToken } = await requestPermissionAndToken();
+  const { status, token: pushToken } = await requestAndReport(authToken, trigger);
   if (status === "granted" && pushToken) {
     await postToken(authToken, userId, pushToken);
     return "ready";

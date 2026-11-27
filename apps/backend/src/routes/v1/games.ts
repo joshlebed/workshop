@@ -76,6 +76,7 @@ import {
   reactionKey,
   visibleUserIds,
 } from "../../lib/gameStandings.js";
+import { recordScoreMilestones } from "../../lib/milestones.js";
 import { isNudgeablePeriod, loadNudgeState, sendGameNudge } from "../../lib/nudges.js";
 import { notifyScoreSpecTaught } from "../../lib/opsNotifications.js";
 import { rankEntries } from "../../lib/ranking.js";
@@ -650,6 +651,8 @@ gameRoutes.put(
     if (parsed.data.entrySource === "share_extension") {
       await recordShareExtensionScore(db, userId, now);
     }
+    // First-score milestones (insert-only); `handleScoreUpsertV2` does the same.
+    await recordScoreMilestones(userId, parsed.data.entrySource, db);
 
     // Posting a score auto-adds the game to My Games (spec §3.5) — no
     // membership prerequisite, idempotent if it's already there.
