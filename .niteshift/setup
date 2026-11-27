@@ -30,6 +30,8 @@ source "$REPO_DIR/.niteshift/files/db.sh"
 workshop_resolve_database_url
 log "starting local postgres service"
 workshop_ensure_local_postgres
+log "scrubbing push tokens in the existing local database"
+workshop_scrub_push_tokens
 
 # 4) Dependencies.
 log "pnpm install"
