@@ -1,7 +1,7 @@
 import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { resetConfigForTesting } from "../../lib/config.js";
 import { signSession } from "../../lib/session.js";
 
@@ -72,41 +72,63 @@ beforeAll(async () => {
 }, 60_000);
 
 describe("/v1/me push tokens", () => {
-  it("upserts a validated Expo token and only lets its owner delete it", async () => {
-    const expoPushToken = "ExpoPushToken[peak-user-device]";
-    const register = await meRoutes.request("/push-token", {
-      method: "POST",
-      headers: authHeaders(peakUserId),
-      body: JSON.stringify({ expoPushToken, platform: "ios", timezone: "America/Los_Angeles" }),
-    });
-    expect(register.status).toBe(200);
-
-    const stored = await rows<{ user_id: string; timezone: string }>(
-      `SELECT user_id, timezone FROM push_tokens WHERE expo_push_token = $1`,
-      [expoPushToken],
-    );
-    expect(stored).toEqual([{ user_id: peakUserId, timezone: "America/Los_Angeles" }]);
-
-    const wrongOwnerDelete = await meRoutes.request("/push-token", {
-      method: "DELETE",
-      headers: authHeaders(fallbackUserId),
-      body: JSON.stringify({ expoPushToken }),
-    });
-    expect(wrongOwnerDelete.status).toBe(200);
-    expect(
-      await rows(`SELECT 1 FROM push_tokens WHERE expo_push_token = $1`, [expoPushToken]),
-    ).toHaveLength(1);
-
-    const ownerDelete = await meRoutes.request("/push-token", {
-      method: "DELETE",
-      headers: authHeaders(peakUserId),
-      body: JSON.stringify({ expoPushToken }),
-    });
-    expect(ownerDelete.status).toBe(200);
-    expect(
-      await rows(`SELECT 1 FROM push_tokens WHERE expo_push_token = $1`, [expoPushToken]),
-    ).toHaveLength(0);
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    resetConfigForTesting();
   });
+
+  it.each([
+    ["local", "sandbox:a342b852a7cf0421caa3f63a1f3723db4ef7d03f14b4eb6b71f9409582409177"],
+    ["prod", "ExpoPushToken[peak-user-device]"],
+  ])(
+    "stores and unregisters the %s token with the existing ownership rules",
+    async (stage, storedToken) => {
+      vi.stubEnv("STAGE", stage);
+      vi.stubEnv("ENABLE_GAMES", "1");
+      resetConfigForTesting();
+
+      const expoPushToken = "ExpoPushToken[peak-user-device]";
+      const register = (userId: string, timezone: string) =>
+        meRoutes.request("/push-token", {
+          method: "POST",
+          headers: authHeaders(userId),
+          body: JSON.stringify({
+            expoPushToken: `  ${expoPushToken}  `,
+            platform: "ios",
+            timezone,
+          }),
+        });
+      const unregister = (userId: string) =>
+        meRoutes.request("/push-token", {
+          method: "DELETE",
+          headers: authHeaders(userId),
+          body: JSON.stringify({ expoPushToken }),
+        });
+      const stored = () =>
+        rows(
+          `SELECT expo_push_token, user_id, timezone FROM push_tokens WHERE expo_push_token IN ($1, $2)`,
+          [storedToken, expoPushToken],
+        );
+
+      const initialRegistration = await register(peakUserId, "America/Los_Angeles");
+      expect(initialRegistration.status).toBe(200);
+      expect(await initialRegistration.json()).toEqual({ ok: true });
+      expect(await stored()).toEqual([
+        { expo_push_token: storedToken, user_id: peakUserId, timezone: "America/Los_Angeles" },
+      ]);
+
+      expect((await register(fallbackUserId, "UTC")).status).toBe(200);
+      expect((await unregister(peakUserId)).status).toBe(200);
+      expect(await stored()).toEqual([
+        { expo_push_token: storedToken, user_id: fallbackUserId, timezone: "UTC" },
+      ]);
+
+      const ownerDelete = await unregister(fallbackUserId);
+      expect(ownerDelete.status).toBe(200);
+      expect(await ownerDelete.json()).toEqual({ ok: true });
+      expect(await stored()).toEqual([]);
+    },
+  );
 
   it("rejects a non-IANA timezone", async () => {
     const response = await meRoutes.request("/push-token", {

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Runs on every sandbox resume, before services are restarted. The only
-# resume-specific recovery: the on-demand `postgres` service doesn't return
-# automatically after a resume, so bring it back. Data lives in the
+# Runs on every sandbox resume, before services are restarted. The on-demand
+# `postgres` service doesn't return automatically after a resume, so bring
+# it back. Data lives in the
 # workshop-pg17-data docker volume and survives the suspend; the prod copy is
 # NOT re-taken here (use .niteshift/files/snapshot-prod.sh).
 set -euo pipefail
@@ -18,3 +18,5 @@ source "$REPO_DIR/.niteshift/files/db.sh"
 workshop_resolve_database_url
 log "restarting postgres service"
 workshop_ensure_local_postgres
+log "scrubbing push tokens in the existing local database"
+workshop_scrub_push_tokens
