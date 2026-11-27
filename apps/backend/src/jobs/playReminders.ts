@@ -184,12 +184,14 @@ export async function runPlayReminderJob(
 
   const delivery = await sendExpoPushMessages(
     sendable.map((candidate) => ({
+      recipientId: candidate.userId,
       to: candidate.expoPushToken,
       title: "Time to play",
       body: "Your daily games are waiting",
       data: { url: "highscore:///" },
     })),
     {
+      category: "play_reminder",
       db,
       fetchFn,
       onChunkError: (error, chunkIndex, tokenCount) =>

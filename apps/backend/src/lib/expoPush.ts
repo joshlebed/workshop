@@ -75,12 +75,13 @@ function chunksOf<T>(values: T[], size: number): T[][] {
  * loop. Never throws for a delivery problem; only a prune DB error escapes.
  */
 export async function sendExpoPushMessages(
-  messages: ExpoPushMessage[],
+  messages: (ExpoPushMessage & { recipientId: string })[],
   opts: {
+    category: "play_reminder" | "friend_request" | "poke" | "admin_message";
     db?: DbClient | undefined;
     fetchFn?: typeof fetch | undefined;
     onChunkError?: (error: unknown, chunkIndex: number, chunkSize: number) => void;
-  } = {},
+  },
 ): Promise<ExpoPushSendResult> {
   const fetchFn = opts.fetchFn ?? fetch;
   const url = getConfig().expoPushUrl;
@@ -88,11 +89,12 @@ export async function sendExpoPushMessages(
   const tokensToPrune = new Set<string>();
 
   for (const [chunkIndex, chunk] of chunksOf(messages, EXPO_CHUNK_SIZE).entries()) {
+    const offset = outcomes.length;
     try {
       const response = await fetchFn(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(chunk),
+        body: JSON.stringify(chunk.map(({ recipientId: _, ...message }) => message)),
       });
       if (!response.ok) {
         throw new Error(`Expo push request failed with status ${response.status}`);
@@ -123,6 +125,17 @@ export async function sendExpoPushMessages(
         });
       }
       for (const message of chunk) outcomes.push({ to: message.to, status: "request_failed" });
+    }
+    for (const [index, message] of chunk.entries()) {
+      const outcome = outcomes[offset + index];
+      logger.info("highscore_push_outcome", {
+        category: opts.category,
+        recipient_id: message.recipientId,
+        title: message.title,
+        body: message.body,
+        status: outcome?.status,
+        expo_error: outcome?.error,
+      });
     }
   }
 

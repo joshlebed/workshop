@@ -56,17 +56,21 @@ export async function sendFriendRequestPush(
       tokenRows.map((row) => row.token),
     );
     const fetchFn = opts.fetchFn ?? fetch;
-    const delivery = await sendExpoPushMessages(messages, {
-      db,
-      fetchFn: (input, init) =>
-        fetchFn(input, { ...init, signal: AbortSignal.timeout(FRIEND_REQUEST_PUSH_TIMEOUT_MS) }),
-      onChunkError: (error, chunkIndex, tokenCount) =>
-        logger.error("friend request push chunk failed", {
-          error,
-          chunk_index: chunkIndex,
-          token_count: tokenCount,
-        }),
-    });
+    const delivery = await sendExpoPushMessages(
+      messages.map((message) => ({ ...message, recipientId: targetId })),
+      {
+        category: "friend_request",
+        db,
+        fetchFn: (input, init) =>
+          fetchFn(input, { ...init, signal: AbortSignal.timeout(FRIEND_REQUEST_PUSH_TIMEOUT_MS) }),
+        onChunkError: (error, chunkIndex, tokenCount) =>
+          logger.error("friend request push chunk failed", {
+            error,
+            chunk_index: chunkIndex,
+            token_count: tokenCount,
+          }),
+      },
+    );
     logger.info("friend request push sent", {
       target_id: targetId,
       tokens: messages.length,
