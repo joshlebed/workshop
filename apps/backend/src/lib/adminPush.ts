@@ -19,7 +19,7 @@ import {
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { notificationPrefs, pushTokens, users } from "../db/schema.js";
-import { type ExpoPushMessage, sendExpoPushMessages } from "./expoPush.js";
+import { sendExpoPushMessages } from "./expoPush.js";
 import { type DbClient, executeRows } from "./sql.js";
 
 const DEFAULT_PUSH_URL = "highscore:///";
@@ -131,16 +131,21 @@ export async function sendAdminPush(
   ]);
 
   const data = { url: input.url ?? DEFAULT_PUSH_URL };
-  const messages: ExpoPushMessage[] = tokenRows.map((row) => ({
+  const messages = tokenRows.map((row) => ({
+    recipientId: row.userId,
     to: row.token,
     title: input.title,
     body: input.body,
     data,
-    sound: "default",
+    sound: "default" as const,
   }));
   const delivery =
     messages.length > 0
-      ? await sendExpoPushMessages(messages, { db, fetchFn: opts.fetchFn })
+      ? await sendExpoPushMessages(messages, {
+          category: "admin_message",
+          db,
+          fetchFn: opts.fetchFn,
+        })
       : { sent: 0, failed: 0, prunedTokens: [], outcomes: [] };
 
   const pruned = new Set(delivery.prunedTokens);

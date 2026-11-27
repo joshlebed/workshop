@@ -67,3 +67,19 @@ ns services restart backend
 
 Then check the running backend has it (`tr '\0' '\n' < /proc/<pid>/environ | grep EXPO_PUSH_URL`)
 and select only users whose tokens you inserted yourself (`ExpoPushToken[sandbox-fake-…]`).
+
+## Look up a player's notification history
+
+In CloudWatch Logs Insights, select the production backend Lambda log group and run the query
+below with the player's internal user ID. Each device attempt produces one outcome after the
+Expo request finishes. The Lambda log group retains events for 365 days, starting at rollout.
+
+```sql
+fields @timestamp, category, title, body, status, expo_error
+| filter msg = "highscore_push_outcome" and recipient_id = "USER_UUID"
+| sort @timestamp desc
+```
+
+Categories are `play_reminder`, `friend_request`, `poke`, and `admin_message`. An `ok`
+ticket means Expo accepted the push. An `error` ticket records Expo's rejection, and
+`request_failed` means the backend received no usable tickets for the request.

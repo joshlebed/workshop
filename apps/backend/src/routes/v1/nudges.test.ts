@@ -216,6 +216,7 @@ describe("nudges", () => {
     );
     expect(sendExpoPushMessages.mock.calls[0]?.[0]).toEqual([
       {
+        recipientId: target,
         to: `ExponentPushToken[${target.slice(-4)}]`,
         title: `Mia poked you in ${gameTitle}`,
         body: "Tap to see the leaderboard",
