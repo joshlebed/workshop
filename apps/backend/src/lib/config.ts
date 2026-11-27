@@ -48,7 +48,7 @@ const openaiEffort = z
     return effort ?? DEFAULT_OPENAI_TEACH_EFFORT;
   });
 
-export const DEFAULT_EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
+const DEFAULT_EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 
 const configSchema = z.object({
   stage: z.enum(["local", "prod"]).default("local"),
